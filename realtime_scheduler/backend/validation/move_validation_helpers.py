@@ -1,6 +1,7 @@
 """MoveList 校验的运输、设备配置和数据解析辅助函数。"""
 
 import math
+from bisect import bisect_left, bisect_right
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .move_validation_core import (
@@ -73,6 +74,37 @@ def _station_access_error(robot: RobotState, station: StationState, start_time: 
     return None
 
 
+class _IndexedMoves(list):
+    """保存一代计划及运输站点索引；重算建立新对象，不跨代复用。"""
+
+    def __init__(self, moves: Iterable[Mapping[str, Any]]) -> None:
+        """按原顺序保存 Move，并仅索引 Pick/Place/Swap 实际访问的站点。"""
+        super().__init__(moves)
+        self.transports_by_station: Dict[str, list] = {}
+        self.transport_dependents: Dict[int, list] = {}
+        for index, move in enumerate(self):
+            move_type = move.get("MoveType")
+            field = (
+                "SrcStationList" if move_type in {PICK_MOVE, MULTI_PICK_MOVE}
+                else "DestStationList" if move_type == PLACE_MOVE
+                else "StationList" if move_type == SWAP_MOVE
+                else None
+            )
+            if field is not None:
+                entry = (index, move)
+                for predecessor in set(_integer_values(move, "PreMoveID")):
+                    self.transport_dependents.setdefault(predecessor, []).append(entry)
+                start = _number(move.get("StartTime"))
+                if start is None:
+                    continue
+                for station in {str(value) for value in _values(move, field)}:
+                    self.transports_by_station.setdefault(station, []).append((start, index, move))
+        self.transport_start_times = {}
+        for station, entries in self.transports_by_station.items():
+            entries.sort(key=lambda entry: (entry[0], entry[1]))
+            self.transport_start_times[station] = [entry[0] for entry in entries]
+
+
 def _related_move(move: Mapping[str, Any], moves: Sequence[Mapping[str, Any]]) -> Optional[Mapping[str, Any]]:
     """查找与开门动作关联、访问同一站点的实际运输动作。
 
@@ -99,7 +131,19 @@ def _related_move(move: Mapping[str, Any], moves: Sequence[Mapping[str, Any]]) -
     dependency_candidates: List[Mapping[str, Any]] = []
     adjacent_candidates: List[Mapping[str, Any]] = []
 
-    for candidate in moves:
+    if isinstance(moves, _IndexedMoves):
+        # 必须保留全部直接依赖和容差范围内的时间邻接候选，不能取第一条。
+        times = moves.transport_start_times.get(station_name, ())
+        entries = moves.transports_by_station.get(station_name, ())
+        lower = math.nextafter(end_time - TIME_TOLERANCE, -math.inf)
+        upper = math.nextafter(end_time + TIME_TOLERANCE, math.inf)
+        adjacent = entries[bisect_left(times, lower):bisect_right(times, upper)]
+        indexed = dict(moves.transport_dependents.get(move_id, ())) if isinstance(move_id, int) else {}
+        indexed.update((index, candidate) for _, index, candidate in adjacent)
+        candidates = indexed.values()
+    else:
+        candidates = moves
+    for candidate in candidates:
         move_type = candidate.get("MoveType")
         candidate_action = action_by_move_type.get(move_type)
         if candidate_action is None:

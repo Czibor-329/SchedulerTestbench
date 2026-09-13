@@ -740,7 +740,7 @@ class MoveStateReplay:
     ) -> None:
         """用计划和初始快照创建实时状态记录器。"""
         self.task = task
-        self.moves = [dict(move) for move in sorted(moves, key=_sort_key)]
+        self.moves = _IndexedMoves(dict(move) for move in sorted(moves, key=_sort_key))
         self.state = MachineState.from_sources(task, init_data)
         _supplement_state_from_moves(self.state, self.moves)
         self.current_time = 0.0
@@ -980,7 +980,7 @@ def validate_move_list(
         if str(value).strip().lower() in CLEAN_VALIDATION_TYPES
     }
     scheduled: List[_ScheduledCompletion] = []
-    ordered_moves = sorted(moves, key=_sort_key)
+    ordered_moves = _IndexedMoves(sorted(moves, key=_sort_key))
     _supplement_state_from_moves(state, ordered_moves)
     for move in ordered_moves:
         start_time = _number(move.get("StartTime"))

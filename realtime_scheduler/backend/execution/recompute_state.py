@@ -332,7 +332,12 @@ def merge_algorithm_update(
     全量 update 的统一合并边界，确保内置算法和外部算法的两条重算路径都不会
     漏掉平台已收到的 Dummy Route。
     """
-    merged = deepcopy(dict(previous_update))
+    # 下列字段随后逐项合并或直接重建，避免先复制整份旧路线和通知再丢弃。
+    rebuilt_fields = {
+        "Materials", "ProcessJobs", "ControlJobs", "ProcessRecipes",
+        "Robots", "Stations", "MoveStates", "RemoveList",
+    }
+    merged = deepcopy({key: value for key, value in previous_update.items() if key not in rebuilt_fields})
     merged["Scenario"] = new_round_update.get("Scenario", merged.get("Scenario", 0))
     merged["CurrentTime"] = float(new_round_update.get("CurrentTime") or 0.0)
     merged["InitialMoveID"] = int(
@@ -349,7 +354,7 @@ def merge_algorithm_update(
 
     material_by_id: Dict[Any, Dict[str, Any]] = {}
     for raw_material in [
-        *(merged.get("Materials") or []),
+        *(previous_update.get("Materials") or []),
         *(new_round_update.get("Materials") or []),
     ]:
         if isinstance(raw_material, Mapping) and raw_material.get("ID") is not None:
@@ -358,7 +363,7 @@ def merge_algorithm_update(
 
     process_job_by_name: Dict[str, Dict[str, Any]] = {}
     for raw_job in [
-        *(merged.get("ProcessJobs") or []),
+        *(previous_update.get("ProcessJobs") or []),
         *(new_round_update.get("ProcessJobs") or []),
     ]:
         if isinstance(raw_job, Mapping) and raw_job.get("JobName"):
@@ -367,7 +372,7 @@ def merge_algorithm_update(
     merged["ControlJobs"] = [
         deepcopy(dict(control_job))
         for control_job in [
-            *(merged.get("ControlJobs") or []),
+            *(previous_update.get("ControlJobs") or []),
             *(new_round_update.get("ControlJobs") or []),
         ]
         if isinstance(control_job, Mapping)

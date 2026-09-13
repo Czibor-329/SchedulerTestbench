@@ -52,7 +52,7 @@ class PlatformMoveListRuntime:
             expand_runtime_snapshots_for_validation(self.device, self.current_update),
         )
         initial_state.skipped_clean_validation_types = set(self.skipped_clean_validation_types)
-        initial_moves = deepcopy(list(output.get("MoveList") or []))
+        initial_moves = _copy_move_list(output.get("MoveList") or [])
         if self.module_parallel:
             initial_moves = self._materialize_moves(initial_moves, float(self.current_update.get("CurrentTime") or 0.0))
         validation_issues = validate_move_list(None, initial_moves, initial_state, skipped_clean_validation_types=self.skipped_clean_validation_types)
@@ -192,10 +192,10 @@ class PlatformMoveListRuntime:
         next_state = initial_state.clone() if initial_state is not None else self._tracker.state.clone()
         add_new_materials_to_machine_state(next_state, update_params)
         next_state.refresh_validation_metadata(update_params)
-        next_moves = deepcopy(list(output.get("MoveList") or []))
+        next_moves = _copy_move_list(output.get("MoveList") or [])
         if self.module_parallel:
             next_moves = self._materialize_moves(next_moves, float(requested_time))
-        committed = deepcopy(list(committed_moves))
+        committed = _copy_move_list(committed_moves)
         validation_issues = validate_move_list(
             None, next_moves, next_state,
             external_predecessors=_committed_move_index([*self._history, *committed]),
@@ -226,9 +226,9 @@ class PlatformMoveListRuntime:
 
     def combined_output(self) -> Dict[str, Any]:
         """拼接旧代已承诺动作与最后一代有效计划。"""
-        moves = [*deepcopy(self._history), *self._tracker.materialized_plan]
+        moves = [*_copy_move_list(self._history), *self._tracker.materialized_plan]
         moves.sort(key=lambda move: (float(move.get("StartTime") or 0.0), int(move.get("MoveID") or 0)))
-        output = _alg_output_info(self._latest_output)
+        output = _alg_output_info({key: value for key, value in self._latest_output.items() if key != "MoveList"})
         output["MoveList"] = moves
         output["RecomputePoints"] = deepcopy(self._recompute_points)
         return output

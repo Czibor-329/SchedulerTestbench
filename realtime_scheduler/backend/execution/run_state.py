@@ -29,11 +29,21 @@ class ReproductionLog:
         sim_time: float = 0.0,
     ) -> None:
         """追加一条可直接交给 MoveStateSim 的标准日志事件。"""
+        if (
+            describe == "AlgOutput"
+            and isinstance(info, Mapping)
+            and isinstance(info.get("MoveList"), list)
+            and all(isinstance(move, Mapping) for move in info["MoveList"])
+        ):
+            snapshot = deepcopy({key: value for key, value in info.items() if key != "MoveList"})
+            snapshot["MoveList"] = _copy_move_list(info["MoveList"])
+        else:
+            snapshot = deepcopy(info)
         entry = {
             "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
             "Describe": describe,
             "SimTime": float(sim_time),
-            "Info": deepcopy(info),
+            "Info": snapshot,
         }
         self.entries.append(entry)
 
@@ -326,6 +336,27 @@ def _committed_move_index(
     return indexed
 
 
+def _copy_move_list(moves: Sequence[Mapping[str, Any]]) -> List[dict]:
+    """隔离协议 Move 的字典和数组；嵌套扩展字段仍执行完整深拷贝。
+
+    标准 Move 大多为标量与标量数组，无需为每个数字和字符串建立 deepcopy
+    备忘录。此函数保留值类型，不经 JSON 编解码转换键或非标准扩展值。
+    """
+    scalar_types = {str, int, float, bool, type(None)}
+    copied = []
+    for move in moves:
+        row = {}
+        for key, value in move.items():
+            if type(value) in scalar_types:
+                row[key] = value
+            elif type(value) is list and all(type(item) in scalar_types for item in value):
+                row[key] = value.copy()
+            else:
+                row[key] = deepcopy(value)
+        copied.append(row)
+    return copied
+
+
 def _alg_output_info(
     output: Optional[Mapping[str, Any]] = None,
     feedback: Optional[Sequence[Mapping[str, Any]]] = None,
@@ -333,7 +364,7 @@ def _alg_output_info(
     """生成与 input_data 中 AlgOutput 相同的顶层结构。"""
     source = output or {}
     normalized = {
-        "MoveList": deepcopy(list(source.get("MoveList") or [])),
+        "MoveList": _copy_move_list(source.get("MoveList") or []),
         "Feedback": deepcopy(list(feedback if feedback is not None else source.get("Feedback") or [])),
         "JobList": deepcopy(list(source.get("JobList") or [])),
         "DummyReturnInfo": deepcopy(dict(source.get("DummyReturnInfo") or {})),
@@ -553,8 +584,9 @@ def _build_validation_gantt_output(
 def _schedule_log_info(device: Mapping[str, Any], update: Mapping[str, Any]) -> Dict[str, Any]:
     """把设备拓扑与一轮更新合成可单独回放的 AlgSchedule 输入。"""
     info = deepcopy(dict(update))
-    info.setdefault("Robots", deepcopy(dict(device.get("Robots") or {})))
-    info.setdefault("Stations", deepcopy(dict(device.get("Stations") or {})))
+    for section in ("Robots", "Stations"):
+        if section not in info:
+            info[section] = deepcopy(dict(device.get(section) or {}))
     return info
 
 
