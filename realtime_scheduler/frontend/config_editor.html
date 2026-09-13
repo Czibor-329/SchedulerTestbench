@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>调度平台</title>
   <link rel="stylesheet" href="/assets/katex.min.css?v=1.4.4">
-  <link rel="stylesheet" href="/assets/config_editor.css?v=1.5.50">
+  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.0">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -25,7 +25,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m5 14v-6m5 6V9m5 10V3"/><path d="M3 19h18"/></svg><span>结果分析</span>
         </button>
         <button class="tab" data-tab-target="playback" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg><span>拓扑回放</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg><span>回放诊断</span>
         </button>
         <button class="tab" data-tab-target="device-config" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1.03H3v-4h.08A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 10 3.05V3h4v.05a1.7 1.7 0 0 0 1.03 1.52 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg><span>设备配置</span>
@@ -40,7 +40,7 @@
       <div class="sidebar-footer">
         <span class="sidebar-footer-label">系统状态</span>
         <div class="service-pill" id="serviceState">本地服务</div>
-        <span class="frontend-version">V1.5.50</span>
+        <span class="frontend-version">V1.6.0</span>
       </div>
     </aside>
 
@@ -147,7 +147,7 @@
                 <div id="resultErrorDetails" class="result-error-details" hidden></div>
                 <pre id="terminal"></pre>
               </div>
-              <div class="result-actions"><a class="btn" id="logButton" href="#" download aria-disabled="true">导出复现日志</a><button class="btn primary" id="workspaceResultButton" type="button" disabled>在结果分析中查看</button><a class="btn" id="ganttButton" href="#" target="_blank" aria-disabled="true">打开甘特图</a></div>
+              <div class="result-actions"><a class="btn" id="logButton" href="#" download aria-disabled="true">导出复现日志</a><button class="btn primary" id="workspaceResultButton" type="button" disabled>在回放诊断中查看</button><a class="btn" id="ganttButton" href="#" target="_blank" aria-disabled="true">打开甘特图</a></div>
             </div>
           </article>
         </div>
@@ -159,13 +159,12 @@
             <div class="visual-empty" id="visualEmpty">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg>
               <strong>等待分析数据</strong>
-              <span>运行一次计划，或在拓扑回放界面导入已有的 MoveList JSON 文件后查看结果分析。</span>
+              <span>批量运行测试组后，在结果预览中选择“测试组结果分析”。单次测试请使用回放诊断。</span>
             </div>
 
             <div class="visual-content" id="visualContent" hidden>
               <section class="performance-panel" aria-labelledby="performanceTitle">
                 <h2 class="visually-hidden" id="performanceTitle">资源占用与瓶颈识别</h2>
-                <div id="visualPerformance"></div>
                 <div class="performance-window-stash" aria-hidden="true">
                   <select id="performanceWindow" tabindex="-1">
                     <option value="steady" selected>剔除启动 / 收尾</option>
@@ -194,7 +193,7 @@
               </label>
             </div>
 
-            <section class="topology-playback" id="visualTopologyPlayback" hidden aria-label="设备拓扑回放">
+            <section class="topology-playback" id="visualTopologyPlayback" hidden aria-label="回放诊断">
               <div class="petri-console-layout">
                 <div class="topology-canvas-area">
                 <main class="petri-center-column topology-unified-canvas" aria-label="设备拓扑与槽位画布">
@@ -203,7 +202,7 @@
                 </main>
                 </div>
 
-                <aside class="petri-control-panel" aria-label="拓扑回放控制面板">
+                <aside class="petri-control-panel" aria-label="回放诊断控制面板">
               <section class="timeline-console petri-top-playback-controls" aria-label="MoveList 时间轴控制">
                 <div class="timeline-primary-zone">
                   <button class="btn primary timeline-play" id="visualPlayButton" type="button" aria-label="播放回放"></button>
@@ -248,6 +247,7 @@
               </section>
 
 
+                  <section class="petri-control-section replay-kpi-section" aria-label="回放核心指标"><div id="visualReplayKpis"></div></section>
                   <section class="petri-control-section wafer-progress-section">
                     <div class="action-panel-heading"><h2 class="petri-panel-title">晶圆进度</h2><label class="playback-switch"><input id="visualWaferProgressEnabled" type="checkbox" role="switch"> 显示</label></div>
                     <div id="visualWaferProgress"></div>
@@ -267,6 +267,9 @@
                   </section>
                 </aside>
               </div>
+              <section class="performance-panel replay-analysis-panel" aria-label="回放结果分析">
+                <div id="visualPerformance"></div>
+              </section>
             </section>
           </article>
         </div>
@@ -857,6 +860,6 @@
     </aside>
   </dialog>
 
-  <script type="module" src="/assets/config_editor.js?v=1.5.50"></script>
+  <script type="module" src="/assets/config_editor.js?v=1.6.0"></script>
 </body>
 </html>

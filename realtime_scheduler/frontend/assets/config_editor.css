@@ -1478,6 +1478,17 @@
     .residence-metric-threshold-line { position: absolute; z-index: 3; right: 14px; left: 14px; height: 0; border-top: 1px dashed var(--analysis-warning); pointer-events: none; }
     .residence-metric-threshold-line span { position: absolute; right: 0; bottom: 3px; padding: 2px 5px; border-radius: 4px; color: #92400e; background: rgba(255,251,235,.96); font-size: 9px; font-weight: 550; }
 
+    /* 回放分析保持页面宽度；右侧 KPI 独立于晶圆进度开关。 */
+    .replay-analysis-panel { margin-top: 18px; min-width: 0; }
+    .replay-kpi-section .overview-card { margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+    .replay-kpi-section .performance-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 8px; padding: 0; }
+    .replay-kpi-section .performance-summary > .performance-kpi-card { padding: 4px 6px; min-width: 0; min-height: 42px; box-sizing: border-box; border: 0; border-radius: 3px; background: #f8faff; box-shadow: none; }
+    .replay-kpi-section .performance-kpi-label { font-size: 11px; }
+    .replay-kpi-section .performance-kpi-value { margin-top: 3px; gap: 3px; }
+    .replay-kpi-section .performance-kpi-value strong { margin-top: 0; font-size: 13px; line-height: 1.2; }
+    .replay-kpi-section .performance-kpi-value small { margin-top: 0; font-size: 10px; }
+    .petri-control-panel .replay-kpi-section { padding: 6px 8px; }
+
     /* 产能分析：动态 Y 轴、均值与控制限、异常点和范围筛选。 */
     .throughput-chart-head { grid-template-columns: minmax(220px, 1fr) auto auto auto; padding: 12px 20px; background: #fff; }
     .throughput-metric-control { min-width: 166px; }
@@ -1677,9 +1688,12 @@
     #visualPlaybackEmpty[hidden] + .visual-empty-import { display: none; }
     .visual-empty-import .btn { min-height: 44px; }
     .visual-empty-import .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
-    body:has([data-tab-view="playback"].active) .app-content { width: 100%; max-width: none; padding-right: 24px; padding-left: 24px; }
+    /* 回放诊断取消页脚留白；分析面板留在正常文档流，在短页时自动靠下。 */
+    body:has([data-tab-view="playback"].active) .app-content { width: 100%; max-width: none; padding-right: 0; padding-left: 0; padding-bottom: 0; }
+    [data-tab-view="playback"].active .playback-workbench { display: flex; flex-direction: column; min-height: calc(100dvh - 28px); }
     body:has([data-tab-view="playback"].active) .layout.editor-mode .main { width: 100%; max-width: none; margin: 0; }
-    .topology-playback { display: block; }
+    .topology-playback { display: flex; flex-direction: column; flex: 1; gap: 18px; }
+    .topology-playback .replay-analysis-panel { margin-top: auto; }
     .petri-top-playback-controls { --playback-control-height: 44px; --playback-gap: 18px; --playback-border: #d4deea; --playback-muted: #5d6d82; --playback-soft: #f5f7fa; --playback-radius: 5px; box-sizing: border-box; width: 100%; min-height: 68px; grid-template-columns: auto minmax(320px, 1fr) auto; gap: var(--playback-gap); margin-bottom: 8px; padding: 12px 16px; overflow: hidden; border-color: var(--playback-border); border-radius: 6px; background: #fff; box-shadow: none; }
     .timeline-primary-zone { display: flex; min-width: 0; max-width: 220px; align-items: center; gap: 12px; }
     .petri-top-playback-controls .timeline-play { width: auto; min-width: 86px; height: var(--playback-control-height); min-height: var(--playback-control-height); gap: 8px; padding: 0 14px; border-radius: var(--playback-radius); box-shadow: none; font-size: 13px; line-height: 1; }
@@ -2330,4 +2344,56 @@
 }
 @media (max-width: 760px) {
   .petri-console-layout .petri-control-panel { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 固定分析双栏：左侧产能，右侧标签切换，平直边界贴齐页面。 */
+#visualPerformance.analysis-fixed-workspace {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  align-items: start; gap: 0; width: 100%; max-width: none; min-height: 36px;
+  border-top: 1px solid #d6dfeb; background: #fff;
+}
+.analysis-window { min-width: 0; margin: 0; border: 0; border-bottom: 1px solid #d6dfeb; border-radius: 0; background: #fff; box-shadow: none; }
+.analysis-window[data-analysis-window="throughput"] { grid-column: 1; grid-row: 1; border-right: 1px solid #d6dfeb; }
+.analysis-window[data-analysis-window="bottleneck"], .analysis-window[data-analysis-window="residence"] { grid-column: 2; grid-row: 1; }
+.analysis-window[hidden] { display: none !important; }
+.analysis-window-toggle { margin-left: auto; flex: 0 0 auto; min-height: 26px; padding: 3px 8px; border: 1px solid #cbd5e1; border-radius: 3px; background: #fff; color: #31548b; font-size: 11px; cursor: pointer; }
+.analysis-window-toggle:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.analysis-window[data-expanded="false"] .analysis-window-titlebar > :not(h3):not(.analysis-view-tabs):not(.analysis-window-toggle) { display: none; }
+/* 展开面板顶层覆盖，位置仍固定，不安装拖动或缩放交互。 */
+.analysis-window[data-expanded="true"] { position: fixed; left: var(--analysis-overlay-left); bottom: 0; width: var(--analysis-overlay-width); height: min(60dvh, var(--analysis-overlay-height, 420px)); box-sizing: border-box; display: flex; flex-direction: column; border: 1px solid #b8c6d8; box-shadow: none; }
+.analysis-window[data-expanded="true"] .analysis-window-titlebar { flex-shrink: 0; }
+.analysis-window[data-expanded="true"] .analysis-window-body { flex: 1; overflow: auto; min-height: 0; }
+.analysis-window-titlebar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; min-height: 36px; box-sizing: border-box; border-bottom: 1px solid #e1e7f0; background: #f6f8fc; }
+.analysis-window-titlebar h3 { flex: 0 0 auto; margin: 0 6px 0 0; color: #24354c; font-size: 13px; font-weight: 650; }
+.analysis-window-titlebar select { min-height: 26px; padding: 3px 24px 3px 7px; border: 1px solid transparent; border-radius: 3px; color: #65758b; background-color: transparent; font: inherit; font-size: 11px; cursor: pointer; }
+.analysis-window-titlebar select:hover { border-color: #cbd5e1; background-color: #fff; }
+.analysis-window-titlebar select:focus-visible, .analysis-view-tabs button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.analysis-view-tabs { display: flex; flex: 0 0 auto; gap: 2px; margin-right: 4px; }
+.analysis-view-tabs button { min-height: 26px; padding: 4px 7px; border: 0; border-radius: 3px; background: transparent; color: #65758b; font: inherit; font-size: 13px; cursor: pointer; }
+.analysis-view-tabs button:hover { background: #edf2fa; }
+.analysis-view-tabs button[aria-selected="true"] { color: #2445b5; background: #e7edfc; font-weight: 650; }
+.analysis-window-titlebar .analysis-filter-group { display: flex; flex-wrap: wrap; gap: 5px; }
+.analysis-window-titlebar .analysis-filter select, .analysis-window-titlebar .bottleneck-window-slot > select { min-height: 26px; padding: 3px 23px 3px 7px; border-radius: 3px; font-size: 11px; background-color: #fff; }
+.analysis-window-titlebar .analysis-secondary-button { min-height: 26px; padding: 3px 6px; border-radius: 3px; font-size: 11px; }
+.analysis-window-titlebar .analysis-compact-stats { flex-wrap: wrap; gap: 3px; }
+.analysis-window-titlebar .analysis-compact-stats > span { min-height: 24px; padding: 3px 5px; border-radius: 3px; background: #edf2fa; }
+.analysis-window-titlebar .analysis-compact-stats b { font-size: 12px; }
+.analysis-window-body { min-width: 0; }
+.analysis-window-body .analysis-section-title { display: none; }
+.analysis-window-body .analysis-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; min-height: 40px; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #eef1f6; background: #fff; }
+.analysis-window-body .analysis-filter-group { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.analysis-window-body .analysis-filter select, .analysis-window-body .bottleneck-window-slot > select { min-height: 28px; padding: 4px 26px 4px 8px; border-radius: 4px; font-size: 11px; }
+.analysis-window-body .analysis-secondary-button { min-height: 28px; padding: 4px 8px; border-radius: 4px; font-size: 11px; margin-left: auto; }
+.analysis-window-body .analysis-compact-stats { flex-wrap: wrap; gap: 4px; }
+.analysis-window-body .analysis-compact-stats > span { min-height: 24px; padding: 3px 6px; border-radius: 3px; background: #f1f5fb; }
+.analysis-window-body .analysis-compact-stats b { font-size: 12px; }
+.analysis-window-body .throughput-chart-scroll { padding: 12px; overflow-x: hidden; }
+.analysis-window-body .throughput-chart-canvas { min-width: 0; }
+.analysis-window-body .throughput-chart-svg { min-width: 0; min-height: 160px; }
+.analysis-window-body .resource-utilization-list { margin: 0; padding: 8px 12px; }
+.analysis-window-body .resource-utilization-summary { grid-template-columns: minmax(110px, 1fr) 52px minmax(90px, 1fr) 80px; gap: 8px; min-height: 50px; }
+.analysis-window-body .performance-legend { flex-wrap: wrap; padding: 6px 12px; }
+@media (max-width: 1100px) {
+  #visualPerformance.analysis-fixed-workspace { grid-template-columns: minmax(0, 1fr); }
+  .analysis-window[data-analysis-window="throughput"], .analysis-window[data-analysis-window="bottleneck"], .analysis-window[data-analysis-window="residence"] { grid-column: 1; grid-row: auto; border-right: 0; }
 }

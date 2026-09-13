@@ -12,6 +12,8 @@ import {
   requestScheduleAnalysis,
 } from "./api_client";
 import { renderWaferDispatchProgress, updateWaferProgressPanel } from "./wafer_dispatch_progress";
+import { updateReplayThroughput } from "./replay_throughput";
+import { mountAnalysisWorkspace } from "./analysis_workspace";
 import { configuredRobotArms, renderParallelRobotArms, robotSlotWafers, type RobotArmDefinition } from "./topology_robot_mechanism";
 import { projectTopologyTransfers } from "./topology_transfer_projection";
 import { projectLoadLockDoors, type LoadLockDoors } from "./topology_loadlock_doors";
@@ -3680,35 +3682,22 @@ export function groupedBottleneckResources(
 /** 渲染合并后的瓶颈分析区域：候选排序 + 各资源占用比例。 */
 function renderBottleneckAnalysis(performance: SchedulePerformance): string {
   const { window } = performance;
-  const confidenceLabels = { high: "证据较强", medium: "证据中等", low: "证据较弱" };
-  const resourceKindLabels: Record<ResourceKind, string> = {
-    robot: "机械手",
-    process: "工艺腔",
-    loadlock: "LoadLock",
-    loadport: "LoadPort",
-    auxiliary: "辅助模块",
-  };
 
   // 表格聚焦最需要优先处理的三个资源；完整分组结果仍保留给既有数据逻辑使用。
   const displayedResources = groupedBottleneckResources(performance).slice(0, 3);
   const resourceRows = (items: BottleneckResourceGroup[]): string => items.map((resource, index) => {
     const candidate = resource.candidate;
     const evidenceScore = candidate ? Math.round(candidate.score * 100) : null;
-    const evidenceLabel = candidate ? confidenceLabels[candidate.confidence] : "未入选候选";
-    const resourceLabel = resource.memberNames.length > 1
-      ? `${resourceKindLabels[resource.kind]} · ${resource.memberNames.length} 台平均`
-      : resourceKindLabels[resource.kind];
     return `
       <li class="resource-utilization-row">
         <div class="resource-utilization-summary">
           <div class="resource-utilization-name">
             <span>${index + 1}</span>
-            <div><strong>${escapeHtml(resource.name)}</strong><small>${escapeHtml(resourceLabel)}</small></div>
+            <div><strong>${escapeHtml(resource.name)}</strong></div>
           </div>
           <strong class="resource-utilization-percent">${formatPercent(resource.utilization)}</strong>
           <div class="utilization-track" aria-label="${escapeHtml(resource.name)} 占用率 ${formatPercent(resource.utilization)}">${renderCategoryBars(resource, window.duration)}</div>
-          <div class="resource-evidence-score"><strong>${evidenceScore ?? "—"}</strong><small>${evidenceLabel}</small></div>
-          <span aria-hidden="true"></span>
+          <div class="resource-evidence-score" aria-label="瓶颈证据得分 ${evidenceScore ?? "无候选分数"}"><strong>${evidenceScore ?? "—"}</strong></div>
         </div>
       </li>`;
   }).join("");
@@ -3859,8 +3848,10 @@ export function simplifyThroughputPoints(points: ThroughputTimelinePoint[]): Thr
 function renderThroughputSvg(
   points: ThroughputTimelinePoint[],
   title: string,
+  chartWidth = 760,
 ): string {
-  const width = 760;
+  if (!points.length) return '<div class="analysis-empty-state">当前时刻样本不足</div>';
+  const width = Math.max(240, chartWidth);
   const height = 174;
   const left = 12;
   const right = 12;
@@ -3896,7 +3887,8 @@ function renderThroughputSvg(
   const latest = displayPoints[displayPoints.length - 1];
   const yForValue = (value: number): number => top + (1 - (value - minimum) / yRange) * usableHeight;
   const meanY = yForValue(mean);
-  const labelStride = Math.max(1, Math.ceil(displayPoints.length / MAXIMUM_THROUGHPUT_VALUE_LABELS));
+  const labelCapacity = Math.min(MAXIMUM_THROUGHPUT_VALUE_LABELS, Math.max(3, Math.floor(width / 60)));
+  const labelStride = Math.max(1, Math.ceil(displayPoints.length / labelCapacity));
   const pointTargets = displayPoints.map((point, index) => {
     const coordinate = coordinates[index];
     const value = values[index];
@@ -3949,7 +3941,7 @@ export function updateThroughputChartRange(chart: HTMLElement, range: string): v
   const points = filterThroughputPoints(JSON.parse(rawPoints) as ThroughputTimelinePoint[], range);
   const canvas = chart.querySelector<HTMLElement>(".throughput-chart-canvas");
   if (!canvas || !points.length) return;
-  canvas.innerHTML = renderThroughputSvg(points, title);
+  canvas.innerHTML = renderThroughputSvg(points, title, canvas.clientWidth || 760);
 }
 
 /** 渲染从仿真零点累计或按用户选择的 2–10 片窗口计算的逐片产能趋势。 */
@@ -4000,7 +3992,7 @@ export function renderThroughputChart(performance: SchedulePerformance): string 
       <div class="analysis-section-title"><strong>产能分析</strong></div>
       <div class="analysis-filter-group">
       <label class="analysis-filter throughput-metric-control"><select id="throughputMetricSelect" aria-label="选择产能口径">
-        <option value="cumulative">累计产能（公司口径）</option>
+        <option value="cumulative">累计产能（从 0 开始）</option>
         <option value="rolling" selected>滑动窗口</option>
       </select></label>
       <label class="analysis-filter throughput-window-control" data-throughput-window-control><select id="throughputWindowSize" aria-label="滑动窗口大小">${windowOptions.map(windowSize => `<option value="${windowSize}"${windowSize === defaultWindow ? " selected" : ""}>${windowSize} 片</option>`).join("")}</select></label>
@@ -4060,15 +4052,15 @@ export function renderSchedulePerformance(performance: SchedulePerformance): str
       </div>
     </section>
 
-    <section class="result-card throughput-analysis-card">
+    <section class="analysis-window throughput-analysis-card" data-analysis-window="throughput">
       ${renderThroughputChart(performance)}
     </section>
 
-    <section class="result-card bottleneck-analysis-card">
+    <section class="analysis-window bottleneck-analysis-card" data-analysis-window="bottleneck">
       ${renderBottleneckAnalysis(performance)}
     </section>
 
-    <section class="result-card wafer-residence-card">
+    <section class="analysis-window wafer-residence-card" data-analysis-window="residence">
       ${renderWaferResidenceChart(performance)}
     </section>
 
@@ -4348,12 +4340,9 @@ export class VisualizationWorkspace {
     return detectTerminalPlaybackDeadlock(this.moves, this.device, this.replayPlan);
   }
 
-  /** 切换到工作台标签。 */
+  /** 单次结果入口直接进入回放诊断；结果分析页仅用于测试组报告。 */
   show(): void {
-    if (this.moves.length) this.showSingleResult();
-    const tab = this.root.querySelector<HTMLElement>('[data-tab-target="workspace"]');
-    tab?.click();
-    this.elements.performanceWindow.focus({ preventScroll: true });
+    this.showPlayback();
   }
 
   /** 显示测试组统计，并隐藏当前单例诊断；独立回放页保留已加载的数据。 */
@@ -4408,7 +4397,7 @@ export class VisualizationWorkspace {
     this.elements.empty.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg>
       <strong>等待分析数据</strong>
-      <span>运行一次计划，或在拓扑回放界面导入已有的 MoveList JSON 文件后查看结果分析。</span>`;
+      <span>批量运行测试组后，在结果预览中选择“测试组结果分析”。单次测试请使用回放诊断。</span>`;
     this.elements.playbackEmpty.classList.remove("is-loading", "is-error");
     this.elements.playbackEmpty.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg>
@@ -4471,6 +4460,9 @@ export class VisualizationWorkspace {
 
   /** 绑定文件、时间轴、播放和快捷控制事件。 */
   private bindEvents(): void {
+    this.elements.performance.addEventListener("change", () => {
+      updateReplayThroughput(this.root, this.time, updateThroughputChartRange);
+    });
     this.root.getElementById("visualWaferProgressEnabled")?.addEventListener("change", event => {
       this.waferProgressEnabled = (event.target as HTMLInputElement).checked;
       this.render();
@@ -4608,12 +4600,12 @@ export class VisualizationWorkspace {
     this.elements.playButton.classList.toggle("is-playing", this.playing);
   }
 
-  /** 切换单例分析模式，测试组统计与单例诊断不会同时出现。 */
+  /** 单次结果只显示回放数据，结果分析页保持批量分析空态。 */
   private showSingleResult(): void {
     this.elements.toolbar.hidden = false;
     this.elements.groupAnalysis.hidden = true;
-    this.elements.empty.hidden = true;
-    this.elements.content.hidden = false;
+    this.elements.empty.hidden = false;
+    this.elements.content.hidden = true;
     this.elements.playbackEmpty.hidden = true;
   }
 
@@ -4705,6 +4697,7 @@ export class VisualizationWorkspace {
     }
     const filters = this.root.querySelector<HTMLElement>(".action-filter-controls");
     if (filters) filters.hidden = !this.actionsEnabled;
+    if (this.analysis) updateReplayThroughput(this.root, this.time, updateThroughputChartRange);
 
     this.elements.activeMoves.innerHTML = snapshot.activeMoves.length
       ? snapshot.activeMoves.map(move => `
@@ -4784,6 +4777,11 @@ export class VisualizationWorkspace {
   private async renderPerformance(): Promise<void> {
     if (!this.moves.length) return;
     const requestVersion = ++this.analysisRequestVersion;
+    this.analysis = null;
+    for (const id of ["visualReplayKpis"]) {
+      const container = this.root.getElementById(id);
+      if (container) container.textContent = "正在计算指标…";
+    }
     this.elements.performance.innerHTML = `
       <section class="result-card analysis-skeleton" aria-label="正在加载结果分析">
         <div class="analysis-skeleton-head"><i></i><span></span></div>
@@ -4806,6 +4804,26 @@ export class VisualizationWorkspace {
       this.analysis = analysis;
       this.bottleneckSummary = result.bottleneck;
       this.elements.performance.innerHTML = renderSchedulePerformance(analysis);
+      const overview = this.elements.performance.querySelector<HTMLElement>(".overview-card");
+      const kpis = this.root.getElementById("visualReplayKpis");
+      if (overview) {
+        if (kpis) {
+          kpis.innerHTML = overview.outerHTML;
+          const labels = kpis.querySelectorAll<HTMLElement>(".performance-kpi-label > span:first-child");
+          ["产能 · 截至当前", "平均重算 · 整次", "瓶颈利用率 · 统计窗", "LoadLock 效率 · 整次"].forEach((label, index) => {
+            if (labels[index]) labels[index].textContent = label;
+          });
+          const help = kpis.querySelector<HTMLElement>(".is-primary .performance-kpi-help");
+          if (help) {
+            help.setAttribute("aria-label", "截至回放时刻的产能，与下方趋势图所选口径一致；样本不足时不显示数值");
+            const tooltip = help.querySelector<HTMLElement>(".performance-kpi-tooltip");
+            if (tooltip) tooltip.textContent = help.getAttribute("aria-label");
+          }
+        }
+        overview.remove();
+      }
+      mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange);
+      updateReplayThroughput(this.root, this.time, updateThroughputChartRange);
       const windowSlot = this.elements.performance.querySelector(".bottleneck-window-slot");
       if (windowSlot) {
         this.elements.performanceWindow.tabIndex = 0;
@@ -4818,6 +4836,10 @@ export class VisualizationWorkspace {
       if (requestVersion !== this.analysisRequestVersion) return;
       this.analysis = null;
       this.bottleneckSummary = null;
+      for (const id of ["visualReplayKpis"]) {
+        const container = this.root.getElementById(id);
+        if (container) container.textContent = "指标计算失败，请在下方分析区重新加载";
+      }
       this.elements.performance.innerHTML = `
         <div class="analysis-error-state">
           <strong>数据获取失败</strong>

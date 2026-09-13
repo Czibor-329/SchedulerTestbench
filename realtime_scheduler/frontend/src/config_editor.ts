@@ -5796,7 +5796,7 @@ document.addEventListener("click", event => {
   if (playbackResult) {
     visualizationWorkspace.loadResult(playbackResult.dataset.playbackResult, playbackResult.dataset.playbackName)
       .then(() => visualizationWorkspace.showPlayback())
-      .catch(error => writeTerminal(`$ 拓扑回放加载失败\n  ${error.message || "未知错误"}`, true));
+      .catch(error => writeTerminal(`$ 回放诊断加载失败\n  ${error.message || "未知错误"}`, true));
     return;
   }
   const workspaceResult = event.target.closest("[data-workspace-result]");

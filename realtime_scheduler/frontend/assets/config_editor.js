@@ -378,6 +378,208 @@ function updateWaferProgressPanel(panel, html) {
   if (scroller) scroller.scrollTop = scroller.scrollHeight;
 }
 
+// src/replay_throughput.ts
+var chartSources = /* @__PURE__ */ new WeakMap();
+function completedThroughputCount(points, time) {
+  let left = 0;
+  let right = points.length;
+  while (left < right) {
+    const middle = Math.floor((left + right) / 2);
+    if (points[middle].completedAt <= time) left = middle + 1;
+    else right = middle;
+  }
+  return left;
+}
+function updateReplayThroughput(root, time, redraw) {
+  const panel = root.getElementById("visualPerformance");
+  if (!panel) return;
+  const range = panel.querySelector("#throughputRangeSelect")?.value ?? "wafer:30";
+  const mode = panel.querySelector("#throughputMetricSelect")?.value ?? "rolling";
+  const windowSize = panel.querySelector("#throughputWindowSize")?.value ?? "5";
+  const activeKey = mode === "rolling" ? `rolling-${windowSize}` : "cumulative";
+  let currentValue;
+  panel.querySelectorAll("[data-throughput-points]").forEach((chart) => {
+    let source = chartSources.get(chart);
+    if (!source) {
+      source = { points: JSON.parse(chart.dataset.throughputPoints), key: "" };
+      chartSources.set(chart, source);
+    }
+    const count = completedThroughputCount(source.points, time);
+    const latest = count ? source.points[count - 1] : void 0;
+    if (chart.dataset.throughputChart === activeKey) currentValue = latest?.throughputPerHour;
+    const canvas = chart.querySelector(".throughput-chart-canvas");
+    const key = `${count}:${range}:${canvas?.clientWidth ?? 0}`;
+    if (source.key === key) return;
+    source.key = key;
+    const points = source.points.slice(0, count);
+    chart.dataset.throughputPoints = JSON.stringify(points);
+    if (points.length) redraw(chart, range);
+    else if (canvas) canvas.innerHTML = '<div class="analysis-empty-state">\u5F53\u524D\u65F6\u523B\u6837\u672C\u4E0D\u8DB3</div>';
+    const summary = panel.querySelector(`[data-throughput-summary="${chart.dataset.throughputChart}"]`);
+    if (summary) {
+      const average = points.length ? points.reduce((sum, point) => sum + point.throughputPerHour, 0) / points.length : 0;
+      summary.innerHTML = latest ? `<span><small>\u622A\u81F3\u5F53\u524D</small><b>${latest.throughputPerHour.toFixed(1)}</b><em>\u7247/h</em></span><span><small>\u5E73\u5747</small><b>${average.toFixed(1)}</b><em>\u7247/h</em></span>` : "<span><small>\u622A\u81F3\u5F53\u524D</small><b>\u2014</b><em>\u6837\u672C\u4E0D\u8DB3</em></span>";
+    }
+  });
+  const value = root.querySelector("#visualReplayKpis .is-primary .performance-kpi-value");
+  if (value) {
+    const content = `<strong>${currentValue === void 0 ? "\u2014" : currentValue.toFixed(1)}</strong>${currentValue === void 0 ? "" : "<small>\u7247/h</small>"}`;
+    if (value.innerHTML !== content) value.innerHTML = content;
+  }
+}
+
+// src/analysis_workspace.ts
+var WINDOW_TITLES = { throughput: "\u4EA7\u80FD\u5206\u6790", bottleneck: "\u74F6\u9888\u5206\u6790", residence: "\u9A7B\u7559\u65F6\u95F4\u5206\u6790" };
+var controllers = /* @__PURE__ */ new WeakMap();
+function isAnalysisViewVisible(name, selected) {
+  return name === "throughput" || name === selected;
+}
+function mountAnalysisWorkspace(panel, redrawThroughput) {
+  if (!panel.querySelector("[data-analysis-window]")) return;
+  let controller = controllers.get(panel);
+  if (!controller) {
+    controller = new AnalysisWorkspaceController(panel, redrawThroughput);
+    controllers.set(panel, controller);
+  }
+  controller.mount();
+}
+var AnalysisWorkspaceController = class {
+  /** 委托标签点击和方向键导航；尺寸观察仅重绘现有曲线。 */
+  constructor(panel, redrawThroughput) {
+    this.panel = panel;
+    panel.ownerDocument.defaultView?.addEventListener("resize", () => this.updateExpandedLayout());
+    panel.ownerDocument.defaultView?.addEventListener("scroll", () => this.updateExpandedLayout(), true);
+    this.resizeObserver = new ResizeObserver(() => {
+      const range = panel.querySelector("#throughputRangeSelect")?.value ?? "wafer:30";
+      panel.querySelectorAll("[data-throughput-points]").forEach((chart) => {
+        if (!chart.hidden) redrawThroughput(chart, range);
+      });
+      this.updateExpandedLayout();
+    });
+    panel.addEventListener("click", (event) => {
+      const toggle = event.target.closest("[data-analysis-toggle]");
+      if (toggle) {
+        this.expanded = !this.expanded;
+        this.select(this.selected, false);
+        toggle.focus({ preventScroll: true });
+        return;
+      }
+      const tab = event.target.closest("[data-analysis-tab]");
+      if (!tab) return;
+      this.select(tab.dataset.analysisTab, true);
+    });
+    panel.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        const window2 = event.target.closest("[data-analysis-window]");
+        if (window2?.dataset.expanded === "true") {
+          this.expanded = false;
+          this.select(this.selected, false);
+          this.panel.querySelector(`[data-analysis-window="${this.selected}"] [data-analysis-toggle]`)?.focus();
+          event.preventDefault();
+        }
+        return;
+      }
+      if (!event.target.matches?.("[data-analysis-tab]")) return;
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === "Home" ? "bottleneck" : event.key === "End" ? "residence" : this.selected === "bottleneck" ? "residence" : "bottleneck";
+      this.select(next, true);
+    });
+  }
+  panel;
+  selected = "bottleneck";
+  expanded = false;
+  topLayer = 1e3;
+  resizeObserver;
+  /** 创建紧凑标题栏，保留筛选控件节点及其事件，右侧标签与控件同栏。 */
+  mount() {
+    this.resizeObserver.disconnect();
+    this.panel.classList.add("analysis-fixed-workspace");
+    this.panel.querySelectorAll("[data-analysis-window]").forEach((window2) => {
+      const name = window2.dataset.analysisWindow;
+      if (window2.querySelector(".analysis-window-titlebar")) {
+        this.resizeObserver.observe(window2);
+        return;
+      }
+      const body = this.panel.ownerDocument.createElement("div");
+      body.className = "analysis-window-body";
+      while (window2.firstChild) body.append(window2.firstChild);
+      window2.append(body);
+      const tabs = name === "throughput" ? `<h3>${WINDOW_TITLES[name]}</h3>` : `<div class="analysis-view-tabs" role="tablist" aria-label="\u53F3\u4FA7\u5206\u6790\u89C6\u56FE">${["bottleneck", "residence"].map((view) => `<button type="button" role="tab" id="analysis-tab-${name}-${view}" data-analysis-tab="${view}" aria-controls="analysis-view-${view}">${WINDOW_TITLES[view]}</button>`).join("")}</div>`;
+      window2.insertAdjacentHTML("afterbegin", `<header class="analysis-window-titlebar">${tabs}</header>`);
+      const titlebar = window2.querySelector(".analysis-window-titlebar");
+      const controls = body.querySelector(".analysis-section-head");
+      if (controls) {
+        Array.from(controls.children).forEach((control) => {
+          if (!control.classList.contains("analysis-section-title")) titlebar.append(control);
+        });
+        controls.remove();
+      }
+      window2.id = `analysis-view-${name}`;
+      body.id = `analysis-body-${name}`;
+      if (name !== "throughput") titlebar.insertAdjacentHTML("beforeend", `<button type="button" class="analysis-window-toggle" data-analysis-toggle aria-controls="analysis-body-throughput analysis-body-bottleneck analysis-body-residence">\u5C55\u5F00\u5168\u90E8</button>`);
+      window2.setAttribute("role", name === "throughput" ? "region" : "tabpanel");
+      if (name === "throughput") window2.setAttribute("aria-label", WINDOW_TITLES[name]);
+      else window2.setAttribute("aria-labelledby", `analysis-tab-${name}-${name}`);
+      this.resizeObserver.observe(window2);
+    });
+    this.select(this.selected, false);
+    this.resizeObserver.observe(this.panel);
+  }
+  /** 切换右侧可见视图并同步可访问状态；可选将焦点移到新视图的当前标签。 */
+  select(selected, focus) {
+    this.selected = selected;
+    this.panel.querySelectorAll("[data-analysis-window]").forEach((window2) => {
+      const name = window2.dataset.analysisWindow;
+      window2.hidden = !isAnalysisViewVisible(window2.dataset.analysisWindow, selected);
+      const expanded = this.expanded;
+      window2.dataset.expanded = String(expanded);
+      window2.querySelector(".analysis-window-body").hidden = !expanded;
+      this.panel.querySelectorAll("[data-analysis-toggle]").forEach((toggle) => {
+        toggle.textContent = expanded ? "\u6700\u5C0F\u5316" : "\u5C55\u5F00\u5168\u90E8";
+        toggle.setAttribute("aria-expanded", String(expanded));
+      });
+      if (expanded && !window2.hidden) {
+        window2.style.zIndex = String(++this.topLayer);
+      } else window2.removeAttribute("style");
+      window2.querySelectorAll("[data-analysis-tab]").forEach((tab) => {
+        const active = tab.dataset.analysisTab === selected;
+        tab.setAttribute("aria-selected", String(active));
+        tab.tabIndex = active ? 0 : -1;
+      });
+    });
+    this.updateExpandedLayout();
+    if (focus) this.panel.querySelector(`[data-analysis-window="${selected}"] [data-analysis-tab="${selected}"]`)?.focus({ preventScroll: true });
+  }
+  /** 依据可见工作区更新展开窗口位置和高度；隐藏时保留有效位置，重新显示后重新测量。 */
+  updateExpandedLayout() {
+    if (!this.expanded || !this.panel.getClientRects().length) return;
+    const bounds = this.panel.getBoundingClientRect();
+    if (bounds.width <= 0) return;
+    const narrow = this.panel.ownerDocument.defaultView.innerWidth <= 1100;
+    this.panel.querySelectorAll("[data-analysis-window]").forEach((window2) => {
+      if (window2.hidden) return;
+      const name = window2.dataset.analysisWindow;
+      const width = narrow ? bounds.width : bounds.width * (name === "throughput" ? 1.15 / 2.15 : 1 / 2.15);
+      window2.style.setProperty("--analysis-overlay-left", `${name === "throughput" || narrow ? bounds.left : bounds.right - width}px`);
+      window2.style.setProperty("--analysis-overlay-width", `${width}px`);
+    });
+    this.updateExpandedHeight();
+  }
+  /** 用右侧实际内容末端确定两窗共享高度，避免正文伸展产生的空白计入高度。 */
+  updateExpandedHeight() {
+    if (!this.expanded) return;
+    const window2 = this.panel.querySelector(`[data-analysis-window="${this.selected}"]`);
+    if (!window2 || window2.hidden) return;
+    const body = window2.querySelector(".analysis-window-body");
+    const header = window2.querySelector(".analysis-window-titlebar");
+    const contentBottom = Math.max(body.getBoundingClientRect().top, ...Array.from(body.children).filter((child) => child.getClientRects().length > 0).map((child) => child.getBoundingClientRect().bottom));
+    const windowBorderHeight = 2;
+    const height = Math.ceil(header.getBoundingClientRect().height + contentBottom - body.getBoundingClientRect().top + body.scrollTop + windowBorderHeight);
+    this.panel.style.setProperty("--analysis-overlay-height", `${height}px`);
+  }
+};
+
 // src/topology_robot_mechanism.ts
 var REST_REACH = 58;
 var ATR_RETRACTED_REACH = 42;
@@ -3127,31 +3329,20 @@ function groupedBottleneckResources(performance2) {
 }
 function renderBottleneckAnalysis(performance2) {
   const { window: window2 } = performance2;
-  const confidenceLabels = { high: "\u8BC1\u636E\u8F83\u5F3A", medium: "\u8BC1\u636E\u4E2D\u7B49", low: "\u8BC1\u636E\u8F83\u5F31" };
-  const resourceKindLabels = {
-    robot: "\u673A\u68B0\u624B",
-    process: "\u5DE5\u827A\u8154",
-    loadlock: "LoadLock",
-    loadport: "LoadPort",
-    auxiliary: "\u8F85\u52A9\u6A21\u5757"
-  };
   const displayedResources = groupedBottleneckResources(performance2).slice(0, 3);
   const resourceRows = (items) => items.map((resource, index) => {
     const candidate = resource.candidate;
     const evidenceScore = candidate ? Math.round(candidate.score * 100) : null;
-    const evidenceLabel = candidate ? confidenceLabels[candidate.confidence] : "\u672A\u5165\u9009\u5019\u9009";
-    const resourceLabel = resource.memberNames.length > 1 ? `${resourceKindLabels[resource.kind]} \xB7 ${resource.memberNames.length} \u53F0\u5E73\u5747` : resourceKindLabels[resource.kind];
     return `
       <li class="resource-utilization-row">
         <div class="resource-utilization-summary">
           <div class="resource-utilization-name">
             <span>${index + 1}</span>
-            <div><strong>${escapeHtml(resource.name)}</strong><small>${escapeHtml(resourceLabel)}</small></div>
+            <div><strong>${escapeHtml(resource.name)}</strong></div>
           </div>
           <strong class="resource-utilization-percent">${formatPercent(resource.utilization)}</strong>
           <div class="utilization-track" aria-label="${escapeHtml(resource.name)} \u5360\u7528\u7387 ${formatPercent(resource.utilization)}">${renderCategoryBars(resource, window2.duration)}</div>
-          <div class="resource-evidence-score"><strong>${evidenceScore ?? "\u2014"}</strong><small>${evidenceLabel}</small></div>
-          <span aria-hidden="true"></span>
+          <div class="resource-evidence-score" aria-label="\u74F6\u9888\u8BC1\u636E\u5F97\u5206 ${evidenceScore ?? "\u65E0\u5019\u9009\u5206\u6570"}"><strong>${evidenceScore ?? "\u2014"}</strong></div>
         </div>
       </li>`;
   }).join("");
@@ -3276,8 +3467,9 @@ function simplifyThroughputPoints(points) {
   selected.push(points[points.length - 1]);
   return selected;
 }
-function renderThroughputSvg(points, title) {
-  const width = 760;
+function renderThroughputSvg(points, title, chartWidth = 760) {
+  if (!points.length) return '<div class="analysis-empty-state">\u5F53\u524D\u65F6\u523B\u6837\u672C\u4E0D\u8DB3</div>';
+  const width = Math.max(240, chartWidth);
   const height = 174;
   const left = 12;
   const right = 12;
@@ -3311,7 +3503,8 @@ function renderThroughputSvg(points, title) {
   const latest = displayPoints[displayPoints.length - 1];
   const yForValue = (value) => top + (1 - (value - minimum) / yRange) * usableHeight;
   const meanY = yForValue(mean);
-  const labelStride = Math.max(1, Math.ceil(displayPoints.length / MAXIMUM_THROUGHPUT_VALUE_LABELS));
+  const labelCapacity = Math.min(MAXIMUM_THROUGHPUT_VALUE_LABELS, Math.max(3, Math.floor(width / 60)));
+  const labelStride = Math.max(1, Math.ceil(displayPoints.length / labelCapacity));
   const pointTargets = displayPoints.map((point, index) => {
     const coordinate = coordinates[index];
     const value = values4[index];
@@ -3351,7 +3544,7 @@ function updateThroughputChartRange(chart, range) {
   const points = filterThroughputPoints(JSON.parse(rawPoints), range);
   const canvas = chart.querySelector(".throughput-chart-canvas");
   if (!canvas || !points.length) return;
-  canvas.innerHTML = renderThroughputSvg(points, title);
+  canvas.innerHTML = renderThroughputSvg(points, title, canvas.clientWidth || 760);
 }
 function renderThroughputChart(performance2) {
   const timeline = performance2.throughputTimeline;
@@ -3392,7 +3585,7 @@ function renderThroughputChart(performance2) {
       <div class="analysis-section-title"><strong>\u4EA7\u80FD\u5206\u6790</strong></div>
       <div class="analysis-filter-group">
       <label class="analysis-filter throughput-metric-control"><select id="throughputMetricSelect" aria-label="\u9009\u62E9\u4EA7\u80FD\u53E3\u5F84">
-        <option value="cumulative">\u7D2F\u8BA1\u4EA7\u80FD\uFF08\u516C\u53F8\u53E3\u5F84\uFF09</option>
+        <option value="cumulative">\u7D2F\u8BA1\u4EA7\u80FD\uFF08\u4ECE 0 \u5F00\u59CB\uFF09</option>
         <option value="rolling" selected>\u6ED1\u52A8\u7A97\u53E3</option>
       </select></label>
       <label class="analysis-filter throughput-window-control" data-throughput-window-control><select id="throughputWindowSize" aria-label="\u6ED1\u52A8\u7A97\u53E3\u5927\u5C0F">${windowOptions.map((windowSize) => `<option value="${windowSize}"${windowSize === defaultWindow ? " selected" : ""}>${windowSize} \u7247</option>`).join("")}</select></label>
@@ -3441,15 +3634,15 @@ function renderSchedulePerformance(performance2) {
       </div>
     </section>
 
-    <section class="result-card throughput-analysis-card">
+    <section class="analysis-window throughput-analysis-card" data-analysis-window="throughput">
       ${renderThroughputChart(performance2)}
     </section>
 
-    <section class="result-card bottleneck-analysis-card">
+    <section class="analysis-window bottleneck-analysis-card" data-analysis-window="bottleneck">
       ${renderBottleneckAnalysis(performance2)}
     </section>
 
-    <section class="result-card wafer-residence-card">
+    <section class="analysis-window wafer-residence-card" data-analysis-window="residence">
       ${renderWaferResidenceChart(performance2)}
     </section>
 
@@ -3677,12 +3870,9 @@ var VisualizationWorkspace = class {
   getTerminalDeadlock() {
     return detectTerminalPlaybackDeadlock(this.moves, this.device, this.replayPlan);
   }
-  /** 切换到工作台标签。 */
+  /** 单次结果入口直接进入回放诊断；结果分析页仅用于测试组报告。 */
   show() {
-    if (this.moves.length) this.showSingleResult();
-    const tab = this.root.querySelector('[data-tab-target="workspace"]');
-    tab?.click();
-    this.elements.performanceWindow.focus({ preventScroll: true });
+    this.showPlayback();
   }
   /** 显示测试组统计，并隐藏当前单例诊断；独立回放页保留已加载的数据。 */
   showGroupAnalysis(markup) {
@@ -3734,7 +3924,7 @@ var VisualizationWorkspace = class {
     this.elements.empty.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg>
       <strong>\u7B49\u5F85\u5206\u6790\u6570\u636E</strong>
-      <span>\u8FD0\u884C\u4E00\u6B21\u8BA1\u5212\uFF0C\u6216\u5728\u62D3\u6251\u56DE\u653E\u754C\u9762\u5BFC\u5165\u5DF2\u6709\u7684 MoveList JSON \u6587\u4EF6\u540E\u67E5\u770B\u7ED3\u679C\u5206\u6790\u3002</span>`;
+      <span>\u6279\u91CF\u8FD0\u884C\u6D4B\u8BD5\u7EC4\u540E\uFF0C\u5728\u7ED3\u679C\u9884\u89C8\u4E2D\u9009\u62E9\u201C\u6D4B\u8BD5\u7EC4\u7ED3\u679C\u5206\u6790\u201D\u3002\u5355\u6B21\u6D4B\u8BD5\u8BF7\u4F7F\u7528\u56DE\u653E\u8BCA\u65AD\u3002</span>`;
     this.elements.playbackEmpty.classList.remove("is-loading", "is-error");
     this.elements.playbackEmpty.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg>
@@ -3784,6 +3974,9 @@ var VisualizationWorkspace = class {
   }
   /** 绑定文件、时间轴、播放和快捷控制事件。 */
   bindEvents() {
+    this.elements.performance.addEventListener("change", () => {
+      updateReplayThroughput(this.root, this.time, updateThroughputChartRange);
+    });
     this.root.getElementById("visualWaferProgressEnabled")?.addEventListener("change", (event) => {
       this.waferProgressEnabled = event.target.checked;
       this.render();
@@ -3911,12 +4104,12 @@ var VisualizationWorkspace = class {
     this.elements.playButton.setAttribute("aria-label", this.playing ? "\u6682\u505C\u56DE\u653E" : "\u64AD\u653E\u56DE\u653E");
     this.elements.playButton.classList.toggle("is-playing", this.playing);
   }
-  /** 切换单例分析模式，测试组统计与单例诊断不会同时出现。 */
+  /** 单次结果只显示回放数据，结果分析页保持批量分析空态。 */
   showSingleResult() {
     this.elements.toolbar.hidden = false;
     this.elements.groupAnalysis.hidden = true;
-    this.elements.empty.hidden = true;
-    this.elements.content.hidden = false;
+    this.elements.empty.hidden = false;
+    this.elements.content.hidden = true;
     this.elements.playbackEmpty.hidden = true;
   }
   /** 统一切换独立回放页中的概要、时间轴、拓扑与当前动作。 */
@@ -3994,6 +4187,7 @@ var VisualizationWorkspace = class {
     }
     const filters = this.root.querySelector(".action-filter-controls");
     if (filters) filters.hidden = !this.actionsEnabled;
+    if (this.analysis) updateReplayThroughput(this.root, this.time, updateThroughputChartRange);
     this.elements.activeMoves.innerHTML = snapshot.activeMoves.length ? snapshot.activeMoves.map((move) => `
         <li>
           <span class="active-move-id">#${finiteNumber(move.MoveID)}</span>
@@ -4060,6 +4254,11 @@ var VisualizationWorkspace = class {
   async renderPerformance() {
     if (!this.moves.length) return;
     const requestVersion = ++this.analysisRequestVersion;
+    this.analysis = null;
+    for (const id of ["visualReplayKpis"]) {
+      const container = this.root.getElementById(id);
+      if (container) container.textContent = "\u6B63\u5728\u8BA1\u7B97\u6307\u6807\u2026";
+    }
     this.elements.performance.innerHTML = `
       <section class="result-card analysis-skeleton" aria-label="\u6B63\u5728\u52A0\u8F7D\u7ED3\u679C\u5206\u6790">
         <div class="analysis-skeleton-head"><i></i><span></span></div>
@@ -4080,6 +4279,26 @@ var VisualizationWorkspace = class {
       this.analysis = analysis;
       this.bottleneckSummary = result.bottleneck;
       this.elements.performance.innerHTML = renderSchedulePerformance(analysis);
+      const overview = this.elements.performance.querySelector(".overview-card");
+      const kpis = this.root.getElementById("visualReplayKpis");
+      if (overview) {
+        if (kpis) {
+          kpis.innerHTML = overview.outerHTML;
+          const labels = kpis.querySelectorAll(".performance-kpi-label > span:first-child");
+          ["\u4EA7\u80FD \xB7 \u622A\u81F3\u5F53\u524D", "\u5E73\u5747\u91CD\u7B97 \xB7 \u6574\u6B21", "\u74F6\u9888\u5229\u7528\u7387 \xB7 \u7EDF\u8BA1\u7A97", "LoadLock \u6548\u7387 \xB7 \u6574\u6B21"].forEach((label, index) => {
+            if (labels[index]) labels[index].textContent = label;
+          });
+          const help = kpis.querySelector(".is-primary .performance-kpi-help");
+          if (help) {
+            help.setAttribute("aria-label", "\u622A\u81F3\u56DE\u653E\u65F6\u523B\u7684\u4EA7\u80FD\uFF0C\u4E0E\u4E0B\u65B9\u8D8B\u52BF\u56FE\u6240\u9009\u53E3\u5F84\u4E00\u81F4\uFF1B\u6837\u672C\u4E0D\u8DB3\u65F6\u4E0D\u663E\u793A\u6570\u503C");
+            const tooltip = help.querySelector(".performance-kpi-tooltip");
+            if (tooltip) tooltip.textContent = help.getAttribute("aria-label");
+          }
+        }
+        overview.remove();
+      }
+      mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange);
+      updateReplayThroughput(this.root, this.time, updateThroughputChartRange);
       const windowSlot = this.elements.performance.querySelector(".bottleneck-window-slot");
       if (windowSlot) {
         this.elements.performanceWindow.tabIndex = 0;
@@ -4092,6 +4311,10 @@ var VisualizationWorkspace = class {
       if (requestVersion !== this.analysisRequestVersion) return;
       this.analysis = null;
       this.bottleneckSummary = null;
+      for (const id of ["visualReplayKpis"]) {
+        const container = this.root.getElementById(id);
+        if (container) container.textContent = "\u6307\u6807\u8BA1\u7B97\u5931\u8D25\uFF0C\u8BF7\u5728\u4E0B\u65B9\u5206\u6790\u533A\u91CD\u65B0\u52A0\u8F7D";
+      }
       this.elements.performance.innerHTML = `
         <div class="analysis-error-state">
           <strong>\u6570\u636E\u83B7\u53D6\u5931\u8D25</strong>
@@ -9521,7 +9744,7 @@ document.addEventListener("click", (event) => {
   if (batchResultCard && !event.target.closest(".batch-result-meta")) selectBatchItem(Number(batchResultCard.dataset.batchItemIndex));
   const playbackResult = event.target.closest("[data-playback-result]");
   if (playbackResult) {
-    visualizationWorkspace.loadResult(playbackResult.dataset.playbackResult, playbackResult.dataset.playbackName).then(() => visualizationWorkspace.showPlayback()).catch((error) => writeTerminal(`$ \u62D3\u6251\u56DE\u653E\u52A0\u8F7D\u5931\u8D25
+    visualizationWorkspace.loadResult(playbackResult.dataset.playbackResult, playbackResult.dataset.playbackName).then(() => visualizationWorkspace.showPlayback()).catch((error) => writeTerminal(`$ \u56DE\u653E\u8BCA\u65AD\u52A0\u8F7D\u5931\u8D25
   ${error.message || "\u672A\u77E5\u9519\u8BEF"}`, true));
     return;
   }

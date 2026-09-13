@@ -381,14 +381,16 @@ function fakeWorkspaceDocument() {
   // 此夹具不包含真实画布祖先；补齐 DOM 查询接口，保持原有业务测试边界。
   elements.get("visualDeviceStage").closest = () => null;
   const workspaceTab = new FakeElement();
+  const playbackTab = new FakeElement();
   return {
     elements,
     workspaceTab,
+    playbackTab,
     getElementById(id) {
       return elements.get(id) ?? null;
     },
     querySelector(selector) {
-      return selector === '[data-tab-target="workspace"]' ? workspaceTab : null;
+      return selector === '[data-tab-target="workspace"]' ? workspaceTab : selector === '[data-tab-target="playback"]' ? playbackTab : null;
     },
     querySelectorAll() {
       return [];
@@ -498,7 +500,7 @@ test("结果分析与拓扑回放使用独立界面并共享当前 MoveList", as
   });
   assert.equal(root.elements.get("visualToolbar").hidden, false);
   assert.equal(root.elements.get("testGroupAnalysisPanel").hidden, true);
-  assert.equal(root.elements.get("visualContent").hidden, false);
+  assert.equal(root.elements.get("visualContent").hidden, true);
   assert.equal(topology.hidden, false);
   assert.equal(root.elements.get("visualPlaybackEmpty").hidden, true);
   assert.equal(root.elements.get("visualSource").title, "t1.json");
@@ -512,9 +514,10 @@ test("结果分析与拓扑回放使用独立界面并共享当前 MoveList", as
   assert.equal(root.elements.get("visualContent").hidden, true);
 
   workspace.show();
-  assert.equal(root.elements.get("testGroupAnalysisPanel").hidden, true);
-  assert.equal(root.elements.get("visualContent").hidden, false);
-  assert.equal(root.workspaceTab.clicked, true);
+  assert.equal(root.elements.get("testGroupAnalysisPanel").hidden, false);
+  assert.equal(root.elements.get("visualContent").hidden, true);
+  assert.notEqual(root.workspaceTab.clicked, true);
+  assert.equal(root.playbackTab.clicked, true);
 });
 
 test("动作空间按状态筛选并把原因放进悬浮提示", () => {
@@ -2190,7 +2193,8 @@ test("KPI 总览按产能、重算、瓶颈和 LoadLock 效率展示，并将说
 
 test("产能图可在从零累计和可选 2 至 10 片滑动窗口间切换", () => {
   const chart = logic.renderThroughputChart(visualPerformanceFixture());
-  assert.match(chart, /id="throughputMetricSelect"[\s\S]*累计产能（公司口径）[\s\S]*滑动窗口/);
+  // 累计曲线从仿真零点计时，不是居中 120 片的最终稳态 KPI 口径。
+  assert.match(chart, /id="throughputMetricSelect"[\s\S]*累计产能（从 0 开始）[\s\S]*滑动窗口/);
   assert.match(chart, /id="throughputWindowSize"[\s\S]*2 片[\s\S]*10 片/);
   assert.match(chart, /data-throughput-chart="cumulative"/);
   assert.match(chart, /data-throughput-chart="rolling-2"[\s\S]*? hidden/);
