@@ -33,3 +33,4 @@ export {
 export { configuredRobotArms, robotArmAnimation, robotSlotWafers, robotTransferReach, renderParallelRobotArms, robotArmGeometry } from "./topology_robot_mechanism";
 export { atmosphereRailMotion } from "./topology_atmosphere_rail";
 export { projectTopologyTransfers } from "./topology_transfer_projection";
+export { waferDispatchProgress, renderWaferDispatchProgress, updateWaferProgressPanel } from "./wafer_dispatch_progress";

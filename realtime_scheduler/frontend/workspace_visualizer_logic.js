@@ -42,13 +42,16 @@ __export(workspace_visualizer_test_entry_exports, {
   renderParallelRobotArms: () => renderParallelRobotArms,
   renderSchedulePerformance: () => renderSchedulePerformance,
   renderThroughputChart: () => renderThroughputChart,
+  renderWaferDispatchProgress: () => renderWaferDispatchProgress,
   renderWaferResidenceChart: () => renderWaferResidenceChart,
   robotArmAnimation: () => robotArmAnimation,
   robotArmGeometry: () => robotArmGeometry,
   robotSlotWafers: () => robotSlotWafers,
   robotTransferReach: () => robotTransferReach,
   simplifyThroughputPoints: () => simplifyThroughputPoints,
-  snapshotWithFullDeviceModules: () => snapshotWithFullDeviceModules
+  snapshotWithFullDeviceModules: () => snapshotWithFullDeviceModules,
+  updateWaferProgressPanel: () => updateWaferProgressPanel,
+  waferDispatchProgress: () => waferDispatchProgress
 });
 module.exports = __toCommonJS(workspace_visualizer_test_entry_exports);
 
@@ -99,6 +102,140 @@ async function requestDeadlockDiagnostic(input) {
   };
 }
 
+// src/wafer_dispatch_progress.ts
+var PICK_TYPES = /* @__PURE__ */ new Set([0, 2]);
+var SWAP_TYPE = 4;
+var DUMMY_MATERIAL_ID_START = 1e5;
+var timelineCache = /* @__PURE__ */ new WeakMap();
+function values(value) {
+  return Array.isArray(value) ? value : [];
+}
+function escape(value) {
+  return String(value ?? "\u2014").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+}
+function isPort(name, device) {
+  const type = String(device?.Stations?.[name]?.Type ?? "").toLowerCase();
+  return ["loadport", "dummyport"].includes(type) || /^(LP\d*|P\d+|.*PORT)$/i.test(name);
+}
+function instanceKey(move, wafer, index) {
+  const tasks = values(move.TaskID);
+  const jobs = values(move.PJobName);
+  const batch = tasks[index] ?? tasks[0] ?? jobs[index] ?? jobs[0];
+  return batch == null ? wafer : `${wafer}\0${batch}`;
+}
+function waferDispatchProgress(moves, time, device) {
+  const cached = timelineCache.get(moves);
+  if (cached && cached.device === device) {
+    const progress = /* @__PURE__ */ new Map();
+    for (const [key, events] of cached.steps) {
+      let lower = 0;
+      let upper = events.length;
+      while (lower < upper) {
+        const middle = Math.floor((lower + upper) / 2);
+        if (events[middle].time <= time) lower = middle + 1;
+        else upper = middle;
+      }
+      if (lower > 0) progress.set(key, events[lower - 1].step);
+    }
+    return { departures: cached.departures.filter((event) => event.time <= time), progress };
+  }
+  const stepEvents = /* @__PURE__ */ new Map();
+  const processJobs = /* @__PURE__ */ new Map();
+  const targets = /* @__PURE__ */ new Map();
+  const departures = [];
+  const cycles = /* @__PURE__ */ new Map();
+  const completed = [...moves].sort((a, b) => Number(a.EndTime) - Number(b.EndTime) || Number(a.MoveID) - Number(b.MoveID));
+  for (const move of completed) {
+    const swap = Number(move.MoveType) === SWAP_TYPE;
+    const groups = swap ? [["RecvMatList", "RecvMatStepIDList"], ["SendMatList", "SendMatStepIDList"]] : [["MatIDList", "StepIDList"]];
+    for (const [groupIndex, [materials, steps]] of groups.entries()) values(move[materials]).forEach((id, index) => {
+      const step = values(move[steps])[index];
+      if (step !== void 0 && step !== null) {
+        const key = instanceKey(move, String(id), index + (swap && groupIndex === 1 ? values(move.RecvMatList).length : 0));
+        const events = stepEvents.get(key) ?? [];
+        events.push({ time: Number(move.EndTime), step: String(step) });
+        stepEvents.set(key, events);
+        const jobIndex = index + (swap && groupIndex === 1 ? values(move.RecvMatList).length : 0);
+        const job = values(move.PJobName)[jobIndex] ?? values(move.PJobName)[0];
+        if (job != null) processJobs.set(key, String(job));
+        const stepTargets = targets.get(key) ?? /* @__PURE__ */ new Map();
+        if (move.CurState) stepTargets.set(String(step), String(move.CurState));
+        targets.set(key, stepTargets);
+      }
+    });
+    if (!PICK_TYPES.has(Number(move.MoveType)) && !swap) continue;
+    values(move[swap ? "RecvMatList" : "MatIDList"]).forEach((id, index) => {
+      const source = String(values(move[swap ? "StationList" : "SrcStationList"])[index] ?? "");
+      if (!isPort(source, device)) return;
+      const wafer = String(id);
+      const key = instanceKey(move, wafer, index);
+      const cycle = (cycles.get(key) ?? 0) + 1;
+      cycles.set(key, cycle);
+      departures.push({ wafer, key, source, cycle, time: Number(move.EndTime), moveId: Number(move.MoveID) });
+    });
+  }
+  timelineCache.set(moves, { departures, steps: stepEvents, sequences: plannedSteps(moves), device, processJobs, targets });
+  return waferDispatchProgress(moves, time, device);
+}
+function plannedSteps(moves) {
+  const result = /* @__PURE__ */ new Map();
+  for (const move of [...moves].sort((a, b) => Number(a.EndTime) - Number(b.EndTime) || Number(a.MoveID) - Number(b.MoveID))) {
+    const groups = Number(move.MoveType) === SWAP_TYPE ? [["RecvMatList", "RecvMatStepIDList"], ["SendMatList", "SendMatStepIDList"]] : [["MatIDList", "StepIDList"]];
+    groups.forEach(([materials, steps], groupIndex) => values(move[materials]).forEach((id, index) => {
+      const step = values(move[steps])[index];
+      if (step == null) return;
+      const offset = groupIndex === 1 ? values(move.RecvMatList).length : 0;
+      const key = instanceKey(move, String(id), index + offset);
+      const sequence = result.get(key) ?? [];
+      if (!sequence.includes(String(step))) sequence.push(String(step));
+      result.set(key, sequence);
+    }));
+  }
+  return result;
+}
+function renderWaferDispatchProgress(moves, snapshot, device, resolveRoute) {
+  const { departures, progress } = waferDispatchProgress(moves, snapshot.time, device);
+  const locations = /* @__PURE__ */ new Map();
+  for (const item of [...snapshot.modules, ...snapshot.robots]) for (const wafer of item.wafers) locations.set(String(wafer), item.name);
+  const latest = new Map(departures.map((event, index) => [event.wafer, index]));
+  const active = departures.map((event, index) => ({ event, index })).filter(({ event, index }) => {
+    return latest.get(event.wafer) === index;
+  });
+  if (!active.length) return '<p class="wafer-progress-note">\u5F53\u524D\u6CA1\u6709\u5DF2\u8FDB\u5165\u6D41\u7A0B\u7684\u6676\u5706\u3002</p>';
+  const sequences = timelineCache.get(moves).sequences;
+  const rows = active.map(({ event, index }) => {
+    const dummy = /dummy/i.test(event.source) || Number(event.wafer) >= DUMMY_MATERIAL_ID_START;
+    const step = progress.get(event.key);
+    const sequence = sequences.get(event.key) ?? [];
+    const current = sequence.indexOf(step ?? "");
+    const label = dummy ? event.wafer : snapshot.waferOrigins[event.wafer] || event.wafer;
+    const cached = timelineCache.get(moves);
+    const route = resolveRoute?.(cached.processJobs.get(event.key) ?? "");
+    const stages = values(route?.stages);
+    const nodes = sequence.map((id, position) => {
+      const stage = stages.find((stage2) => String(stage2.stepId) === id);
+      const resources = stage ? values(stage.visits).map((visit) => String(visit.stationName ?? "")) : [cached.targets.get(event.key)?.get(id) ?? ""];
+      const known = resources.filter(Boolean);
+      const robot = known.length > 0 && known.every((name) => Boolean(device?.Robots?.[name]));
+      const kind = known.length ? robot ? "robot" : "station" : "unknown";
+      const description = `${kind === "robot" ? "RobotStep" : kind === "station" ? "StationStep" : "\u7C7B\u578B\u672A\u77E5"} \xB7 ${known.join("/") || "\u672A\u77E5\u6A21\u5757"} \xB7 ${position < current ? "\u5DF2\u8D8A\u8FC7" : position === current ? "\u5F53\u524D\u6B65\u9AA4" : "\u540E\u7EED\u6B65\u9AA4"}`;
+      return `<li class="wafer-step step-${kind} ${position < current ? "is-past" : position === current ? "is-current" : "is-future"}" ${position === current ? 'aria-current="step"' : ""} title="${escape(description)}" aria-label="${escape(description)}"><span aria-hidden="true">${kind === "unknown" ? "?" : ""}</span></li>`;
+    }).join("");
+    return `<article class="wafer-progress-item${dummy ? " is-dummy" : ""}" aria-label="${escape(label)}\uFF0C\u53D1\u7247\u987A\u5E8F ${index + 1}\uFF0C\u5F53\u524D Step ${escape(step)}">
+      <div class="wafer-progress-heading"><strong title="MatID ${escape(event.wafer)}">${escape(label)}</strong>${dummy ? '<small class="dummy-badge">DUMMY</small>' : ""}<span class="wafer-location" title="${escape(locations.get(event.wafer) ?? event.source)}">${escape(locations.get(event.wafer) ?? event.source)}</span></div>
+      ${nodes ? `<ol class="wafer-step-track" aria-label="MoveList \u4E2D\u7684\u6B65\u9AA4\u987A\u5E8F">${nodes}</ol>` : '<p class="wafer-progress-note">\u6B65\u9AA4\u672A\u77E5</p>'}
+    </article>`;
+  }).join("");
+  return `<div class="wafer-progress-scroll">${rows}</div>`;
+}
+function updateWaferProgressPanel(panel, html) {
+  if (panel.dataset.progressMarkup === html) return;
+  panel.innerHTML = html;
+  panel.dataset.progressMarkup = html;
+  const scroller = panel.querySelector(".wafer-progress-scroll");
+  if (scroller) scroller.scrollTop = scroller.scrollHeight;
+}
+
 // src/topology_robot_mechanism.ts
 var REST_REACH = 58;
 var ATR_RETRACTED_REACH = 42;
@@ -111,28 +248,28 @@ var CLAW_STEM_OFFSET = 23;
 var CLAW_PATH = "M -23 -4 L -15 -4 Q -8 -4 -7 -14 L 14 -20 L 16 -18 L -1 -12 Q -8 0 -1 12 L 16 18 L 14 20 L -7 14 Q -8 4 -15 4 L -23 4 Z";
 var HANDOFF_PROGRESS = 0.5;
 var SWAP_MOVE = 4;
-function values(value) {
+function values2(value) {
   return Array.isArray(value) ? value : [];
 }
 function configuredRobotArms(definition) {
   const arms = Object.entries(definition.ArmInfo ?? {}).filter(([, arm]) => arm && typeof arm === "object").map(([name, arm]) => ({
     name,
     enabled: arm.IsEnable !== false,
-    slots: [...new Set(values(arm.SlotIDs).map(Number).filter((slot) => Number.isInteger(slot) && slot > 0))]
+    slots: [...new Set(values2(arm.SlotIDs).map(Number).filter((slot) => Number.isInteger(slot) && slot > 0))]
   }));
   if (arms.length) return arms;
-  const declaredSlots = values(definition.Slots).map(Number).filter((slot) => Number.isInteger(slot) && slot > 0);
+  const declaredSlots = values2(definition.Slots).map(Number).filter((slot) => Number.isInteger(slot) && slot > 0);
   const slots = declaredSlots.length ? declaredSlots : Array.from({ length: Math.max(1, Math.floor(Number(definition.Capacity) || 1)) }, (_, index) => index + 1);
   return slots.map((slot) => ({ name: `Arm${slot}`, enabled: true, slots: [slot] }));
 }
 function transferStages(move) {
   const type = Number(move.MoveType);
-  const stage = (kind, slots, materials, stations, stationSlots) => values(move[materials]).map((wafer, index) => ({
+  const stage = (kind, slots, materials, stations, stationSlots) => values2(move[materials]).map((wafer, index) => ({
     kind,
     wafer: String(wafer),
-    robotSlot: Number(values(move[slots])[index] ?? 0),
-    station: String(values(move[stations])[index] ?? values(move[stations])[0] ?? ""),
-    stationSlot: Number(values(move[stationSlots])[index] ?? 0)
+    robotSlot: Number(values2(move[slots])[index] ?? 0),
+    station: String(values2(move[stations])[index] ?? values2(move[stations])[0] ?? ""),
+    stationSlot: Number(values2(move[stationSlots])[index] ?? 0)
   }));
   if (type === SWAP_MOVE) {
     const pick = stage("pick", "RecvSlotList", "RecvMatList", "StationList", "StnSendSlotList");
@@ -212,7 +349,7 @@ function robotArmGeometry(reach, index, count, progress, targetSeparation = 0) {
     elbowY: (shoulder + tipY) / 2 + side * reach * bend
   };
 }
-function renderParallelRobotArms(arms, distance, renderWafer, escape, targetGeometry, occlusions = [], maskPrefix = "robot", mechanism = "articulated", stackedArms = false) {
+function renderParallelRobotArms(arms, distance, renderWafer, escape2, targetGeometry, occlusions = [], maskPrefix = "robot", mechanism = "articulated", stackedArms = false) {
   const waferLayers = [];
   const moving = arms.some((arm) => extensionFraction(arm.progress) > 0);
   const markup = arms.map((arm, index) => {
@@ -268,7 +405,7 @@ function renderParallelRobotArms(arms, distance, renderWafer, escape, targetGeom
     const maskId = `robot-mask-${Array.from(maskPrefix).map((character) => character.codePointAt(0)).join("-")}-${index}`;
     const radians = localAngle * Math.PI / 180;
     const holes = occlusions.map((point) => `<circle cx="${point.x * Math.cos(radians) + point.y * Math.sin(radians)}" cy="${-point.x * Math.sin(radians) + point.y * Math.cos(radians)}" r="${point.radius}" fill="black"/>`).join("");
-    return `<div class="parallel-robot-arm${arm.progress === null ? "" : " is-transferring"}${arm.enabled ? "" : " is-disabled"}" data-arm="${escape(arm.name)}" style="--robot-reach:${reach.toFixed(2)}px;--robot-arm-local-angle:${localAngle}deg;${hidden ? "visibility:hidden;" : faded ? "opacity:.3;" : ""}">
+    return `<div class="parallel-robot-arm${arm.progress === null ? "" : " is-transferring"}${arm.enabled ? "" : " is-disabled"}" data-arm="${escape2(arm.name)}" style="--robot-reach:${reach.toFixed(2)}px;--robot-arm-local-angle:${localAngle}deg;${hidden ? "visibility:hidden;" : faded ? "opacity:.3;" : ""}">
       <svg class="parallel-robot-arms" overflow="visible" aria-hidden="true">
         <defs><mask id="${maskId}" maskUnits="userSpaceOnUse" x="-2000" y="-2000" width="4000" height="4000"><rect x="-2000" y="-2000" width="4000" height="4000" fill="white"/>${holes}</mask></defs>
         <g mask="url(#${maskId})"><path class="parallel-robot-link" d="${linkPath}${wristPath}"/>
@@ -342,7 +479,7 @@ var TRANSFERS = /* @__PURE__ */ new Set([0, 1, 2, 3, 4]);
 var TIME_TOLERANCE = 1e-6;
 var RELATED_ATMOSPHERE = 0;
 var RELATED_VACUUM = 1;
-function values2(value) {
+function values3(value) {
   return value == null ? [] : Array.isArray(value) ? value : [value];
 }
 function robotKind(name, device) {
@@ -362,8 +499,8 @@ function indexTransfers(moves) {
   for (const move of moves) {
     if (!TRANSFERS.has(Number(move.MoveType))) continue;
     if (move.MoveID !== void 0) index.byId.set(move.MoveID, move);
-    for (const id of values2(move.PreMoveID)) append(index.dependents, Number(id), move);
-    const stations = new Set([...values2(move.SrcStationList), ...values2(move.DestStationList), ...values2(move.StationList)].map(String));
+    for (const id of values3(move.PreMoveID)) append(index.dependents, Number(id), move);
+    const stations = new Set([...values3(move.SrcStationList), ...values3(move.DestStationList), ...values3(move.StationList)].map(String));
     for (const station2 of stations) {
       append(index.starts, `${station2}:${Math.round(Number(move.StartTime) / TIME_TOLERANCE)}`, move);
       append(index.ends, `${station2}:${Math.round(Number(move.EndTime) / TIME_TOLERANCE)}`, move);
@@ -377,13 +514,13 @@ function relatedRobot(door, index) {
   const closing = door.MoveType === COMPLETE;
   const boundary = Number(closing ? door.StartTime : door.EndTime);
   const bucket = Math.round(boundary / TIME_TOLERANCE);
-  const dependencies = closing ? values2(door.PreMoveID).map((id) => index.byId.get(Number(id))).filter((move) => Boolean(move)) : index.dependents.get(Number(door.MoveID)) ?? [];
+  const dependencies = closing ? values3(door.PreMoveID).map((id) => index.byId.get(Number(id))).filter((move) => Boolean(move)) : index.dependents.get(Number(door.MoveID)) ?? [];
   const adjacent = [-1, 0, 1].flatMap((offset) => (closing ? index.ends : index.starts).get(`${door.ModuleName}:${bucket + offset}`) ?? []);
   const matches = (move) => {
-    const stations = [...values2(move.SrcStationList), ...values2(move.DestStationList), ...values2(move.StationList)];
+    const stations = [...values3(move.SrcStationList), ...values3(move.DestStationList), ...values3(move.StationList)];
     if (!stations.map(String).includes(String(door.ModuleName))) return false;
-    const materials = values2(door.MatIDList).map(String);
-    const transported = values2(move.MatIDList).map(String);
+    const materials = values3(door.MatIDList).map(String);
+    const transported = values3(move.MatIDList).map(String);
     return !materials.length || !transported.length || materials.some((material) => transported.includes(material));
   };
   const related = dependencies.filter(matches);
@@ -396,7 +533,7 @@ function projectLoadLockDoors(moves, device, time, names) {
   const transfers = indexTransfers(moves);
   for (const name of names) {
     const station2 = device?.Stations?.[name];
-    const preparations = values2(station2?.PrePrepareTime);
+    const preparations = values3(station2?.PrePrepareTime);
     const linkedNames = preparations.flatMap((item) => [String(item.LastItem ?? ""), String(item.CurrentItem ?? "")]);
     const bridge = linkedNames.some((robot) => robotKind(robot, device) === "upper") || /^(UBR|DBR)$/i.test(name);
     const doors = { top: "closed", bottom: "closed", topLabel: bridge ? "\u4E0A\u7EA7\u771F\u7A7A\u4FA7" : "\u771F\u7A7A\u4FA7", bottomLabel: bridge ? "\u4E0B\u7EA7\u771F\u7A7A\u4FA7" : "\u5927\u6C14\u4FA7" };
@@ -458,7 +595,7 @@ function atmosphereRailMotion(moves, robot, time) {
 }
 
 // src/topology_robot_slots.ts
-function renderRobotSlotRow(robot, dual, renderSlots, escape) {
+function renderRobotSlotRow(robot, dual, renderSlots, escape2) {
   const arms = robot.arms ?? configuredRobotArms({ Capacity: robot.capacity });
   const combined = dual && robot.environment === "vacuum";
   const slots = (ids) => ids.map((slot) => ({
@@ -466,8 +603,8 @@ function renderRobotSlotRow(robot, dual, renderSlots, escape) {
     wafer: robot.slotWafers?.[slot] ?? "",
     processed: robot.processedWafers.includes(robot.slotWafers?.[slot] ?? "")
   }));
-  const boards = combined ? `<div class="front-module front-robot-combined"><strong>${escape(robot.name)}</strong><div class="front-slot-board front-robot-combined-board" style="--front-slot-count:${arms.length}">${arms.map((arm) => `<div class="front-robot-arm-pair" role="group" aria-label="${escape(arm.name)}">${renderSlots(slots(arm.slots))}</div>`).join("")}</div></div>` : arms.map((arm) => `<div class="front-module"><strong>${escape(robot.name)}${dual ? "" : ` \xB7 ${escape(arm.name)}`}</strong><div class="front-slot-board" style="--front-slot-count:${arm.slots.length}" role="group" aria-label="${escape(robot.name + " " + arm.name)}">${renderSlots(slots(arm.slots))}</div></div>`).join("");
-  return `<div class="front-slot-row front-slot-row-robot" data-robot="${escape(robot.name)}">${boards}</div>`;
+  const boards = combined ? `<div class="front-module front-robot-combined"><strong>${escape2(robot.name)}</strong><div class="front-slot-board front-robot-combined-board" style="--front-slot-count:${arms.length}">${arms.map((arm) => `<div class="front-robot-arm-pair" role="group" aria-label="${escape2(arm.name)}">${renderSlots(slots(arm.slots))}</div>`).join("")}</div></div>` : arms.map((arm) => `<div class="front-module"><strong>${escape2(robot.name)}${dual ? "" : ` \xB7 ${escape2(arm.name)}`}</strong><div class="front-slot-board" style="--front-slot-count:${arm.slots.length}" role="group" aria-label="${escape2(robot.name + " " + arm.name)}">${renderSlots(slots(arm.slots))}</div></div>`).join("");
+  return `<div class="front-slot-row front-slot-row-robot" data-robot="${escape2(robot.name)}">${boards}</div>`;
 }
 
 // src/workspace_visualizer.ts
@@ -886,11 +1023,11 @@ function isDummyWaferOrigin(origin) {
   const { moduleName } = splitWaferOrigin(origin);
   return Boolean(moduleName) && isDummyPortName(moduleName);
 }
-var DUMMY_MATERIAL_ID_START = 1e5;
+var DUMMY_MATERIAL_ID_START2 = 1e5;
 function isDummyWafer(wafer, origin) {
   if (isDummyWaferOrigin(origin)) return true;
   const materialId = Number(wafer);
-  return Number.isInteger(materialId) && materialId >= DUMMY_MATERIAL_ID_START;
+  return Number.isInteger(materialId) && materialId >= DUMMY_MATERIAL_ID_START2;
 }
 function waferSurfaceLabel(wafer, origin) {
   if (isDummyWafer(wafer, origin) && wafer) return wafer;
@@ -2991,9 +3128,9 @@ function renderResidenceMetricChart(samples, kind) {
     robot: { title: "\u673A\u5668\u624B\u9A7B\u7559\u65F6\u95F4", label: "\u673A\u5668\u624B\u9A7B\u7559", value: (sample) => sample.robotDwellSeconds ?? 0 }
   };
   const metric = definitions[kind];
-  const values3 = samples.map(metric.value);
-  const meanSeconds = values3.reduce((sum, value) => sum + value, 0) / values3.length;
-  const maximumSeconds = Math.max(...values3, 1);
+  const values4 = samples.map(metric.value);
+  const meanSeconds = values4.reduce((sum, value) => sum + value, 0) / values4.length;
+  const maximumSeconds = Math.max(...values4, 1);
   const plotHeight = 150;
   const scaleMaximum = maximumSeconds * 1.08;
   const meanHeight = Math.min(meanSeconds / scaleMaximum * plotHeight, plotHeight);
@@ -3030,12 +3167,12 @@ function renderWaferResidenceChart(performance2) {
   const systemValues = samples.map((sample) => sample.duration);
   const chamberValues = samples.map((sample) => sample.chamberDwellSeconds ?? 0);
   const robotValues = samples.map((sample) => sample.robotDwellSeconds ?? 0);
-  const metricSummary = (values3, label) => {
-    const mean = values3.reduce((sum, value) => sum + value, 0) / values3.length;
-    const deviation = Math.sqrt(values3.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values3.length);
+  const metricSummary = (values4, label) => {
+    const mean = values4.reduce((sum, value) => sum + value, 0) / values4.length;
+    const deviation = Math.sqrt(values4.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values4.length);
     const upperControlLimit = mean + deviation * 2;
-    const abnormalCount = values3.filter((value) => value > upperControlLimit).length;
-    return `<span><small>\u5E73\u5747</small><b>${formatSeconds(mean)}</b><em>s</em></span><span><small>\u6700\u5927</small><b>${formatSeconds(Math.max(...values3))}</b><em>s</em></span><span class="${abnormalCount ? "is-warning" : ""}"><small>\u504F\u9AD8\u6BD4\u4F8B</small><b>${(abnormalCount / values3.length * 100).toFixed(1)}</b><em>%</em></span><span><small>\u6837\u672C</small><b>${values3.length}</b><em>\u7247</em></span><span class="visually-hidden">${label}</span>`;
+    const abnormalCount = values4.filter((value) => value > upperControlLimit).length;
+    return `<span><small>\u5E73\u5747</small><b>${formatSeconds(mean)}</b><em>s</em></span><span><small>\u6700\u5927</small><b>${formatSeconds(Math.max(...values4))}</b><em>s</em></span><span class="${abnormalCount ? "is-warning" : ""}"><small>\u504F\u9AD8\u6BD4\u4F8B</small><b>${(abnormalCount / values4.length * 100).toFixed(1)}</b><em>%</em></span><span><small>\u6837\u672C</small><b>${values4.length}</b><em>\u7247</em></span><span class="visually-hidden">${label}</span>`;
   };
   const summary = (kind, content) => `<div class="analysis-compact-stats residence-chart-summary" data-residence-summary="${kind}"${kind === "system" ? "" : " hidden"}>${content}</div>`;
   return `
@@ -3102,9 +3239,9 @@ function renderThroughputSvg(points, title) {
   const allValues = points.map((point) => Math.max(0, Number(point.throughputPerHour) || 0));
   const mean = allValues.reduce((sum, value) => sum + value, 0) / allValues.length;
   const displayPoints = simplifyThroughputPoints(points);
-  const values3 = displayPoints.map((point) => Math.max(0, Number(point.throughputPerHour) || 0));
-  const observedMinimum = Math.min(...values3);
-  const observedMaximum = Math.max(...values3);
+  const values4 = displayPoints.map((point) => Math.max(0, Number(point.throughputPerHour) || 0));
+  const observedMinimum = Math.min(...values4);
+  const observedMaximum = Math.max(...values4);
   const spread = Math.max(observedMaximum - observedMinimum, Math.max(mean * 0.04, 1));
   const padding = Math.max(1, spread * 0.18);
   const step = spread > 20 ? 5 : spread > 8 ? 2 : 1;
@@ -3116,7 +3253,7 @@ function renderThroughputSvg(points, title) {
   const indexRange = Math.max(1, lastIndex - firstIndex);
   const coordinates = displayPoints.map((point, index) => ({
     x: left + (point.completedWaferIndex - firstIndex) / indexRange * usableWidth,
-    y: top + (1 - (values3[index] - minimum) / yRange) * usableHeight
+    y: top + (1 - (values4[index] - minimum) / yRange) * usableHeight
   }));
   const linePath = coordinates.length === 1 ? `M ${coordinates[0].x.toFixed(2)} ${coordinates[0].y.toFixed(2)}` : coordinates.reduce((path, point, index) => {
     if (index === 0) return `M ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
@@ -3128,10 +3265,10 @@ function renderThroughputSvg(points, title) {
   const labelStride = Math.max(1, Math.ceil(displayPoints.length / MAXIMUM_THROUGHPUT_VALUE_LABELS));
   const pointTargets = displayPoints.map((point, index) => {
     const coordinate = coordinates[index];
-    const value = values3[index];
-    const previousValue = values3[index - 1] ?? value;
-    const nextValue = values3[index + 1] ?? value;
-    const isLocalMinimum = index > 0 && index < values3.length - 1 && value <= previousValue && value <= nextValue;
+    const value = values4[index];
+    const previousValue = values4[index - 1] ?? value;
+    const nextValue = values4[index + 1] ?? value;
+    const isLocalMinimum = index > 0 && index < values4.length - 1 && value <= previousValue && value <= nextValue;
     const labelY = isLocalMinimum ? Math.min(top + usableHeight - 4, coordinate.y + 17) : Math.max(top + 10, coordinate.y - 9);
     const labelClass = isLocalMinimum ? "throughput-chart-value is-below" : "throughput-chart-value";
     const showLabel = index === 0 || index === displayPoints.length - 1 || index % labelStride === 0;
@@ -3268,6 +3405,8 @@ var VisualizationWorkspace = class {
   moves = [];
   loadPortReplenishments = [];
   replayPlan = null;
+  actionsEnabled = false;
+  waferProgressEnabled = false;
   actionStatusFilters = [...ALL_ACTION_DIAGNOSTIC_STATUSES];
   liveDecision = null;
   liveDecisionKey = "";
@@ -3302,6 +3441,18 @@ var VisualizationWorkspace = class {
     this.bindEvents();
     this.updatePlayButton();
     this.setTopologyVisible(false);
+  }
+  /** 按设备类型设置原始画布尺寸，固定 100% 比例；外层负责居中与页面滚动。 */
+  configureTopologyCanvas() {
+    const canvas = this.elements.stage.closest(".topology-unified-canvas");
+    if (!canvas) return;
+    const slotOverviewWidth = 180;
+    const compactMachineWidth = 700;
+    const layout = this.elements.stage.querySelector(".equipment-schematic")?.dataset.topologyLayout;
+    const machineWidth = layout === "dual" ? TOPOLOGY_VIEWBOX_WIDTH : compactMachineWidth;
+    const fullCanvasWidth = slotOverviewWidth + machineWidth;
+    canvas.style.width = `${fullCanvasWidth}px`;
+    canvas.style.gridTemplateColumns = `${slotOverviewWidth}px ${machineWidth}px`;
   }
   /** 更新当前设备拓扑；已有 MoveList 会立即按新拓扑重绘。 */
   setDevice(device) {
@@ -3574,6 +3725,16 @@ var VisualizationWorkspace = class {
   }
   /** 绑定文件、时间轴、播放和快捷控制事件。 */
   bindEvents() {
+    this.root.getElementById("visualWaferProgressEnabled")?.addEventListener("change", (event) => {
+      this.waferProgressEnabled = event.target.checked;
+      this.render();
+    });
+    this.root.getElementById("visualActionsEnabled")?.addEventListener("change", (event) => {
+      this.actionsEnabled = event.target.checked;
+      this.replayDecisionRequestVersion += 1;
+      this.pendingReplayDecisionKeys.clear();
+      this.render();
+    });
     this.elements.importButton?.addEventListener("click", () => this.elements.fileInput.click());
     this.elements.exportDiagnosticButton?.addEventListener("click", () => {
       void this.exportDeadlockDiagnostic();
@@ -3629,6 +3790,7 @@ var VisualizationWorkspace = class {
         moves: this.analysisResultId ? void 0 : this.moves,
         plan: this.analysisResultId ? void 0 : this.replayPlan,
         time: this.time,
+        includeActions: this.actionsEnabled,
         snapshot
       });
       const downloadUrl = URL.createObjectURL(result.blob);
@@ -3729,8 +3891,8 @@ var VisualizationWorkspace = class {
       this.liveDecision = cachedDecision;
       this.liveDecisionKey = replayKey;
     }
-    const currentDecision = cachedDecision ?? (this.liveDecisionKey === replayKey ? this.liveDecision : null);
-    if (this.replayPlan && !this.liveSolving && !cachedDecision && this.liveDecisionKey !== replayKey && !this.pendingReplayDecisionKeys.has(replayKey) && this.replayDecisionErrorKey !== replayKey) {
+    const currentDecision = this.actionsEnabled ? cachedDecision ?? (this.liveDecisionKey === replayKey ? this.liveDecision : null) : null;
+    if (this.actionsEnabled && this.replayPlan && !this.liveSolving && !cachedDecision && this.liveDecisionKey !== replayKey && !this.pendingReplayDecisionKeys.has(replayKey) && this.replayDecisionErrorKey !== replayKey) {
       void this.refreshReplayDecision(replayKey, replayTime);
     }
     const topologySnapshot = snapshotWithFullDeviceModules(
@@ -3753,13 +3915,26 @@ var VisualizationWorkspace = class {
       this.device ? detectDeviceTopologyLayout(this.device) : detectTopologyLayout(topologySnapshot.modules, topologySnapshot.robots.length),
       this.device
     );
+    this.configureTopologyCanvas();
     const requestState = this.pendingReplayDecisionKeys.has(replayKey) ? "loading" : this.replayDecisionErrorKey === replayKey ? "error" : "idle";
-    this.elements.decisionLens.innerHTML = renderDecisionLens(
+    this.elements.decisionLens.innerHTML = !this.actionsEnabled ? "" : renderDecisionLens(
       currentDecision,
       requestState,
       this.replayDecisionErrorMessage,
       this.actionStatusFilters
     );
+    const progressPanel = this.root.getElementById("visualWaferProgress");
+    if (progressPanel) {
+      progressPanel.hidden = !this.waferProgressEnabled;
+      updateWaferProgressPanel(progressPanel, this.waferProgressEnabled ? renderWaferDispatchProgress(
+        this.moves,
+        snapshot,
+        this.device,
+        (job) => routeByPJobName(this.replayPlan, job)
+      ) : "");
+    }
+    const filters = this.root.querySelector(".action-filter-controls");
+    if (filters) filters.hidden = !this.actionsEnabled;
     this.elements.activeMoves.innerHTML = snapshot.activeMoves.length ? snapshot.activeMoves.map((move) => `
         <li>
           <span class="active-move-id">#${finiteNumber(move.MoveID)}</span>
@@ -3942,11 +4117,14 @@ function createVisualizationWorkspace(root = document) {
   renderParallelRobotArms,
   renderSchedulePerformance,
   renderThroughputChart,
+  renderWaferDispatchProgress,
   renderWaferResidenceChart,
   robotArmAnimation,
   robotArmGeometry,
   robotSlotWafers,
   robotTransferReach,
   simplifyThroughputPoints,
-  snapshotWithFullDeviceModules
+  snapshotWithFullDeviceModules,
+  updateWaferProgressPanel,
+  waferDispatchProgress
 });

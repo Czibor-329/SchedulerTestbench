@@ -378,6 +378,8 @@ function fakeWorkspaceDocument() {
     "performanceWindow",
   ];
   const elements = new Map(ids.map(id => [id, new FakeElement()]));
+  // 此夹具不包含真实画布祖先；补齐 DOM 查询接口，保持原有业务测试边界。
+  elements.get("visualDeviceStage").closest = () => null;
   const workspaceTab = new FakeElement();
   return {
     elements,
@@ -403,33 +405,14 @@ test("MoveList 输入同时支持数组和结果对象", () => {
   );
 });
 
-test("回放进度、MoveList 与中文工具入口合并在顶部紧凑工具栏", () => {
-  const html = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"),
-    "utf8",
-  );
-  const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
-    "utf8",
-  );
-  const toolbarStart = html.indexOf('<section class="timeline-console petri-top-playback-controls"');
-  const toolbarEnd = html.indexOf("</section>", toolbarStart);
-  const toolbar = html.slice(toolbarStart, toolbarEnd);
-  assert.ok(toolbarStart >= 0 && toolbarEnd > toolbarStart);
-  assert.match(toolbar, /class="timeline-primary-zone"[\s\S]*class="timeline-range"[\s\S]*class="timeline-tools-zone"/);
-  assert.match(toolbar, /id="visualPlayButton"/);
-  assert.match(toolbar, /id="visualSource"[^>]*title="—"/);
-  assert.match(toolbar, /id="visualTimeline"/);
-  assert.match(toolbar, /id="visualImportButton"[^>]*>[\s\S]*导入 MoveList/);
-  assert.match(toolbar, /id="visualOpenGantt"[^>]*>[\s\S]*打开甘特图/);
-  assert.match(css, /\.petri-top-playback-controls \{[^\n]*--playback-control-height: 44px/);
-  assert.match(css, /grid-template-columns: auto minmax\(320px, 1fr\) auto/);
-  assert.match(css, /@media \(max-width: 1100px\)/);
-  assert.match(css, /@media \(max-width: 800px\)[\s\S]*grid-template-areas: "primary tools" "range range"/);
-  assert.match(css, /\.petri-top-playback-controls :is\([^\n]*:focus-visible/);
-  assert.doesNotMatch(html, /petri-utils/);
+test("回放控制保留稳定入口且动作查询默认关闭", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"), "utf8");
+  for (const id of ["visualPlayButton", "visualSource", "visualTimeline", "visualSpeed", "visualTotalTime", "visualExportDeadlockDiagnostic", "visualWaferProgress"]) {
+    assert.ok(html.includes(`id="${id}"`));
+  }
+  assert.match(html, /id="visualActionsEnabled"[^>]*role="switch"/);
+  assert.doesNotMatch(html, /id="visualActionsEnabled"[^>]*checked/);
   assert.doesNotMatch(html, /id="visualPauseOnDecisionChangeButton"/);
-  assert.doesNotMatch(html, /id="visualTransitionButtons"|MODEL EVALUATION/);
 });
 
 test("正视槽位卡片按内容收缩，不以画布高度拉长模块槽位", () => {
@@ -520,7 +503,7 @@ test("结果分析与拓扑回放使用独立界面并共享当前 MoveList", as
   assert.equal(root.elements.get("visualPlaybackEmpty").hidden, true);
   assert.equal(root.elements.get("visualSource").title, "t1.json");
   const lens = root.elements.get("visualDecisionLens").innerHTML;
-  assert.match(lens, /当前动作卡片为空/);
+  assert.equal(lens, "");
   assert.doesNotMatch(lens, /E2E推荐|Δ 基准|模型偏好|剩余工期/);
   assert.doesNotMatch(root.elements.get("visualDeviceStage").innerHTML, /PM2/);
 
@@ -605,7 +588,7 @@ test("旧模型推荐轨迹不再进入动作状态卡片", async () => {
   });
 
   const lens = root.elements.get("visualDecisionLens").innerHTML;
-  assert.match(lens, /当前动作卡片为空/);
+  assert.equal(lens, "");
   assert.doesNotMatch(lens, /Actor|推荐|policyPreference/);
 });
 
@@ -701,7 +684,7 @@ test("旧联合动作推荐不再进入动作状态卡片", async () => {
   });
 
   const lens = root.elements.get("visualDecisionLens").innerHTML;
-  assert.match(lens, /当前动作卡片为空/);
+  assert.equal(lens, "");
   assert.doesNotMatch(lens, /E2E推荐|与计划一致/);
 });
 

@@ -11,6 +11,7 @@ import {
   requestReplayDecision,
   requestScheduleAnalysis,
 } from "./api_client";
+import { renderWaferDispatchProgress, updateWaferProgressPanel } from "./wafer_dispatch_progress";
 import { configuredRobotArms, renderParallelRobotArms, robotSlotWafers, type RobotArmDefinition } from "./topology_robot_mechanism";
 import { projectTopologyTransfers } from "./topology_transfer_projection";
 import { projectLoadLockDoors, type LoadLockDoors } from "./topology_loadlock_doors";
@@ -4084,6 +4085,8 @@ export class VisualizationWorkspace {
   private moves: MoveRecord[] = [];
   private loadPortReplenishments: LoadPortReplenishment[] = [];
   private replayPlan: Record<string, any> | null = null;
+  private actionsEnabled = false;
+  private waferProgressEnabled = false;
   private actionStatusFilters: ActionDiagnosticStatus[] = [...ALL_ACTION_DIAGNOSTIC_STATUSES];
   private liveDecision: DecisionTraceStep | null = null;
   private liveDecisionKey = "";
@@ -4120,6 +4123,19 @@ export class VisualizationWorkspace {
     this.bindEvents();
     this.updatePlayButton();
     this.setTopologyVisible(false);
+  }
+
+  /** 按设备类型设置原始画布尺寸，固定 100% 比例；外层负责居中与页面滚动。 */
+  private configureTopologyCanvas(): void {
+    const canvas = this.elements.stage.closest<HTMLElement>(".topology-unified-canvas");
+    if (!canvas) return;
+    const slotOverviewWidth = 180;
+    const compactMachineWidth = 700;
+    const layout = this.elements.stage.querySelector<HTMLElement>(".equipment-schematic")?.dataset.topologyLayout;
+    const machineWidth = layout === "dual" ? TOPOLOGY_VIEWBOX_WIDTH : compactMachineWidth;
+    const fullCanvasWidth = slotOverviewWidth + machineWidth;
+    canvas.style.width = `${fullCanvasWidth}px`;
+    canvas.style.gridTemplateColumns = `${slotOverviewWidth}px ${machineWidth}px`;
   }
 
   /** 更新当前设备拓扑；已有 MoveList 会立即按新拓扑重绘。 */
@@ -4455,6 +4471,16 @@ export class VisualizationWorkspace {
 
   /** 绑定文件、时间轴、播放和快捷控制事件。 */
   private bindEvents(): void {
+    this.root.getElementById("visualWaferProgressEnabled")?.addEventListener("change", event => {
+      this.waferProgressEnabled = (event.target as HTMLInputElement).checked;
+      this.render();
+    });
+    this.root.getElementById("visualActionsEnabled")?.addEventListener("change", event => {
+      this.actionsEnabled = (event.target as HTMLInputElement).checked;
+      this.replayDecisionRequestVersion += 1;
+      this.pendingReplayDecisionKeys.clear();
+      this.render();
+    });
     this.elements.importButton?.addEventListener("click", () => this.elements.fileInput.click());
     this.elements.exportDiagnosticButton?.addEventListener("click", () => {
       void this.exportDeadlockDiagnostic();
@@ -4513,6 +4539,7 @@ export class VisualizationWorkspace {
         moves: this.analysisResultId ? undefined : this.moves,
         plan: this.analysisResultId ? undefined : this.replayPlan,
         time: this.time,
+        includeActions: this.actionsEnabled,
         snapshot: snapshot as unknown as Record<string, any>,
       });
       const downloadUrl = URL.createObjectURL(result.blob);
@@ -4625,10 +4652,11 @@ export class VisualizationWorkspace {
       this.liveDecision = cachedDecision;
       this.liveDecisionKey = replayKey;
     }
-    const currentDecision = cachedDecision
-      ?? (this.liveDecisionKey === replayKey ? this.liveDecision : null);
+    const currentDecision = this.actionsEnabled ? (cachedDecision
+      ?? (this.liveDecisionKey === replayKey ? this.liveDecision : null)) : null;
     if (
-      this.replayPlan
+      this.actionsEnabled
+      && this.replayPlan
       && !this.liveSolving
       && !cachedDecision
       && this.liveDecisionKey !== replayKey
@@ -4657,15 +4685,26 @@ export class VisualizationWorkspace {
       this.device ? detectDeviceTopologyLayout(this.device) : detectTopologyLayout(topologySnapshot.modules, topologySnapshot.robots.length),
       this.device,
     );
+    this.configureTopologyCanvas();
     const requestState = this.pendingReplayDecisionKeys.has(replayKey)
       ? "loading"
       : this.replayDecisionErrorKey === replayKey ? "error" : "idle";
-    this.elements.decisionLens.innerHTML = renderDecisionLens(
+    this.elements.decisionLens.innerHTML = !this.actionsEnabled ? "" : renderDecisionLens(
       currentDecision,
       requestState,
       this.replayDecisionErrorMessage,
       this.actionStatusFilters,
     );
+
+    const progressPanel = this.root.getElementById("visualWaferProgress");
+    if (progressPanel) {
+      progressPanel.hidden = !this.waferProgressEnabled;
+      updateWaferProgressPanel(progressPanel, this.waferProgressEnabled
+        ? renderWaferDispatchProgress(this.moves, snapshot, this.device,
+          job => routeByPJobName(this.replayPlan, job)) : "");
+    }
+    const filters = this.root.querySelector<HTMLElement>(".action-filter-controls");
+    if (filters) filters.hidden = !this.actionsEnabled;
 
     this.elements.activeMoves.innerHTML = snapshot.activeMoves.length
       ? snapshot.activeMoves.map(move => `

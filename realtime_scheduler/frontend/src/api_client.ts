@@ -114,6 +114,7 @@ export async function requestDeadlockDiagnostic(input: {
   plan?: Record<string, any> | null;
   time: number;
   snapshot: Record<string, any>;
+  includeActions?: boolean;
 }): Promise<{ blob: Blob; fileName: string }> {
   const response = await fetch("/api/analysis/deadlock-diagnostic", {
     method: "POST",

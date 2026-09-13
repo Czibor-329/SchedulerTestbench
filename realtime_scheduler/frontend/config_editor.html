@@ -195,11 +195,19 @@
             </div>
 
             <section class="topology-playback" id="visualTopologyPlayback" hidden aria-label="设备拓扑回放">
+              <div class="petri-console-layout">
+                <div class="topology-canvas-area">
+                <main class="petri-center-column topology-unified-canvas" aria-label="设备拓扑与槽位画布">
+                  <aside class="topology-front-slot-card" id="visualFrontSlotOverview" aria-label="设备正视槽位"></aside>
+                  <section class="device-stage" id="visualDeviceStage" aria-label="设备拓扑状态"></section>
+                </main>
+                </div>
+
+                <aside class="petri-control-panel" aria-label="拓扑回放控制面板">
               <section class="timeline-console petri-top-playback-controls" aria-label="MoveList 时间轴控制">
                 <div class="timeline-primary-zone">
                   <button class="btn primary timeline-play" id="visualPlayButton" type="button" aria-label="播放回放"></button>
-                  <div class="timeline-movelist" aria-label="当前 MoveList">
-                    <span>MOVE LIST</span>
+                  <div class="timeline-movelist" aria-label="当前测试">
                     <strong id="visualSource" title="—">—</strong>
                   </div>
                 </div>
@@ -231,10 +239,6 @@
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v5h14v-5"/></svg>
                       <span class="toolbar-label-full">导入 MoveList</span><span class="toolbar-label-compact">导入</span>
                     </button>
-                    <button class="btn" id="visualExportDeadlockDiagnostic" type="button" aria-label="导出死锁诊断包" disabled>
-                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 19h14"/></svg>
-                      <span class="toolbar-label-full">导出诊断包</span><span class="toolbar-label-compact">诊断</span>
-                    </button>
                     <a class="btn toolbar-gantt" id="visualOpenGantt" href="#" target="_blank" aria-label="打开甘特图" aria-disabled="true">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v14h16M8 15v-3m4 3V8m4 7v-5"/></svg>
                       <span class="toolbar-label-full">打开甘特图</span><span class="toolbar-label-compact">甘特图</span>
@@ -243,15 +247,15 @@
                 </div>
               </section>
 
-              <div class="petri-console-layout">
-                <aside class="topology-front-slot-card" id="visualFrontSlotOverview" aria-label="设备正视槽位"></aside>
-                <main class="petri-center-column">
-                  <section class="device-stage" id="visualDeviceStage" aria-label="设备拓扑状态"></section>
-                </main>
 
-                <aside class="petri-control-panel" aria-label="拓扑回放控制面板">
+                  <section class="petri-control-section wafer-progress-section">
+                    <div class="action-panel-heading"><h2 class="petri-panel-title">晶圆进度</h2><label class="playback-switch"><input id="visualWaferProgressEnabled" type="checkbox" role="switch"> 显示</label></div>
+                    <div id="visualWaferProgress"></div>
+                  </section>
                   <section class="petri-control-section model-evaluation-section">
-                    <h2 class="petri-panel-title">合法动作空间</h2>
+                    <div class="action-panel-heading"><h2 class="petri-panel-title">合法动作空间</h2><div class="action-panel-controls"><button class="btn small diagnostic-export" id="visualExportDeadlockDiagnostic" type="button" aria-label="导出死锁诊断包" disabled>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 19h14"/></svg>导出诊断包
+                    </button><label><input id="visualActionsEnabled" type="checkbox" role="switch"> 启用查询</label></div></div>
                     <div class="action-filter-controls" aria-label="动作筛选">
                       <span class="action-filter-label">显示</span>
                       <label class="action-filter-check"><input type="checkbox" data-action-status-filter value="enabled" checked>使能动作</label>

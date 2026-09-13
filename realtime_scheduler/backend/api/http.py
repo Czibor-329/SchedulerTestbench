@@ -89,17 +89,18 @@ def _evaluate_replay_action_context(payload: Mapping[str, Any]) -> Dict[str, Any
     }
     algorithm_action_diagnostics = None
     plan_strategy = str(raw_plan.get("strategy") or "")
-    if plan_strategy.startswith(OTHER_ALGORITHM_STRATEGY_PREFIX):
-        algorithm_id = plan_strategy.removeprefix(OTHER_ALGORITHM_STRATEGY_PREFIX)
-        with algorithm_session(algorithm_id):
-            algorithm_init(raw_plan["device"])
-            algorithm_action_diagnostics = algorithm_get_replay_actions(action_context)
-    elif plan_strategy in builtin_supported_algorithms:
-        algorithm_action_diagnostics = json.loads(
-            builtin_algorithm_api.get_replay_actions(
-                json.dumps(action_context, ensure_ascii=False)
+    if payload.get("includeActions", True):
+        if plan_strategy.startswith(OTHER_ALGORITHM_STRATEGY_PREFIX):
+            algorithm_id = plan_strategy.removeprefix(OTHER_ALGORITHM_STRATEGY_PREFIX)
+            with algorithm_session(algorithm_id):
+                algorithm_init(raw_plan["device"])
+                algorithm_action_diagnostics = algorithm_get_replay_actions(action_context)
+        elif plan_strategy in builtin_supported_algorithms:
+            algorithm_action_diagnostics = json.loads(
+                builtin_algorithm_api.get_replay_actions(
+                    json.dumps(action_context, ensure_ascii=False)
+                )
             )
-        )
     replay_machine.algorithm_action_diagnostics = (
         algorithm_action_diagnostics
         if isinstance(algorithm_action_diagnostics, Mapping)
@@ -119,7 +120,7 @@ def _evaluate_replay_action_context(payload: Mapping[str, Any]) -> Dict[str, Any
         "moves": moves,
         "updateParams": update_params,
         "moveStates": replay_move_states,
-        "decision": replay_machine.evaluate_actions(replay_time),
+        "decision": replay_machine.evaluate_actions(replay_time) if payload.get("includeActions", True) else {},
         "recomputeRound": max(1, len(available_updates)),
     }
 

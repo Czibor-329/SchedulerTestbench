@@ -1677,7 +1677,8 @@
     #visualPlaybackEmpty[hidden] + .visual-empty-import { display: none; }
     .visual-empty-import .btn { min-height: 44px; }
     .visual-empty-import .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
-    body:has([data-tab-view="playback"].active) .app-content { width: min(100%, 1760px); padding-right: clamp(18px, 2.5vw, 40px); padding-left: clamp(18px, 2.5vw, 40px); }
+    body:has([data-tab-view="playback"].active) .app-content { width: 100%; max-width: none; padding-right: 24px; padding-left: 24px; }
+    body:has([data-tab-view="playback"].active) .layout.editor-mode .main { width: 100%; max-width: none; margin: 0; }
     .topology-playback { display: block; }
     .petri-top-playback-controls { --playback-control-height: 44px; --playback-gap: 18px; --playback-border: #d4deea; --playback-muted: #5d6d82; --playback-soft: #f5f7fa; --playback-radius: 5px; box-sizing: border-box; width: 100%; min-height: 68px; grid-template-columns: auto minmax(320px, 1fr) auto; gap: var(--playback-gap); margin-bottom: 8px; padding: 12px 16px; overflow: hidden; border-color: var(--playback-border); border-radius: 6px; background: #fff; box-shadow: none; }
     .timeline-primary-zone { display: flex; min-width: 0; max-width: 220px; align-items: center; gap: 12px; }
@@ -1735,6 +1736,7 @@
     .action-filter-check input { width: 14px; height: 14px; margin: 0; accent-color: var(--brand); }
     .petri-control-panel .decision-lens-panel, .petri-control-panel .active-moves-panel { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); box-shadow: none; }
     .petri-control-panel .decision-candidate-section ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 520px; margin: 0; padding: 8px; overflow: auto; list-style: none; }
+    .petri-control-panel .decision-lens-panel:empty { display: none; }
     .action-count-summary { margin: 0; padding: 7px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; }
     .petri-control-panel .decision-candidate-section > ul .action-card { position: relative; display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 4px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 6px; cursor: help; }
     .petri-control-panel .decision-candidate-section > ul .action-card.action-status-enabled { border-color: #7cbc6e; border-left: 4px solid #1f7a45; background: #d7f0cf; }
@@ -1828,8 +1830,8 @@
     .search-variation-panel .search-pv-step small { color: var(--muted); font-variant-numeric: tabular-nums; }
     .search-variation-panel .search-telemetry-empty { padding: 10px; color: var(--muted); font-size: 11px; text-align: center; }
 
-    .petri-center-column .equipment-schematic { border-radius: 0; box-shadow: 0 1px 2px rgba(32,47,81,.04); }
-    .reference-grid-canvas { --sim-shell: #e7edf4; --sim-shell-highlight: #f8fafc; --sim-stroke: #667b94; --sim-stroke-soft: #9aa9ba; --sim-transfer: #315fc2; --sim-raw: #c47a09; --sim-done: #087f5b; --sim-dummy: #6d28d9; --sim-dummy-done: #4338ca; --sim-environment: #1688a8; --sim-waiting: #d97706; --sim-fault: #c93636; position: relative !important; display: block !important; height: var(--topology-canvas-height, 640px) !important; min-height: 0 !important; padding: 0 !important; overflow: hidden; background-color: #f6f8fb; background-image: linear-gradient(rgba(112,132,156,.09) 1px, transparent 1px), linear-gradient(90deg, rgba(112,132,156,.09) 1px, transparent 1px), linear-gradient(rgba(112,132,156,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(112,132,156,.035) 1px, transparent 1px); background-size: 75px 75px, 75px 75px, 15px 15px, 15px 15px; }
+    .petri-center-column .equipment-schematic { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+    .reference-grid-canvas { --sim-shell: #e7edf4; --sim-shell-highlight: #f8fafc; --sim-stroke: #667b94; --sim-stroke-soft: #9aa9ba; --sim-transfer: #315fc2; --sim-raw: #c47a09; --sim-done: #087f5b; --sim-dummy: #6d28d9; --sim-dummy-done: #4338ca; --sim-environment: #1688a8; --sim-waiting: #d97706; --sim-fault: #c93636; position: relative !important; display: block !important; height: var(--topology-canvas-height, 640px) !important; min-height: 0 !important; padding: 0 !important; overflow: hidden; background-color: #f6f8fb; background-image: none; }
     .topology-status-legend { position: absolute; z-index: 6; top: 12px; left: 12px; display: grid; grid-template-columns: repeat(2, max-content); gap: 5px 12px; padding: 7px 9px; border: 1px solid rgba(142,160,181,.78); border-radius: 5px; color: #334a67; background: rgba(255,255,255,.9); box-shadow: 0 2px 6px rgba(35,55,84,.10); font: 700 10px/1.2 "Fira Sans", "Microsoft YaHei", "Segoe UI", sans-serif; pointer-events: none; }
     .topology-status-legend > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
     .topology-status-legend i { display: block; width: 8px; height: 8px; box-sizing: border-box; border: 2px solid currentColor; border-radius: 2px; }
@@ -1846,6 +1848,8 @@
     .topology-machine-frame > span { position: absolute; z-index: 1; top: 11px; right: 14px; padding: 3px 6px; border: 1px solid rgba(102,123,148,.24); border-radius: 3px; color: #65758a; background: rgba(248,250,252,.76); font: 700 7px/1 "Fira Code", Consolas, monospace; letter-spacing: .07em; }
     .topology-machine-frame-flat { border-radius: 10px; }
     .topology-machine-frame-atmosphere { border-color: rgba(70,126,151,.72); background: linear-gradient(145deg, rgba(245,251,253,.78), rgba(207,229,237,.56)); box-shadow: inset 0 0 0 5px rgba(255,255,255,.48), inset 0 0 0 6px rgba(91,145,168,.18), 3px 5px 12px rgba(32,74,91,.08); }
+    /* 只保留真空与大气框架外轮廓；内部装饰框和标签会遮挡设备状态。 */
+    .topology-machine-frame::before, .topology-machine-frame > span { display: none; }
     .topology-frame-anchor { position: absolute; display: block; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
     .topology-frame-anchor-top, .topology-frame-anchor-bottom { left: 32%; }
     .topology-frame-anchor-top.topology-frame-anchor-2, .topology-frame-anchor-bottom.topology-frame-anchor-2 { left: 68%; }
@@ -1881,6 +1885,7 @@
     .reference-grid-canvas .equipment-auxiliary.status-door::after { background: var(--sim-waiting); }
     .reference-grid-canvas .equipment-process .equipment-body { display: grid; min-height: 0; place-items: center; padding: 0; }
     .equipment-external-name { position: absolute; z-index: 5; top: -18px; left: 50%; color: #17233a; font: 800 12px/1 "Fira Code", Consolas, monospace; letter-spacing: .03em; transform: translateX(-50%); }
+    .equipment-external-name-port { top: 108px; }
     .process-wafer-slot { display: grid; width: 62px; height: 62px; place-items: center; border: 1px solid #71859e; border-radius: 50%; background: radial-gradient(circle at 42% 36%, #f8fbff 0, #dce5ee 70%, #bdcad8 100%); box-shadow: inset 0 3px 7px rgba(48,65,87,.18), 0 0 0 3px rgba(255,255,255,.50); }
     .process-wafer-slot.is-empty::after { width: 8px; height: 8px; border: 1px solid #a7b4c4; border-radius: 50%; background: #c9d3df; content: ""; }
     .process-wafer-slot .wafer-token { width: var(--topology-wafer-size); min-width: var(--topology-wafer-size); height: var(--topology-wafer-size); padding: 4px; font-size: 10px; }
@@ -2197,7 +2202,132 @@
     .external-module-door-bottom { bottom: var(--external-door-offset); }
     .external-module-door-left { left: var(--external-door-offset); }
     .external-module-door-right { right: var(--external-door-offset); }
-    .reference-module-position:has(.external-module-door-top) > .equipment-external-name { top: -24px; }
+    .reference-module-position:has(.external-module-door-top) > .equipment-external-name:not(.equipment-external-name-port) { top: -24px; }
 
     .external-module-door.door-closed { --external-door-fill: #56677d; --external-door-stroke: #344a63; }
     .external-module-door.door-unknown { --external-door-fill: #f6f8fb; --external-door-stroke: #64748b; border-style: dashed; }
+
+/* 回放控制：一行操作、一行时间轴；图形步骤卡片只展示在机晶圆。 */
+.petri-control-panel .petri-top-playback-controls { --playback-control-height: 36px; align-self: start; align-content: start; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px; min-height: 0; }
+.petri-control-panel .timeline-primary-zone { display: flex; min-width: 0; gap: 10px; grid-area: auto; }
+.petri-control-panel .timeline-movelist { display: block; flex: 1; min-width: 0; }
+.petri-control-panel .timeline-movelist strong { max-width: 100%; font-size: 13px; }
+.petri-control-panel .timeline-range { grid-column: 1 / -1; grid-row: 2; min-width: 0; }
+.petri-control-panel .timeline-scale { display: flex; justify-content: space-between; margin-top: 5px; }
+.petri-control-panel .timeline-total::before { content: '最终耗时 '; font-size: 10px; }
+.petri-control-panel .petri-route-metrics, .petri-control-panel .toolbar-import, .petri-control-panel .toolbar-gantt, .petri-control-panel .timeline-speed > span { display: none; }
+.petri-control-panel .timeline-tools-zone { display: flex; grid-area: auto; flex-wrap: nowrap; gap: 8px; }
+.petri-control-panel .timeline-play { min-width: 66px; width: auto; height: 36px; min-height: 36px; box-sizing: border-box; padding: 0 10px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+.petri-control-panel .timeline-play span { display: inline; }
+.petri-control-panel .timeline-speed select { min-width: 56px; width: 56px; height: 36px; min-height: 36px; box-sizing: border-box; padding: 0 5px; font-size: 12px; }
+.petri-control-panel .topology-toolbar-actions .btn { height: 36px; min-height: 36px; box-sizing: border-box; padding: 0 8px; font-size: 12px; }
+.petri-control-panel .toolbar-label-full { display: inline; }
+.petri-control-panel .toolbar-label-compact { display: none; }
+.action-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.action-panel-heading label { font-size: 12px; white-space: nowrap; cursor: pointer; }
+.action-panel-controls { display: flex; align-items: center; gap: 10px; }
+.action-filter-controls[hidden], #visualWaferProgress[hidden] { display: none; }
+.wafer-progress-note { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 8px 0; }
+.wafer-progress-scroll { max-height: 450px; overflow: auto; display: grid; gap: 8px; }
+.wafer-progress-summary { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0 12px; font-size: 12px; }
+.wafer-progress-summary span { color: var(--muted); font-size: 11px; }
+.wafer-progress-item { --step-accent: #3254d5; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.wafer-progress-item.is-dummy { --step-accent: #7850c7; background: #fcfaff; }
+.wafer-progress-heading { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.wafer-dispatch-rank { color: var(--muted); font-size: 11px; min-width: 24px; }
+.dummy-badge { color: #7850c7; font-size: 9px; background: #eee6fb; padding: 2px 5px; border-radius: 4px; }
+.wafer-location { margin-left: auto; padding: 2px 7px; border-radius: 4px; background: #eef2fa; color: #435577; font-size: 11px; }
+.wafer-step-track { display: flex; margin: 8px 0 4px; padding: 0; list-style: none; overflow-x: auto; }
+.wafer-step { position: relative; flex: 1 0 28px; min-width: 28px; text-align: center; color: #95a1b7; font-size: 12px; }
+.wafer-step::before { content: ''; position: absolute; height: 2px; background: #e1e6ef; top: 10px; left: -50%; width: 100%; }
+.wafer-step:first-child::before { display: none; }
+.wafer-step > span { display: block; position: relative; z-index: 1; width: 20px; height: 20px; margin: 0 auto 2px; border-radius: 50%; background: #f0f3f8; line-height: 20px; }
+.wafer-step small { font-size: 10px; }
+.wafer-step.is-past { color: var(--step-accent); }
+.wafer-step.is-past::before, .wafer-step.is-current::before { background: var(--step-accent); }
+.wafer-step.is-past > span { background: #e8edfc; }
+.wafer-step.is-current > span { background: var(--step-accent); color: white; box-shadow: 0 0 0 3px #e8edfc; }
+.wafer-step.is-current small { color: var(--step-accent); font-weight: 700; }
+.wafer-progress-meta { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+.wafer-progress-legend { display: flex; justify-content: space-between; flex-wrap: wrap; }
+/* 外层仅负责排列，时间轴与两块观察能力各自拥有独立卡片。 */
+.petri-control-panel { padding: 0; border: 0; background: transparent; box-shadow: none; }
+.petri-control-panel > .petri-control-section { padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.wafer-progress-scroll { scrollbar-gutter: stable; }
+/* 中等窗口将控制栏放在拓扑上方，避免被固定画布挤出视口。 */
+@media (max-width: 1550px) {
+  .petri-console-layout { grid-template-columns: 170px minmax(0, 1fr); }
+  .petri-control-panel { position: static; max-height: none; grid-column: 1 / -1; grid-row: 1; grid-template-columns: minmax(320px, 1fr) minmax(350px, 1.2fr); }
+  .petri-control-panel .model-evaluation-section { grid-column: 1 / -1; }
+}
+@media (max-width: 1000px) {
+  .petri-control-panel { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .petri-console-layout { display: flex; flex-direction: column; }
+  .petri-control-panel { order: -1; width: 100%; box-sizing: border-box; }
+  .petri-center-column { width: 100%; overflow: auto; }
+  .topology-front-slot-card { width: 100%; }
+}
+
+/* 单行控制与统一画布：正视槽位属于同一设备画布内的观察区域。 */
+.petri-console-layout { display: grid; grid-template-columns: max-content 420px; width: max-content; margin-inline: auto; gap: 10px; }
+.petri-console-layout .petri-control-panel { position: sticky; top: 18px; grid-column: 2; grid-row: 1; max-height: none; width: auto; margin-top: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.topology-canvas-area { min-width: 0; grid-column: 1; grid-row: 1; }
+.petri-console-layout .petri-control-panel .model-evaluation-section { grid-column: auto; }
+.topology-unified-canvas { display: grid; grid-template-columns: 180px minmax(1000px, 1fr); gap: 0; border: 1px solid var(--line); background: #f6f8fb; background-image: linear-gradient(rgba(112,132,156,.09) 1px, transparent 1px), linear-gradient(90deg, rgba(112,132,156,.09) 1px, transparent 1px); background-size: 75px 75px; overflow: visible; }
+.topology-unified-canvas .topology-front-slot-card { position: static; width: auto; max-height: none; overflow: visible; margin: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 10px; }
+.topology-unified-canvas .device-stage { min-width: 0; overflow: visible; border: 0; }
+.topology-unified-canvas .reference-grid-canvas { background: transparent; border: 0; }
+.topology-unified-canvas .equipment-schematic { overflow: hidden; }
+.topology-unified-canvas .reference-grid-canvas { width: 1000px; }
+.topology-unified-canvas :is([data-topology-layout="single"], [data-topology-layout="cascade"]) .reference-grid-canvas { margin-left: -150px; }
+.topology-unified-canvas :is([data-topology-layout="single"], [data-topology-layout="cascade"]) .topology-status-legend { left: 162px; }
+.petri-control-panel .petri-top-playback-controls { display: flex; align-items: center; flex-wrap: nowrap; padding: 8px; gap: 8px; }
+.petri-control-panel .timeline-primary-zone, .petri-control-panel .timeline-range, .petri-control-panel .timeline-scale, .petri-control-panel .timeline-tools-zone { display: contents; }
+.petri-control-panel .timeline-play { order: 0; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; }
+.petri-control-panel .timeline-play span { display: none; }
+.petri-control-panel .timeline-movelist { display: none; }
+.petri-control-panel .timeline-movelist strong { font-size: 12px; }
+.petri-control-panel .timeline-current { order: 2; font-size: 11px; white-space: nowrap; }
+.petri-control-panel .timeline-range input { order: 1; flex: 1 1 90px; width: 90px; min-width: 40px; margin: 0; }
+.petri-control-panel .timeline-total { order: 3; font-size: 11px; white-space: nowrap; margin-left: -5px; }
+.petri-control-panel .timeline-total::before { content: '/ '; }
+.petri-control-panel .timeline-speed { order: 5; }
+.petri-control-panel .timeline-speed select { width: 52px; min-width: 52px; height: 32px; min-height: 32px; }
+.petri-control-panel .timeline-tools-zone .topology-toolbar-actions { display: none; }
+.petri-control-panel .diagnostic-export { display: inline-flex; align-items: center; gap: 6px; width: max-content; height: 32px; min-height: 32px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
+.petri-control-panel .diagnostic-export svg { width: 16px; height: 16px; flex-shrink: 0; }
+.wafer-progress-item { display: flex; align-items: center; gap: 6px; padding: 7px 8px; min-height: 30px; }
+.wafer-progress-heading { display: contents; }
+.wafer-dispatch-rank { min-width: 22px; font-size: 10px; }
+.wafer-progress-heading strong { flex: 0 0 48px; font-size: 12px; }
+.wafer-progress-heading .dummy-badge { padding: 1px 3px; font-size: 8px; }
+.wafer-location { order: 10; margin-left: 0; font-size: 10px; padding: 2px 4px; white-space: nowrap; }
+.wafer-step-track { flex: 1; min-width: 0; margin: 0; align-items: center; overflow-x: auto; }
+.wafer-step { flex: 1 0 18px; min-width: 18px; }
+.wafer-step::before { top: 50%; }
+.wafer-step > span { width: 8px; height: 8px; margin: 0 auto; display: grid; place-items: center; background: currentColor; }
+.wafer-step svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.wafer-step.step-station { flex-grow: 1.5; min-width: 24px; }
+.wafer-step.step-station > span { width: 12px; height: 12px; border-radius: 2px; }
+.wafer-step.step-unknown > span { width: 12px; height: 12px; background: transparent; font-size: 10px; line-height: 12px; }
+.wafer-step.is-past > span { background: var(--step-accent); }
+.wafer-step.is-current > span { background: var(--step-accent); box-shadow: 0 0 0 3px #e8edfc; }
+.wafer-step.step-station svg { width: 18px; height: 18px; }
+.wafer-step.is-future { color: #7b879b; }
+.wafer-progress-scroll { --wafer-progress-row-height: 32px; max-height: calc(6 * var(--wafer-progress-row-height) + 5 * 4px); grid-auto-rows: var(--wafer-progress-row-height); gap: 4px; }
+.wafer-progress-item { height: var(--wafer-progress-row-height); min-height: var(--wafer-progress-row-height); }
+.wafer-location { flex: 0 0 54px; width: 54px; overflow: hidden; text-align: center; text-overflow: ellipsis; }
+@media (max-width: 1550px) {
+  .petri-console-layout { grid-template-columns: max-content 360px; }
+}
+@media (max-width: 900px) {
+  .topology-unified-canvas { display: grid; box-sizing: border-box; grid-template-columns: 180px minmax(1000px, 1fr); }
+}
+@media (max-width: 1200px) {
+  .petri-console-layout { min-width: 900px; }
+}
+@media (max-width: 760px) {
+  .petri-console-layout .petri-control-panel { grid-template-columns: minmax(0, 1fr); }
+}

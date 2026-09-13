@@ -52,7 +52,7 @@ def build_deadlock_diagnostic_bundle(
     diagnostics = list(decision.get("actionDiagnostics") or [])
     warnings: list[str] = []
     if not diagnostics:
-        warnings.append("算法未返回候选动作明细；本文件仍可用于复现当前 Machine 输入。")
+        warnings.append("未获取到候选动作明细（查询关闭或算法未返回）；本文件仍可用于复现当前 Machine 输入。")
     if playback_snapshot is None:
         warnings.append("请求未携带浏览器拓扑快照；模块与机器手占位请以 UpdateParams 和 MoveList 为准。")
 
