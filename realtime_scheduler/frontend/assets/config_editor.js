@@ -4,6 +4,31 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/test_draft_navigation.ts
+async function resolveTestDraft(dirty, choose, save, discard) {
+  if (!dirty) return true;
+  const choice = await choose();
+  if (choice === "cancel") return false;
+  if (choice === "save") await save();
+  else await discard();
+  return true;
+}
+function createDraftChoiceDialog(dialog) {
+  let pending = null;
+  return () => {
+    if (pending) return pending;
+    pending = new Promise((resolve) => {
+      dialog.returnValue = "cancel";
+      dialog.addEventListener("close", () => {
+        pending = null;
+        resolve(dialog.returnValue === "save" || dialog.returnValue === "discard" ? dialog.returnValue : "cancel");
+      }, { once: true });
+      dialog.showModal();
+    });
+    return pending;
+  };
+}
+
 // src/route_editor_logic.ts
 var route_editor_logic_exports = {};
 __export(route_editor_logic_exports, {
@@ -235,13 +260,6 @@ async function requestDeadlockDiagnostic(input) {
     blob: await response.blob(),
     fileName: encodedName ? decodeURIComponent(encodedName) : fallbackName || "deadlock-diagnostic.json"
   };
-}
-async function requestSearchControl(command, actionKey = null) {
-  return requestJson("/api/search-control", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(actionKey ? { command, actionKey } : { command })
-  });
 }
 
 // src/wafer_dispatch_progress.ts
@@ -2087,7 +2105,7 @@ function collectElements(root) {
     importButton: root.getElementById("visualImportButton"),
     exportDiagnosticButton: root.getElementById("visualExportDeadlockDiagnostic"),
     openGantt: required("visualOpenGantt"),
-    resultButton: required("workspaceResultButton"),
+    resultButton: root.getElementById("workspaceResultButton"),
     performance: required("visualPerformance"),
     performanceWindow: required("performanceWindow")
   };
@@ -3750,7 +3768,11 @@ var VisualizationWorkspace = class {
         if (replayContext && typeof replayContext === "object" && !Array.isArray(replayContext)) {
           const embeddedPlan = replayContext.plan;
           if (embeddedPlan && typeof embeddedPlan === "object" && !Array.isArray(embeddedPlan)) {
-            this.setReplayPlan(embeddedPlan);
+            const plan = embeddedPlan;
+            this.device = plan.device || this.device;
+            this.analysisRoutes = structuredClone(plan.routes || []);
+            this.analysisRounds = structuredClone(plan.rounds || []);
+            this.setReplayPlan(plan);
           }
         }
       }
@@ -3908,7 +3930,7 @@ var VisualizationWorkspace = class {
     this.bottleneckSummary = null;
     this.analysisRequestVersion += 1;
     this.time = 0;
-    this.elements.resultButton.disabled = true;
+    if (this.elements.resultButton) this.elements.resultButton.disabled = true;
     this.elements.range.disabled = false;
     this.elements.playButton.disabled = false;
     this.elements.openGantt.href = "#";
@@ -3966,7 +3988,7 @@ var VisualizationWorkspace = class {
     if (this.elements.exportDiagnosticButton) {
       this.elements.exportDiagnosticButton.disabled = !this.replayPlan;
     }
-    this.elements.resultButton.disabled = false;
+    if (this.elements.resultButton) this.elements.resultButton.disabled = false;
     this.showSingleResult();
     this.setTopologyVisible(true);
     this.render(snapshot);
@@ -4017,7 +4039,7 @@ var VisualizationWorkspace = class {
       this.performanceWindowMode = this.elements.performanceWindow.value === "full" ? "full" : "steady";
       void this.renderPerformance();
     });
-    this.elements.resultButton.addEventListener("click", () => this.show());
+    this.elements.resultButton?.addEventListener("click", () => this.show());
     this.elements.openGantt.addEventListener("click", (event) => {
       if (this.elements.openGantt.getAttribute("aria-disabled") === "true") event.preventDefault();
     });
@@ -4104,11 +4126,9 @@ var VisualizationWorkspace = class {
     this.elements.playButton.setAttribute("aria-label", this.playing ? "\u6682\u505C\u56DE\u653E" : "\u64AD\u653E\u56DE\u653E");
     this.elements.playButton.classList.toggle("is-playing", this.playing);
   }
-  /** 单次结果只显示回放数据，结果分析页保持批量分析空态。 */
+  /** 单次结果只更新回放，不改变首页已经生成的批量报告。 */
   showSingleResult() {
     this.elements.toolbar.hidden = false;
-    this.elements.groupAnalysis.hidden = true;
-    this.elements.empty.hidden = false;
     this.elements.content.hidden = true;
     this.elements.playbackEmpty.hidden = true;
   }
@@ -4331,16 +4351,11 @@ var VisualizationWorkspace = class {
     this.pause();
     this.setTopologyVisible(false);
     this.elements.toolbar.hidden = false;
-    this.elements.groupAnalysis.hidden = true;
     this.elements.content.hidden = true;
-    this.elements.empty.hidden = false;
     this.elements.playbackEmpty.hidden = false;
-    this.elements.empty.classList.toggle("is-loading", loading);
     this.elements.playbackEmpty.classList.toggle("is-loading", loading);
-    this.elements.empty.classList.remove("is-error");
     this.elements.playbackEmpty.classList.remove("is-error");
     const loadingMarkup = loading ? `<span class="visual-loader" aria-hidden="true"></span><strong>${escapeHtml(message)}</strong>` : `<strong>${escapeHtml(message)}</strong>`;
-    this.elements.empty.innerHTML = loadingMarkup;
     this.elements.playbackEmpty.innerHTML = loadingMarkup;
   }
   /** 在工作台空状态中显示可恢复的错误。 */
@@ -4348,21 +4363,16 @@ var VisualizationWorkspace = class {
     this.pause();
     this.setTopologyVisible(false);
     this.elements.toolbar.hidden = false;
-    this.elements.groupAnalysis.hidden = true;
     this.elements.content.hidden = true;
-    this.elements.empty.hidden = false;
     this.elements.playbackEmpty.hidden = false;
-    this.elements.empty.classList.remove("is-loading");
     this.elements.playbackEmpty.classList.remove("is-loading");
-    this.elements.empty.classList.add("is-error");
     this.elements.playbackEmpty.classList.add("is-error");
     const errorMarkup = `
       <strong>\u65E0\u6CD5\u52A0\u8F7D MoveList</strong>
       <span>${escapeHtml(message)}</span>
       <label class="btn visual-import-button">${icon("upload")}\u91CD\u65B0\u9009\u62E9\u6587\u4EF6<input type="file" accept=".json,application/json" data-visual-retry></label>`;
-    this.elements.empty.innerHTML = errorMarkup;
     this.elements.playbackEmpty.innerHTML = errorMarkup;
-    [this.elements.empty, this.elements.playbackEmpty].forEach((container) => {
+    [this.elements.playbackEmpty].forEach((container) => {
       const retryInput = container.querySelector("[data-visual-retry]");
       retryInput?.addEventListener("change", () => {
         const file = retryInput.files?.item(0);
@@ -4431,7 +4441,7 @@ function testGroupSummaryCsv(summary) {
   ].map(csvEscape));
   return [headers.map(csvEscape).join(","), ...rows.map((row) => row.join(","))].join("\r\n");
 }
-function resultTable(summary, selected) {
+function resultTable(summary, selected, compact = false) {
   return summary.cases.map((item, index) => {
     const cells = [`<th scope="row">${escapeHtml2(caseLabel(item, index))}</th>`];
     if (selected.has("makespan")) {
@@ -4460,7 +4470,9 @@ function resultTable(summary, selected) {
       item.id === summary.referenceCaseId ? "is-reference" : "",
       item.analysisStatus && item.analysisStatus !== "completed" ? "is-incomplete" : ""
     ].filter(Boolean).join(" ");
-    return `<tr${rowClasses ? ` class="${rowClasses}"` : ""}>${cells.join("")}</tr>`;
+    const compactValues = cells.slice(1).map((cell) => cell.replace(/^<td(?:\s[^>]*)?>|<\/td>$/g, "")).join('<span aria-hidden="true"> \xB7 </span>');
+    const rowCells = compact ? [cells[0], `<td><div class="group-analysis-compact-values">${compactValues}</div></td>`] : cells;
+    return `<tr${rowClasses ? ` class="${rowClasses}"` : ""}>${rowCells.join("")}</tr>`;
   }).join("");
 }
 function renderTestGroupAnalysis(summary, groupName) {
@@ -4478,7 +4490,6 @@ function renderTestGroupAnalysis(summary, groupName) {
     "resource_utilization",
     "bottleneck_candidates"
   ]);
-  const reference = summary.cases.find((item) => item.id === summary.referenceCaseId);
   const selectedLabels = {
     validation: "\u6821\u9A8C\u7ED3\u679C",
     makespan: "Makespan",
@@ -4497,14 +4508,15 @@ function renderTestGroupAnalysis(summary, groupName) {
     loadlock_full_cycle_ratio: "LoadLock \u6EE1\u8F7D\u5468\u671F\u7387",
     loadlock_empty_cycle_ratio: "LoadLock \u7A7A\u8F7D\u5468\u671F\u7387"
   };
-  const tableHeaders = ["<th>\u6D4B\u8BD5</th>"];
-  if (selected.has("makespan")) tableHeaders.push("<th>Makespan</th>", "<th>\u76F8\u5BF9\u53C2\u8003</th>");
-  if (selected.has("baseline_improvement")) tableHeaders.push("<th>Baseline</th>", "<th>\u6539\u5584</th>");
-  if (selected.has("bottleneck_candidates")) tableHeaders.push("<th>\u74F6\u9888</th>");
-  if (selected.has("resource_utilization")) tableHeaders.push("<th>\u5229\u7528\u7387</th>");
-  if (selected.has("cpu_time")) tableHeaders.push("<th>CPU Time</th>");
-  if (selected.has("average_recompute_time")) tableHeaders.push("<th>\u5E73\u5747\u91CD\u7B97\u65F6\u95F4</th>");
-  if (selected.has("throughput")) tableHeaders.push("<th>\u4EA7\u80FD</th>");
+  const compactTable = selected.size <= 2;
+  const tableHeaders = compactTable ? ["<th>\u6D4B\u8BD5</th>", "<th>\u6307\u6807\u7ED3\u679C</th>"] : ["<th>\u6D4B\u8BD5</th>"];
+  if (!compactTable && selected.has("makespan")) tableHeaders.push("<th>Makespan</th>", "<th>\u76F8\u5BF9\u53C2\u8003</th>");
+  if (!compactTable && selected.has("baseline_improvement")) tableHeaders.push("<th>Baseline</th>", "<th>\u6539\u5584</th>");
+  if (!compactTable && selected.has("bottleneck_candidates")) tableHeaders.push("<th>\u74F6\u9888</th>");
+  if (!compactTable && selected.has("resource_utilization")) tableHeaders.push("<th>\u5229\u7528\u7387</th>");
+  if (!compactTable && selected.has("cpu_time")) tableHeaders.push("<th>CPU Time</th>");
+  if (!compactTable && selected.has("average_recompute_time")) tableHeaders.push("<th>\u5E73\u5747\u91CD\u7B97\u65F6\u95F4</th>");
+  if (!compactTable && selected.has("throughput")) tableHeaders.push("<th>\u4EA7\u80FD</th>");
   if (selected.has("departure_interval_cv")) tableHeaders.push("<th>\u51FA\u7AD9 CV</th>");
   if (selected.has("process_chamber_dwell")) tableHeaders.push("<th>\u52A0\u5DE5\u8154\u9A7B\u7559\u5747\u503C</th>");
   if (selected.has("robot_wafer_dwell")) tableHeaders.push("<th>\u673A\u5668\u624B\u9A7B\u7559\u5747\u503C</th>");
@@ -4516,21 +4528,74 @@ function renderTestGroupAnalysis(summary, groupName) {
   if (selected.has("validation")) tableHeaders.push("<th>\u6821\u9A8C</th>");
   return `
     <div class="group-analysis-head">
-      <div><h2>${escapeHtml2(groupName || "\u5F53\u524D\u6D4B\u8BD5\u7EC4")}</h2><p>\u53C2\u8003\u6D4B\u8BD5\uFF1A${escapeHtml2(reference?.name || "\u9996\u4E2A\u6D4B\u8BD5")} \xB7 ${summary.cacheHitCount ?? 0} \u9879\u547D\u4E2D\u7F13\u5B58</p></div>
-      <button class="btn small" type="button" data-reconfigure-analysis>\u91CD\u65B0\u9009\u62E9\u6307\u6807\u4E0E\u6D4B\u8BD5</button>
+      <div class="group-analysis-selection">${[...selected].map((metric) => `<span>${escapeHtml2(selectedLabels[metric] || metric)}</span>`).join("")}</div>
+      <div class="group-analysis-actions">
+        <button class="btn small group-analysis-back" type="button" data-return-run-results><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7-5 5 5 5M5 12h14"/></svg><span>\u8FD4\u56DE\u8FD0\u884C\u7ED3\u679C</span></button>
+        <button class="btn small" type="button" data-reconfigure-analysis>\u91CD\u65B0\u9009\u62E9\u6307\u6807\u4E0E\u6D4B\u8BD5</button>
+        <button type="button" class="btn small group-analysis-export" data-group-export-csv>\u5BFC\u51FA CSV</button>
+      </div>
     </div>
-    <div class="group-analysis-selection">${[...selected].map((metric) => `<span>${escapeHtml2(selectedLabels[metric] || metric)}</span>`).join("")}</div>
     ${summary.timedOut ? '<div class="group-analysis-warning">\u5DF2\u8FBE\u5230\u65F6\u95F4\u9884\u7B97\uFF0C\u4EE5\u4E0B\u62A5\u544A\u4FDD\u7559\u5B8C\u6210\u90E8\u5206\uFF1B\u53EF\u51CF\u5C11\u6307\u6807\u6216\u63D0\u9AD8\u65F6\u95F4\u9884\u7B97\u540E\u7EE7\u7EED\u3002</div>' : ""}
     <section class="group-analysis-table-wrap">
-      <div class="group-analysis-table-head"><div><strong>\u9010\u6D4B\u8BD5\u6307\u6807\u5BF9\u6BD4</strong><small>${summary.cases.length} \u4E2A\u6D4B\u8BD5 \xB7 ${selected.size} \u9879\u6307\u6807 \xB7 \u53C2\u8003\u9879\u5DF2\u9AD8\u4EAE</small></div><button type="button" class="btn small group-analysis-export" data-group-export-csv>\u5BFC\u51FA CSV</button></div>
       <div class="group-analysis-table-scroll">
         <table class="group-analysis-table">
           <caption class="sr-only">${escapeHtml2(groupName || "\u5F53\u524D\u6D4B\u8BD5\u7EC4")}\u9010\u6D4B\u8BD5\u6307\u6807\u5BF9\u6BD4</caption>
           <thead><tr>${tableHeaders.join("")}</tr></thead>
-          <tbody>${resultTable(summary, selected)}</tbody>
+          <tbody>${resultTable(summary, selected, compactTable)}</tbody>
         </table>
       </div>
     </section>`;
+}
+
+// src/result_card_run_queue.ts
+function createResultCardRunQueue(options) {
+  const pendingTestIds = [];
+  const queuedOrRunning = /* @__PURE__ */ new Set();
+  let draining = false;
+  async function drain() {
+    if (draining) return;
+    draining = true;
+    try {
+      while (pendingTestIds.length) {
+        const testId = pendingTestIds.shift();
+        options.onStateChange?.(testId, "running");
+        try {
+          await options.runTest(testId);
+        } catch {
+        } finally {
+          queuedOrRunning.delete(testId);
+          options.onStateChange?.(testId, "settled");
+        }
+      }
+    } finally {
+      draining = false;
+    }
+  }
+  return {
+    /** 将测试加入队尾，返回 false 表示该测试已在等待或运行。 */
+    enqueue(rawTestId) {
+      const testId = String(rawTestId || "").trim();
+      if (!testId || queuedOrRunning.has(testId)) return false;
+      pendingTestIds.push(testId);
+      queuedOrRunning.add(testId);
+      options.onStateChange?.(testId, "queued");
+      queueMicrotask(() => void drain());
+      return true;
+    },
+    /** 返回当前等待与运行的测试数，供页面提示使用。 */
+    get size() {
+      return queuedOrRunning.size;
+    },
+    /** 移除尚未开始的队列项；当前正在运行的测试交由后端终止。 */
+    clearPending() {
+      const removed = pendingTestIds.splice(0);
+      for (const testId of removed) {
+        queuedOrRunning.delete(testId);
+        options.onStateChange?.(testId, "settled");
+      }
+      return removed;
+    }
+  };
 }
 
 // src/editor_models.ts
@@ -4702,10 +4767,18 @@ function normalizeRound(raw, roundIndex, fallbackTime, firstTaskId = roundIndex,
 // src/config_editor.ts
 var { VISIT_SHARED_FIELDS: VISIT_SHARED_FIELDS2, automaticTemplateName: automaticTemplateName2 } = route_editor_logic_exports;
 var visualizationWorkspace = createVisualizationWorkspace();
-var batchPerformanceAnalyses = /* @__PURE__ */ new Map();
-var batchBottleneckSummaries = /* @__PURE__ */ new Map();
-var batchBottleneckRequests = /* @__PURE__ */ new Map();
-var batchBottleneckErrors = /* @__PURE__ */ new Map();
+var chooseTestDraft = createDraftChoiceDialog(document.getElementById("testDraftDialog"));
+var activeRunContext = null;
+var activeBatchContext = null;
+var batchSelectionMode = "run";
+var resultTestFilterIds = null;
+var expandedBatchTestId = "";
+var batchTestDetailsRequestVersion = 0;
+var batchCardClickTimer = 0;
+var batchResultItemHistory = /* @__PURE__ */ new Map();
+var runPreparationActive = false;
+var navigationPending = false;
+var activeManagementSection = "cases";
 var batchCardAnalyses = /* @__PURE__ */ new Map();
 var batchCardAnalysisRequests = /* @__PURE__ */ new Map();
 var activeGroupAnalysisJobId = "";
@@ -4778,6 +4851,7 @@ var PROCESSING_STATION_TYPES = /* @__PURE__ */ new Set([
 var FIRST_ROBOT_SLOT_ID = 1;
 var DUAL_ARM_SLOT_COUNT = 2;
 var BATCH_STATUS_POLL_MILLISECONDS = 1e3;
+var BATCH_CARD_SINGLE_CLICK_DELAY_MILLISECONDS = 500;
 var WORKSPACE_TRANSFER_POLL_MILLISECONDS = 500;
 var TEST_ORDER_COLLATOR = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
 var DEFAULT_DUMMY_WAFER_COUNT = 8;
@@ -4807,7 +4881,6 @@ var state = {
   batchCancelRequested: false,
   batchCancelSent: false,
   batchResult: null,
-  selectedBatchTestId: "",
   deviceName: "",
   baseDevice: null,
   device: null,
@@ -4865,10 +4938,6 @@ var continuousDecisionEnabled = false;
 var continuousDecisionSubmittedSearchId = "";
 var userChosenActionKey = "";
 var userChosenSearchId = "";
-var singleRunActive = false;
-var singleRunCancelling = false;
-var activeSingleRunId = "";
-var singleRunAbortController = null;
 var runStatusStartedAt = 0;
 var runStatusElapsedMs = 0;
 var runStatusTimer = 0;
@@ -5233,7 +5302,7 @@ function parseDeviceFileText(text) {
 }
 async function loadDevice(file) {
   if (!file) return;
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   updateDataTransferProgress({ progress: 5, message: "\u6B63\u5728\u8BFB\u53D6 init JSON" });
   const fileText = await file.text();
   updateDataTransferProgress({ progress: 25, message: "\u6B63\u5728\u6821\u9A8C\u8BBE\u5907\u62D3\u6251" });
@@ -5319,7 +5388,7 @@ function uploadWorkspaceTransferContent(transferId, file) {
 async function runWorkspaceTransfer(kind, file) {
   if (dataTransferMode === "export") {
     if (!state.workspaceDeviceId) throw new Error("\u8BF7\u5148\u9009\u62E9\u8BBE\u5907");
-    if (state.dirty) await saveCurrentTest(true);
+    if (!await settleTestDraft()) return;
     if (state.deviceTimingDirty) await saveDeviceTiming();
     if (kind === "test" && !state.testCaseId) throw new Error("\u8BF7\u5148\u9009\u62E9\u6D4B\u8BD5\u96C6");
   }
@@ -5518,7 +5587,7 @@ function applyDeviceTopology(device, deviceName, rawRobotSlots = {}) {
   state.processModules = stations.filter(([, item]) => PROCESSING_STATION_TYPES.has(String(item.Type || "").trim().toLowerCase())).map(([name]) => name).sort(natural);
   state.robotNames = Object.keys(state.device.Robots).sort(natural);
   state.robotScopes = Object.fromEntries(Object.entries(state.device.Robots).map(([name, robot]) => [name, [...new Set(Object.values(robot.ArmInfo || {}).filter((arm) => arm.IsEnable !== false).flatMap((arm) => arm.AccessibleStations || []))]]));
-  visualizationWorkspace.setDevice(state.device);
+  if (!activeRunContext && !state.batchResult) visualizationWorkspace.setDevice(state.device);
   if (!state.loadPorts.length || !state.processModules.length) throw new Error("\u8BBE\u5907\u5FC5\u987B\u5305\u542B LoadPort \u548C ProcessChamber");
 }
 function buildDeviceTimingDraft(device) {
@@ -5913,7 +5982,6 @@ async function saveDeviceTiming() {
     });
     state.workspaceDevice.device = structuredClone(result.device);
     applyDeviceTopology(result.device, state.deviceName, state.robotSlots);
-    resetRunResult();
     resetDeviceTimingDraft("\u65F6\u95F4\u53C2\u6570\u5DF2\u4FDD\u5B58\u5E76\u5E94\u7528\u5230\u5168\u90E8\u6D4B\u8BD5");
     setWorkspaceStatus("\u8BBE\u5907\u65F6\u95F4\u53C2\u6570\u5DF2\u4FDD\u5B58", "saved");
   } catch (error) {
@@ -6022,7 +6090,7 @@ function refreshCompactSelect(select) {
   trigger.disabled = select.disabled;
   trigger.setAttribute("aria-label", `${compactSelectLabel(select)}\uFF1A${selectedOption?.textContent?.trim() || "\u672A\u9009\u62E9"}`);
   trigger.querySelector(".compact-select-value").textContent = selectedOption?.textContent?.trim() || "\u672A\u9009\u62E9";
-  menu.innerHTML = Array.from(select.options).map((option, index) => `<button class="compact-select-option" type="button" role="option" data-option-index="${index}" aria-selected="${option.selected}" ${option.disabled ? "disabled" : ""}>${escapeHtml3(option.textContent?.trim() || "\u672A\u547D\u540D\u9009\u9879")}</button>`).join("");
+  menu.innerHTML = Array.from(select.options).map((option, index) => `<button class="compact-select-option" type="button" role="option" data-option-index="${index}" aria-selected="${option.selected}" ${option.disabled ? "disabled" : ""} ${option.hidden ? "hidden" : ""}>${escapeHtml3(option.textContent?.trim() || "\u672A\u547D\u540D\u9009\u9879")}</button>`).join("");
 }
 function initializeCompactSelects() {
   compactSelectTargets().forEach((select) => {
@@ -6124,8 +6192,9 @@ function renderWorkspaceControls() {
   document.getElementById("copyTestButton").disabled = !hasTest;
   document.getElementById("saveTestButton").disabled = !hasTest;
   document.getElementById("deleteTestButton").disabled = tests.length <= 1;
-  const batchDisabled = state.batchRunning && state.batchCancelRequested || singleRunActive || !state.serviceCompatible || !visibleTests.length;
+  const batchDisabled = runPreparationActive || state.batchRunning && state.batchCancelRequested || !state.serviceCompatible || !visibleTests.length;
   document.getElementById("batchRunButton").disabled = batchDisabled;
+  document.getElementById("batchResultFilterButton").disabled = !visibleTests.length;
   const emptyHint = document.getElementById("emptyGroupHint");
   emptyHint.classList.toggle("visible", Boolean(state.workspaceDeviceId) && !visibleTests.length);
   document.getElementById("emptyGroupNewTestButton").disabled = !state.workspaceDeviceId;
@@ -6135,66 +6204,119 @@ function renderWorkspaceControls() {
     cascade: "\u7EA7\u8054"
   }[detectDeviceTopologyLayout(state.device)];
   document.getElementById("deviceSummary").innerHTML = state.device ? `<span class="chip good">${escapeHtml3(deviceType)}</span>` : `<span class="chip">\u5C1A\u672A\u9009\u62E9\u8BBE\u5907</span>`;
+  const busy = runPreparationActive || state.batchRunning;
+  document.getElementById("runStrategyFields").disabled = busy;
+  document.getElementById("openRunSettingsButton").disabled = busy;
+  for (const [sourceId, targetId] of [["deviceSelect", "runDeviceSelect"], ["testGroupSelect", "runGroupSelect"]]) {
+    const source = document.getElementById(sourceId);
+    const target = document.getElementById(targetId);
+    target.innerHTML = source.innerHTML;
+    target.value = source.value;
+    target.disabled = source.disabled || busy;
+  }
+  document.getElementById("testContentFields").disabled = !hasTest;
+  if (!hasTest) document.getElementById("roundList").innerHTML = '<p class="hint">\u9009\u62E9\u6216\u65B0\u5EFA\u6D4B\u8BD5\u540E\u5F00\u59CB\u7F16\u8F91\u3002</p>';
+  document.getElementById("roundCount").disabled = !hasTest;
+  document.getElementById("saveAndRunPageButton").disabled = !hasTest;
+  document.getElementById("discardTestButton").disabled = !hasTest || !state.dirty;
+  document.querySelectorAll('[data-tab-target="test-management"], [data-tab-target="device-config"], [data-tab-target="route"]').forEach((button) => {
+    button.disabled = busy;
+    button.title = busy ? "\u8FD0\u884C\u7ED3\u675F\u540E\u53EF\u7F16\u8F91\u914D\u7F6E" : "";
+  });
+  renderTestCatalog(visibleTests);
   compactSelectTargets().forEach(refreshCompactSelect);
+}
+function renderTestCatalog(tests) {
+  const body = document.getElementById("testCatalogBody");
+  if (!body) return;
+  body.innerHTML = tests.map((test) => {
+    return `<div class="test-list-row" data-test-row="${escapeHtml3(test.id)}" role="listitem">
+      <strong class="test-list-name">${escapeHtml3(test.name || "\u672A\u547D\u540D\u6D4B\u8BD5")}</strong>
+      <div class="test-row-actions"><button class="btn small primary" type="button" data-test-action="edit" data-test-id="${escapeHtml3(test.id)}">\u7F16\u8F91</button><button class="btn small" type="button" data-test-action="copy" data-test-id="${escapeHtml3(test.id)}">\u590D\u5236</button><button class="btn small danger" type="button" data-test-action="delete" data-test-id="${escapeHtml3(test.id)}" ${state.workspaceDevice?.tests?.length <= 1 ? "disabled" : ""}>\u5220\u9664</button></div>
+    </div>`;
+  }).join("");
+}
+function showTestEditor() {
+  document.getElementById("testCatalogView").hidden = true;
+  document.getElementById("testEditorPanel").hidden = false;
+  renderRounds();
+  document.getElementById("testCaseName").focus();
+}
+function showTestCatalog() {
+  closeStepDrawer();
+  closePJobRoutePicker(false);
+  document.getElementById("testEditorPanel").hidden = true;
+  document.getElementById("testCatalogView").hidden = false;
+  renderWorkspaceControls();
+}
+async function switchManagementSection(section) {
+  if (!["cases", "routes", "devices"].includes(section) || section === activeManagementSection) return;
+  if (!await settleTestDraft()) return;
+  if (activeManagementSection === "routes" && state.routeDirty) {
+    document.getElementById("testDraftTitle").textContent = "\u8DEF\u5F84\u6A21\u677F\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539";
+    try {
+      if (!await resolveTestDraft(true, chooseTestDraft, saveRoutes, async () => discardRouteChanges())) return;
+    } finally {
+      document.getElementById("testDraftTitle").textContent = "\u6D4B\u8BD5\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539";
+    }
+  }
+  activeManagementSection = section;
+  document.querySelectorAll("[data-management-target]").forEach((button) => {
+    const selected = button.dataset.managementTarget === section;
+    button.classList.toggle("active", selected);
+    if (selected) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  document.querySelectorAll("[data-management-view]").forEach((view) => {
+    const selected = view.dataset.managementView === section;
+    view.classList.toggle("active", selected);
+    view.hidden = !selected;
+  });
+  if (section === "devices") renderDeviceTimingConfiguration();
+  if (section === "cases") showTestCatalog();
 }
 function setWorkspaceStatus(message, kind = "") {
   const status = document.getElementById("workspaceStatus");
   status.textContent = message;
-  status.className = `workspace-status ${kind}`.trim();
+  status.className = `workspace-status sr-only ${kind}`.trim();
 }
-var autoSaveTimer = null;
 var testEditRevision = 0;
 var testSaveInFlight = null;
-function scheduleAutoSave() {
-  window.clearTimeout(autoSaveTimer);
-  autoSaveTimer = window.setTimeout(() => {
-    if (state.dirty) saveCurrentTest(true).catch((error) => setWorkspaceStatus(`\u81EA\u52A8\u4FDD\u5B58\u5931\u8D25\uFF1A${error.message}`, "dirty"));
-  }, 600);
+async function discardTestDraft() {
+  if (!state.testCaseId) return;
+  const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${state.testCaseId}`);
+  applyTestCase(result.test);
+}
+async function settleTestDraft() {
+  const allowed = await resolveTestDraft(state.dirty, chooseTestDraft, () => saveCurrentTest(false), discardTestDraft);
+  if (!allowed) renderWorkspaceControls();
+  return allowed && !state.dirty;
 }
 function markTestDirty() {
   if (!state.testCaseId) return;
   testEditRevision += 1;
   state.dirty = true;
   setWorkspaceStatus(`\u201C${state.testCaseName}\u201D\u6709\u672A\u4FDD\u5B58\u4FEE\u6539`, "dirty");
-  scheduleAutoSave();
+  document.getElementById("discardTestButton").disabled = false;
 }
 function markRoutesDirty() {
   state.routeDirty = true;
   setWorkspaceStatus("\u5F53\u524D\u8DEF\u5F84\u6A21\u677F\u6709\u672A\u4FDD\u5B58\u4FEE\u6539\uFF0C\u8BF7\u5728\u6A21\u677F\u65C1\u70B9\u51FB\u201C\u4FDD\u5B58\u201D", "dirty");
 }
 function resetRunResult() {
+  setRunResultView("results");
   visualizationWorkspace.clear();
   state.batchResult = null;
-  state.selectedBatchTestId = "";
-  batchPerformanceAnalyses.clear();
-  batchBottleneckSummaries.clear();
-  batchBottleneckRequests.clear();
-  batchBottleneckErrors.clear();
+  activeBatchContext = null;
   batchCardAnalyses.clear();
   batchCardAnalysisRequests.clear();
-  ["metricTime", "metricMakespan", "metricMoves", "metricValidation"].forEach((id) => {
-    document.getElementById(id).textContent = "\u2014";
-  });
-  ["metricTimeDetail", "metricMakespanDetail", "metricMovesDetail", "metricValidationDetail"].forEach((id) => {
-    document.getElementById(id).textContent = "";
-  });
-  document.getElementById("metricContext").textContent = "\u8FD0\u884C\u603B\u89C8";
-  document.getElementById("batchOverviewButton").hidden = true;
-  document.getElementById("testGroupAnalysisButton").hidden = true;
   document.getElementById("testGroupAnalysisPanel").hidden = true;
   document.getElementById("testGroupAnalysisPanel").innerHTML = "";
-  document.getElementById("metricTimeLabel").textContent = "Total Time";
-  document.getElementById("metricMakespanLabel").textContent = "Makespan";
-  setBottleneckMetric(null);
-  document.getElementById("metricValidationLabel").textContent = "Validation";
-  document.getElementById("metricValidation").closest(".metric").classList.remove("is-success", "is-error");
-  document.getElementById("batchProgress").classList.remove("visible");
   document.getElementById("batchResults").innerHTML = "";
-  for (const id of ["logButton", "ganttButton", "batchGanttButton"]) {
-    const link = document.getElementById(id);
-    link.href = "#";
-    link.setAttribute("aria-disabled", "true");
-  }
+  closeBatchTestDetails();
+  updateAnalysisReportAvailability();
+  updateBatchLogDownload({});
+  resetBatchGanttLink();
   resetSearchTelemetryView();
   writeTerminal("$ \u6D4B\u8BD5\u96C6\u5DF2\u5C31\u7EEA\uFF0C\u7B49\u5F85\u8FD0\u884C\u2026");
 }
@@ -6282,9 +6404,11 @@ function applyTestCase(testCase) {
   state.routeEditSnapshot = null;
   state.routeEditGroupingProfile = null;
   state.routeEditIsNew = false;
-  const visualizationPlan = runtimePJobRouteInstances();
-  visualizationWorkspace.setAnalysisConfiguration(visualizationPlan.routes, visualizationPlan.rounds);
-  visualizationWorkspace.setReplayPlan(buildPayload());
+  if (!activeRunContext && !state.batchResult) {
+    const visualizationPlan = runtimePJobRouteInstances();
+    visualizationWorkspace.setAnalysisConfiguration(visualizationPlan.routes, visualizationPlan.rounds);
+    visualizationWorkspace.setReplayPlan(buildPayload());
+  }
   state.dirty = false;
   document.getElementById("roundCount").value = state.roundCount;
   document.querySelectorAll('input[name="strategy"]').forEach((input) => {
@@ -6297,10 +6421,8 @@ function applyTestCase(testCase) {
   });
   updateStrategyOptionVisibility();
   document.getElementById("roundCount").disabled = false;
-  if (Object.keys(state.algorithmMetadata).length) showAlgorithmDetails(state.strategy);
   renderAll();
   renderWorkspaceControls();
-  resetRunResult();
   setWorkspaceStatus(`\u5DF2\u8F7D\u5165\u201C${state.testCaseName}\u201D`, "saved");
 }
 function currentTestSnapshot(name = state.testCaseName) {
@@ -6309,10 +6431,10 @@ function currentTestSnapshot(name = state.testCaseName) {
   return structuredClone({
     name,
     group: state.testCaseGroup,
-    strategy: state.strategy,
+    strategy: state.workspaceDevice?.tests?.find((test) => test.id === state.testCaseId)?.strategy || "heuristic",
     roundCount: state.roundCount,
     times: state.times,
-    options: state.options,
+    options: state.workspaceDevice?.tests?.find((test) => test.id === state.testCaseId)?.options || {},
     cleans: state.cleans.map(runtimeClean),
     routeConfigs: state.testRouteConfigs,
     rounds: state.rounds
@@ -6354,6 +6476,24 @@ async function saveRoutes() {
   renderWorkspaceControls();
   setWorkspaceStatus("\u8DEF\u5F84\u6A21\u677F\u5DF2\u4FDD\u5B58\uFF0C\u5206\u7EC4\u5DF2\u5237\u65B0", "saved");
   return true;
+}
+function discardRouteChanges() {
+  if (!state.workspaceDevice) return;
+  state.routes = Array.isArray(state.workspaceDevice.routes) ? structuredClone(state.workspaceDevice.routes) : [];
+  state.routes.forEach((route) => normalizeRoute(route));
+  state.testRouteConfigs = normalizeTestRouteConfigs(state.testRouteConfigs, state.routes);
+  captureRouteGroupingProfiles();
+  state.routeDirty = false;
+  state.routeEditingIndex = -1;
+  state.routeEditSnapshot = null;
+  state.routeEditGroupingProfile = null;
+  state.routeEditIsNew = false;
+  state.routeNameChanges.clear();
+  state.expandedRouteProcessGroups.clear();
+  state.expandedRouteGroups.clear();
+  state.expandedRoutes.clear();
+  renderRoutes();
+  setWorkspaceStatus("\u5DF2\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u8DEF\u5F84\u4FEE\u6539", "saved");
 }
 function beginRouteEdit(routeIndex, isNew = false) {
   if (!state.routes[routeIndex]) return false;
@@ -6427,10 +6567,9 @@ async function saveCurrentTest(silent = false) {
       state.dirty = false;
       state.routeNameChanges.clear();
       renderWorkspaceControls();
-      setWorkspaceStatus(`${silent ? "\u5DF2\u81EA\u52A8\u4FDD\u5B58" : "\u5DF2\u4FDD\u5B58"}\u201C${state.testCaseName}\u201D`, "saved");
+      setWorkspaceStatus(`\u5DF2\u4FDD\u5B58\u201C${state.testCaseName}\u201D`, "saved");
     } else {
       state.dirty = true;
-      scheduleAutoSave();
     }
     return true;
   })();
@@ -6443,7 +6582,7 @@ async function saveCurrentTest(silent = false) {
 }
 async function createTestCase(copyCurrent = false, targetGroup = state.activeTestGroup) {
   if (!state.workspaceDeviceId) throw new Error("\u8BF7\u5148\u9009\u62E9\u8BBE\u5907");
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   const source = copyCurrent ? currentTestSnapshot(`${state.testCaseName} \u526F\u672C`) : makeDefaultTestCase(`\u6D4B\u8BD5\u96C6 ${(state.workspaceDevice?.tests?.length || 0) + 1}`);
   source.group = targetGroup;
   const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests`, {
@@ -6462,7 +6601,7 @@ async function createTestGroup() {
   if (!group) throw new Error("\u6D4B\u8BD5\u7EC4\u522B\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
   const exists = (state.workspaceDevice?.testGroups || []).includes(group) || (state.workspaceDevice?.tests || []).some((test) => String(test.group || "").trim() === group);
   if (exists) throw new Error(`\u6D4B\u8BD5\u7EC4\u522B\u201C${group}\u201D\u5DF2\u7ECF\u5B58\u5728`);
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   let result;
   try {
     result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/groups`, {
@@ -6481,7 +6620,6 @@ async function createTestGroup() {
   state.testCaseGroup = group;
   state.dirty = false;
   renderWorkspaceControls();
-  resetRunResult();
   setWorkspaceStatus(`\u5DF2\u65B0\u5EFA\u6D4B\u8BD5\u7EC4\u522B\u201C${group}\u201D\uFF0C\u8BF7\u5728\u8BE5\u7EC4\u4E2D\u65B0\u5EFA\u6D4B\u8BD5`, "saved");
 }
 async function renameCurrentTestGroup() {
@@ -6490,7 +6628,7 @@ async function renameCurrentTestGroup() {
   const group = await showWorkspaceDialog({ title: "\u91CD\u547D\u540D\u6D4B\u8BD5\u7EC4\u522B", message: "\u7EC4\u5185\u6D4B\u8BD5\u4F1A\u4FDD\u7559\uFF0C\u5E76\u540C\u6B65\u4F7F\u7528\u65B0\u7EC4\u522B\u540D\u79F0\u3002", value: oldName, needsInput: true });
   if (group === null || group === oldName) return;
   if (!group) throw new Error("\u6D4B\u8BD5\u7EC4\u522B\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/groups`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -6513,7 +6651,7 @@ async function deleteCurrentTestGroup() {
   const displayName = group || "\u672A\u5206\u7EC4";
   const confirmed = await showWorkspaceDialog({ title: "\u5220\u9664\u6D4B\u8BD5\u7EC4\u522B", message: `\u786E\u5B9A\u5220\u9664\u201C${displayName}\u201D\u5417\uFF1F${impact}`, dangerous: true });
   if (!confirmed) return;
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/groups`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
@@ -6535,7 +6673,6 @@ async function deleteCurrentTestGroup() {
     applyTestCase(nextResult.test);
   } else {
     renderWorkspaceControls();
-    resetRunResult();
     setWorkspaceStatus(`\u5DF2\u5220\u9664\u6D4B\u8BD5\u7EC4\u522B\u201C${displayName}\u201D`, "saved");
   }
 }
@@ -6561,11 +6698,10 @@ async function deleteCurrentTest() {
   state.testCaseGroup = currentGroup;
   state.dirty = false;
   renderWorkspaceControls();
-  resetRunResult();
   setWorkspaceStatus(`\u5DF2\u5220\u9664\u6D4B\u8BD5\u201C${deletedTestName}\u201D`, "saved");
 }
 async function selectWorkspaceTest(testId) {
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   const index = state.workspaceDevice?.tests?.findIndex((test) => test.id === testId) ?? -1;
   if (index < 0) throw new Error(`\u6D4B\u8BD5\u96C6\u4E0D\u5B58\u5728\uFF1A${testId}`);
   const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${testId}`);
@@ -6574,7 +6710,7 @@ async function selectWorkspaceTest(testId) {
   applyTestCase(testCase);
 }
 async function selectWorkspaceGroup(group) {
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   state.activeTestGroup = group;
   const testCase = state.workspaceDevice?.tests?.find((test) => String(test.group || "").trim() === group);
   if (!testCase) {
@@ -6583,11 +6719,12 @@ async function selectWorkspaceGroup(group) {
     state.testCaseGroup = group;
     state.dirty = false;
     renderWorkspaceControls();
-    resetRunResult();
+    showCurrentGroupTestCards(true);
     setWorkspaceStatus(`\u6D4B\u8BD5\u7EC4\u522B\u201C${group || "\u672A\u5206\u7EC4"}\u201D\u6682\u65E0\u6D4B\u8BD5`, "saved");
     return;
   }
   await selectWorkspaceTest(testCase.id);
+  showCurrentGroupTestCards(true);
 }
 async function selectWorkspaceDevice(deviceId, preferredTestId = "") {
   const result = await requestJson(`/api/workspaces/${deviceId}`);
@@ -6600,17 +6737,21 @@ async function selectWorkspaceDevice(deviceId, preferredTestId = "") {
   state.routes = Array.isArray(result.device.routes) ? structuredClone(result.device.routes) : [];
   state.cleans = Array.isArray(result.device.cleans) ? structuredClone(result.device.cleans).map(normalizeClean) : [];
   if (!result.device.tests.length) {
-    const created = await requestJson(`/api/workspaces/${deviceId}/tests`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeDefaultTestCase())
-    });
-    state.workspaceDevice.tests.push(created.test);
+    state.testCaseId = "";
+    state.testCaseName = "";
+    state.rounds = [];
+    state.dirty = false;
+    renderAll();
+    renderWorkspaceControls();
+    showCurrentGroupTestCards(true);
+    setWorkspaceStatus("\u8BE5\u8BBE\u5907\u6682\u65E0\u6D4B\u8BD5\uFF0C\u8BF7\u5728\u6D4B\u8BD5\u7BA1\u7406\u4E2D\u65B0\u5EFA\u6216\u5BFC\u5165", "saved");
+    return;
   }
   const summary = state.workspaceDevices.find((device) => device.id === deviceId);
   if (summary) summary.testCount = state.workspaceDevice.tests.length;
   const selected = state.workspaceDevice.tests.find((test) => test.id === preferredTestId) || state.workspaceDevice.tests[0];
   await selectWorkspaceTest(selected.id);
+  showCurrentGroupTestCards(true);
 }
 async function loadWorkspaceCatalog(preferredDeviceId = "", preferredTestId = "") {
   const result = await requestJson("/api/workspaces");
@@ -6645,7 +6786,7 @@ function resetWorkspaceSelection() {
   state.deviceTimingStatusMessage = "\u9009\u62E9\u8BBE\u5907\u540E\u5F00\u59CB\u914D\u7F6E";
   renderWorkspaceControls();
   renderDeviceTimingConfiguration();
-  resetRunResult();
+  showCurrentGroupTestCards(true);
 }
 async function deleteWorkspaceDevice() {
   if (!state.workspaceDeviceId) return;
@@ -6667,13 +6808,68 @@ async function deleteWorkspaceDevice() {
     setWorkspaceStatus(`\u8BBE\u5907\u5DF2\u5220\u9664\uFF0C\u4F46\u76EE\u5F55\u5237\u65B0\u5931\u8D25\uFF1A${error.message}`, "dirty");
   }
 }
-function switchTab(name) {
-  document.querySelectorAll("[data-tab-target]").forEach((button) => button.classList.toggle("active", button.dataset.tabTarget === name));
-  document.querySelectorAll("[data-tab-view]").forEach((view) => view.classList.toggle("active", view.dataset.tabView === name));
-  document.getElementById("scheduleSide").classList.toggle("is-hidden", name !== "schedule");
-  document.getElementById("pageLayout").classList.toggle("editor-mode", name !== "schedule");
-  if (name === "device-config") renderDeviceTimingConfiguration();
-  if (name !== "route") closeStepDrawer();
+function canOpenAnalysisReport() {
+  return Boolean(state.batchResult?.items?.some((item) => hasBatchResultMetrics(item) && item.resultUrl));
+}
+function updateAnalysisReportAvailability() {
+  const button = document.getElementById("analysisReportViewButton");
+  const enabled = canOpenAnalysisReport();
+  button.disabled = !enabled;
+  button.title = enabled ? "\u914D\u7F6E\u6216\u67E5\u770B\u6D4B\u8BD5\u7EC4\u5206\u6790\u62A5\u544A" : "\u81F3\u5C11\u5B8C\u6210\u4E00\u9879\u53EF\u5206\u6790\u6D4B\u8BD5\u540E\u624D\u80FD\u67E5\u770B\u5206\u6790\u62A5\u544A";
+  if (!enabled && !document.getElementById("runAnalysisView").hidden) setRunResultView("results");
+}
+function setRunResultView(view) {
+  const analysis = view === "analysis";
+  if (analysis && !canOpenAnalysisReport()) return;
+  document.getElementById("runResultsView").hidden = analysis;
+  document.getElementById("runAnalysisView").hidden = !analysis;
+  document.querySelectorAll("[data-result-view]").forEach((button) => {
+    const selected = button.dataset.resultView === view;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+}
+async function switchTab(name) {
+  if (navigationPending) return;
+  const requestedManagementSection = name === "route" ? "routes" : name === "device-config" ? "devices" : null;
+  if (requestedManagementSection) name = "test-management";
+  if (document.querySelector("[data-tab-view].active")?.dataset.tabView === name) {
+    if (requestedManagementSection) await switchManagementSection(requestedManagementSection);
+    return;
+  }
+  if ((runPreparationActive || state.batchRunning) && !["schedule", "playback"].includes(name)) return;
+  navigationPending = true;
+  try {
+    if (!await settleTestDraft()) return;
+    if (activeManagementSection === "routes" && name !== "test-management" && state.routeDirty) {
+      document.getElementById("testDraftTitle").textContent = "\u8DEF\u5F84\u6A21\u677F\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539";
+      try {
+        if (!await resolveTestDraft(true, chooseTestDraft, saveRoutes, async () => discardRouteChanges())) return;
+      } finally {
+        document.getElementById("testDraftTitle").textContent = "\u6D4B\u8BD5\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539";
+      }
+    }
+    document.querySelectorAll(".primary-sidebar [data-tab-target]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.tabTarget === name);
+      if (button.dataset.tabTarget === name) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+    document.querySelectorAll("[data-tab-view]").forEach((view) => view.classList.toggle("active", view.dataset.tabView === name));
+    const managementSubtabs = document.querySelector(".sidebar-subtabs");
+    if (managementSubtabs) managementSubtabs.hidden = name !== "test-management";
+    document.getElementById("scheduleSide").classList.toggle("is-hidden", name !== "schedule");
+    document.getElementById("pageLayout").classList.toggle("editor-mode", name !== "schedule");
+    if (name === "test-management" && requestedManagementSection) await switchManagementSection(requestedManagementSection);
+    if (name === "test-management" && activeManagementSection === "devices") renderDeviceTimingConfiguration();
+    closeStepDrawer();
+    closePJobRoutePicker(false);
+    if (name === "schedule") renderAll();
+    renderWorkspaceControls();
+  } catch (error) {
+    setWorkspaceStatus(`\u65E0\u6CD5\u79BB\u5F00\u6D4B\u8BD5\uFF1A${error.message}`, "dirty");
+  } finally {
+    navigationPending = false;
+  }
 }
 function resizeRounds(count) {
   normalizeRounds();
@@ -7163,7 +7359,7 @@ function renderRouteInstanceSteps(route, pjob, loadPort = "") {
   }
   return `<table class="route-table"><thead><tr><th>StepID</th><th>\u7C7B\u578B</th><th>\u53EF\u9009\u8154\u5BA4 / \u673A\u5668\u624B</th><th>PostStepID</th><th>NeedProcess</th></tr></thead><tbody>${(runtimeRoute.stages || []).map((stage, stageIndex) => {
     const fixed = isFixedRouteStep(runtimeRoute, stageIndex);
-    return `<tr ${fixed ? "" : "data-step-card"} data-route-index="${routeIndex}" data-stage-index="${stageIndex}">
+    return `<tr ${fixed ? "" : 'data-step-card tabindex="0" role="button"'} data-route-index="${routeIndex}" data-stage-index="${stageIndex}">
       <td><span class="step-id-badge">${Number(stage.stepId)}</span></td>
       <td>${fixed ? `<span class="route-step-source-note">\u7531 CJob LoadPort \u51B3\u5B9A</span>` : `<span class="step-type ${stage.needProcess ? "process" : ""}">${stepKind(route, stageIndex)}</span>`}</td>
       <td>${fixed ? `<span class="route-step-readonly">\u2014</span>` : renderReadonlyCandidates(stage)}</td>
@@ -7238,7 +7434,7 @@ function openPJobRoutePicker(button) {
     groups,
     processKey: selectedProcess?.key || "",
     structureKey: selectedStructure?.key || "",
-    mode: "select"
+    mode: selectedRoute ? "edit" : "select"
   };
   document.getElementById("pjobRouteDialogTitle").textContent = `\u9009\u62E9 ${pjob.jobName} \u7684\u8DEF\u5F84`;
   const processSelect = document.getElementById("pjobRouteProcess");
@@ -7270,8 +7466,7 @@ function selectPJobRoute(routeIndex) {
   );
   normalizeRounds();
   markTestDirty();
-  context.mode = "edit";
-  renderPJobRouteDialogGroup(context.processKey, context.structureKey);
+  closePJobRoutePicker(false);
 }
 function renderPJobRoutePicker(pjob, roundIndex, cjobIndex, pjobIndex) {
   const selectedRoute = state.routes.find((route) => route.name === pjob.routeRef);
@@ -7286,6 +7481,10 @@ function renderPJobRoutePicker(pjob, roundIndex, cjobIndex, pjobIndex) {
 function renderRounds() {
   normalizeRounds();
   const host = document.getElementById("roundList");
+  if (!state.testCaseId) {
+    host.innerHTML = '<p class="hint">\u9009\u62E9\u6216\u65B0\u5EFA\u6D4B\u8BD5\u540E\u5F00\u59CB\u7F16\u8F91\u3002</p>';
+    return;
+  }
   host.innerHTML = state.rounds.map((round, roundIndex) => {
     const roundTitle = roundIndex ? `\u7B2C ${roundIndex + 1} \u8F6E\u91CD\u7B97` : "\u9996\u6B21\u6392\u7A0B";
     const serialMode = round.cjobs.some((cjob) => ["Pipeline", "Sequential"].includes(cjob.taskMode));
@@ -7390,10 +7589,10 @@ function renderStepDrawer() {
   </details>` : `<div class="empty">\u672A\u9009\u62E9\u5019\u9009\u8BBE\u5907\uFF0C\u8BF7\u5148\u5728\u8DEF\u5F84\u5217\u8868\u4E2D\u9009\u62E9\u3002</div>`;
   document.getElementById("drawerBody").innerHTML = editor;
 }
-function openPJobStepDrawer(routeIndex, stageIndex) {
+function openPJobStepDrawer(routeIndex, stageIndex, inlineContext = null) {
   const route = state.routes[routeIndex];
   if (!route || isFixedRouteStep(route, stageIndex)) return;
-  const context = pjobRoutePickerContext;
+  const context = inlineContext || pjobRoutePickerContext;
   if (!context) return;
   state.drawer = {
     scope: "test",
@@ -7491,7 +7690,6 @@ async function setRobotArmCount(robotName, armCount) {
     });
     state.workspaceDevice.robotSlots = structuredClone(result.robotSlots);
     applyDeviceTopology(state.baseDevice, state.deviceName, result.robotSlots);
-    resetRunResult();
     setWorkspaceStatus(`\u5DF2\u4FDD\u5B58 ${robotName} \u7684${boundedCount >= DUAL_ARM_SLOT_COUNT ? "\u53CC\u81C2" : "\u5355\u81C2"}\u914D\u7F6E`, "saved");
   } catch (error) {
     applyDeviceTopology(state.baseDevice, state.deviceName, previousSelections);
@@ -7565,7 +7763,6 @@ function saveHeuristicSettings() {
     state.options.heuristicConfig = weights;
   } else state.options.heuristicConfig = null;
   retainSessionSchedulingConfiguration();
-  markTestDirty();
   document.getElementById("heuristicSettingsDialog").close();
 }
 async function uploadSearchTreeCheckpoint(file) {
@@ -7588,7 +7785,6 @@ async function saveSearchTreeOptions() {
     state.options.searchTreeModelPath = modelPath;
     pendingSearchTreeCheckpointFile = null;
     retainSessionSchedulingConfiguration();
-    markTestDirty();
     renderAll();
     document.getElementById("searchTreeOptionsDialog").close();
   } finally {
@@ -7601,7 +7797,7 @@ function updateStateFromControl(control) {
   const scope = control.dataset.scope;
   const routeControl = ["stage-candidates", "stage-candidate-toggle"].includes(scope);
   if (routeControl) markRoutesDirty();
-  else markTestDirty();
+  else if (!control.dataset.option) markTestDirty();
   if (control.dataset.timeIndex !== void 0) {
     state.times[Number(control.dataset.timeIndex)] = value;
     return;
@@ -8137,7 +8333,6 @@ function renderOtherAlgorithmOptions(algorithms) {
     </label>
   `).join("");
   updateStrategyOptionVisibility();
-  renderAlgorithmMetadata();
 }
 function updateStrategyOptionVisibility() {
   const algorithm = state.availableAlgorithms.find((item) => item.strategy === state.strategy);
@@ -8146,62 +8341,14 @@ function updateStrategyOptionVisibility() {
   document.getElementById("heuristicSettings").classList.toggle("is-hidden", state.strategy !== "heuristic");
   document.getElementById("searchTreeOptions").classList.toggle("is-hidden", !optionGroups.has("search-tree"));
 }
-function showAlgorithmDetails(strategy) {
-  const metadata = state.algorithmMetadata[strategy] || {};
-  const cardName = document.querySelector(`[data-strategy-card="${CSS.escape(strategy)}"] b`)?.textContent;
-  document.getElementById("algorithmHoverInfo").innerHTML = `
-    <span class="algorithm-hover-info-name">${escapeHtml3(metadata.name || cardName || strategy)}<small>\u7B97\u6CD5\u7B80\u4ECB</small></span>
-    <span class="algorithm-hover-info-description">${escapeHtml3(metadata.introduction || "\u6682\u65E0\u7B97\u6CD5\u7B80\u4ECB")}</span>
-  `;
-}
 function displayStrategyName(strategy) {
   const normalized = String(strategy || "heuristic");
   const cardName = document.querySelector(`[data-strategy-card="${CSS.escape(normalized)}"] b`)?.textContent;
   return state.algorithmMetadata[normalized]?.name || cardName || normalized;
 }
-function renderAlgorithmMetadata() {
-  document.querySelectorAll("[data-strategy-card]").forEach((card) => {
-    const strategy = card.dataset.strategyCard;
-    card.onmouseenter = () => showAlgorithmDetails(strategy);
-    card.onfocusin = () => showAlgorithmDetails(strategy);
-  });
-  const strategyOptions = document.querySelector(".strategy-options");
-  strategyOptions.onmouseleave = () => showAlgorithmDetails(state.strategy);
-  strategyOptions.onfocusout = (event) => {
-    if (!strategyOptions.contains(event.relatedTarget)) showAlgorithmDetails(state.strategy);
-  };
-  showAlgorithmDetails(state.strategy);
-}
 function readableLogFileName(testName) {
   const readableTestName = String(testName || "\u5F53\u524D\u6D4B\u8BD5").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_").replace(/^[ ._]+|[ ._]+$/g, "") || "\u5F53\u524D\u6D4B\u8BD5";
   return `\u590D\u73B0\u65E5\u5FD7-${readableTestName}.json`;
-}
-function prepareLogDownload(result) {
-  if (!result?.logUrl) return false;
-  const link = document.getElementById("logButton");
-  link.href = result.logUrl;
-  link.download = readableLogFileName(state.testCaseName);
-  link.removeAttribute("aria-disabled");
-  return true;
-}
-function prepareGanttView(result) {
-  if (!result?.ganttUrl) return false;
-  const link = document.getElementById("ganttButton");
-  link.href = result.ganttUrl;
-  link.removeAttribute("aria-disabled");
-  return true;
-}
-async function prepareWorkspaceView(result) {
-  if (!result?.resultId) return null;
-  visualizationWorkspace.setAnalysisConfiguration(state.routes, state.rounds);
-  visualizationWorkspace.setReplayPlan(buildPayload());
-  await visualizationWorkspace.loadResult(result.resultId, state.testCaseName || "\u5F53\u524D\u8FD0\u884C\u7ED3\u679C");
-  const replayDeadlock = visualizationWorkspace.getTerminalDeadlock();
-  if (result.deadlock) {
-    const serverCode = String(result.deadlock.Code || "").toUpperCase();
-    result.deadlock = replayDeadlock || (DEADLOCK_TYPE_CATALOG[serverCode] ? result.deadlock : { Code: "DEADLOCK.UNCLASSIFIED" });
-  }
-  return visualizationWorkspace.getBottleneckUtilization();
 }
 function formatRunElapsed(milliseconds) {
   const totalTenths = Math.max(0, Math.floor(Number(milliseconds || 0) / 100));
@@ -8235,16 +8382,6 @@ function renderRunStatusEvents(events) {
     return item;
   }));
 }
-function renderSingleRunStatus(snapshot) {
-  if (!snapshot) return;
-  runStatusElapsedMs = Math.max(runStatusElapsedMs, Number(snapshot.elapsedMs || 0));
-  document.getElementById("runStatusElapsed").textContent = formatRunElapsed(runStatusElapsedMs);
-  const terminal = ["completed", "failed", "cancelled"].includes(snapshot.status);
-  const title = snapshot.status === "completed" ? "\u5F53\u524D\u6D4B\u8BD5\u8FD0\u884C\u5B8C\u6210" : snapshot.status === "failed" ? "\u5F53\u524D\u6D4B\u8BD5\u8FD0\u884C\u5931\u8D25" : snapshot.status === "cancelled" ? "\u5F53\u524D\u6D4B\u8BD5\u5DF2\u505C\u6B62" : `\u6B63\u5728\u8FD0\u884C \xB7 ${snapshot.testName || state.testCaseName || "\u5F53\u524D\u6D4B\u8BD5"}`;
-  document.getElementById("runStatusTitle").textContent = title;
-  renderRunStatusEvents(snapshot.events || []);
-  if (terminal) finishRunStatus(snapshot.status, title);
-}
 function renderBatchRunStatus(result) {
   if (!result) return;
   const total = Number(result.testCount || 0);
@@ -8269,163 +8406,36 @@ function finishRunStatus(status, title) {
   if (status === "cancelled") card.classList.add("cancelled");
   if (title) document.getElementById("runStatusTitle").textContent = title;
 }
-async function pollSingleRunStatus(runId) {
-  while (singleRunActive && activeSingleRunId === runId) {
-    try {
-      const response = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
-      if (response.ok) {
-        const snapshot = await response.json();
-        renderSingleRunStatus(snapshot);
-        if (["completed", "failed", "cancelled"].includes(snapshot.status)) return;
-      }
-    } catch {
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 180));
-  }
-}
-async function requestSingleRunCancellation() {
-  if (!singleRunActive || singleRunCancelling || !activeSingleRunId) return;
-  singleRunCancelling = true;
-  const button = document.getElementById("runButton");
-  button.disabled = true;
-  button.classList.add("running", "cancel");
-  button.textContent = "\u6B63\u5728\u505C\u6B62\u2026";
-  document.getElementById("runStatusTitle").textContent = "\u6B63\u5728\u505C\u6B62\u5F53\u524D\u6D4B\u8BD5";
-  try {
-    const response = await fetch(`/api/runs/${encodeURIComponent(activeSingleRunId)}`, { method: "DELETE" });
-    const snapshot = await response.json();
-    if (!response.ok) throw new Error(snapshot.error || `\u670D\u52A1\u8FD4\u56DE ${response.status}`);
-    renderSingleRunStatus(snapshot);
-    if (state.strategy === "search-tree") {
-      try {
-        await requestSearchControl("cancel");
-      } catch {
-      }
-    }
-    singleRunAbortController?.abort();
-  } catch (error) {
-    singleRunCancelling = false;
-    button.disabled = false;
-    button.classList.remove("running");
-    button.classList.add("cancel");
-    button.textContent = "\u25A0 \u505C\u6B62\u5F53\u524D\u6D4B\u8BD5";
-    throw error;
-  }
-}
-async function runPlan() {
-  const button = document.getElementById("runButton");
-  const batchButton = document.getElementById("batchRunButton");
-  if (singleRunActive) {
-    try {
-      await requestSingleRunCancellation();
-    } catch (error) {
-      writeTerminal(`$ \u505C\u6B62\u5931\u8D25\uFF1A${error.message || "\u672A\u77E5\u9519\u8BEF"}
-  \u53EF\u518D\u6B21\u70B9\u51FB\u201C\u25A0 \u505C\u6B62\u5F53\u524D\u6D4B\u8BD5\u201D\u91CD\u8BD5\u3002`, true);
-    }
-    return;
-  }
-  let logReady = false, ganttReady = false, runResult = null, bottleneckSummary = null;
-  button.disabled = true;
-  batchButton.disabled = true;
-  button.classList.add("running");
-  button.classList.remove("cancel");
-  button.textContent = "\u6B63\u5728\u51C6\u5907\u2026";
-  startRunStatus(`\u51C6\u5907\u8FD0\u884C \xB7 ${state.testCaseName || "\u5F53\u524D\u6D4B\u8BD5"}`, "\u68C0\u67E5\u670D\u52A1\u4E0E\u6D4B\u8BD5\u914D\u7F6E");
-  try {
-    const healthResponse = await fetch("/api/health", { cache: "no-store" }), health = await healthResponse.json();
-    if (!healthResponse.ok || health.schemaVersion !== EXPECTED_API_SCHEMA) throw new Error("\u672C\u5730\u670D\u52A1\u7248\u672C\u8FC7\u65E7\uFF0C\u8BF7\u91CD\u542F realtime_scheduler.backend.main");
-    if (state.strategy.startsWith("other_alg:")) {
-      const algorithm = (health.otherAlgorithms || []).find((item) => item.strategy === state.strategy);
-      if (!algorithm?.available) throw new Error(`${state.strategy} \u7B97\u6CD5\u5305\u4E0D\u5B58\u5728\u6216\u5165\u53E3\u4E0D\u5B8C\u6574`);
-    } else if (health.strategies?.[state.strategy] === false) {
-      throw new Error(health.strategyErrors?.[state.strategy] || `${state.strategy} \u7B56\u7565\u5F53\u524D\u4E0D\u53EF\u7528`);
-    }
-    if (state.dirty) await saveCurrentTest(true);
-    const payload = buildPayload();
-    const runId = (crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^A-Za-z0-9_-]/g, "");
-    payload.clientRunId = runId;
-    payload.testCaseName = state.testCaseName || "\u5F53\u524D\u6D4B\u8BD5";
-    singleRunActive = true;
-    singleRunCancelling = false;
-    activeSingleRunId = runId;
-    singleRunAbortController = new AbortController();
-    button.disabled = false;
-    batchButton.disabled = true;
-    button.classList.remove("running");
-    button.classList.add("cancel");
-    button.textContent = "\u25A0 \u505C\u6B62\u5F53\u524D\u6D4B\u8BD5";
-    startRunStatus(`\u6B63\u5728\u8FD0\u884C \xB7 ${payload.testCaseName}`, "\u63D0\u4EA4\u8FD0\u884C\u8BF7\u6C42");
-    void pollSingleRunStatus(runId);
-    resetRunResult();
-    visualizationWorkspace.setAnalysisConfiguration(state.routes, state.rounds);
-    writeTerminal(`$ \u5F00\u59CB\u8FD0\u884C ${state.strategy}
-  \u603B\u8F6E\u6570: ${state.roundCount}
-  \u91CD\u7B97\u65F6\u95F4: ${state.rounds.map((round) => round.currentTime).join(", ")} s`);
-    const response = await fetch("/api/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: singleRunAbortController.signal
-    });
-    const responseText = await response.text();
-    try {
-      runResult = JSON.parse(responseText);
-    } catch {
-      throw new Error(responseText.trim().slice(0, 240) || `\u670D\u52A1\u8FD4\u56DE ${response.status}`);
-    }
-    logReady = prepareLogDownload(runResult);
-    ganttReady = prepareGanttView(runResult);
-    if (runResult?.resultId) {
-      try {
-        bottleneckSummary = await prepareWorkspaceView(runResult);
-        runResult.bottleneckUtilization = bottleneckSummary;
-      } catch (workspaceError) {
-        writeTerminal(`$ \u5DE5\u4F5C\u53F0\u52A0\u8F7D\u5931\u8D25
-  ${workspaceError.message || "\u672A\u77E5\u9519\u8BEF"}`, true);
-      }
-    }
-    if (!response.ok || !runResult.ok) {
-      if (runResult?.metricsAvailable) showFailedResultMetrics(runResult);
-      throw new Error(runResult.error || `\u670D\u52A1\u8FD4\u56DE ${response.status}`);
-    }
-    showResult(runResult);
-    finishRunStatus("completed", "\u5F53\u524D\u6D4B\u8BD5\u8FD0\u884C\u5B8C\u6210");
-  } catch (error) {
-    const cancelled = singleRunCancelling || runResult?.cancelled === true || error?.name === "AbortError";
-    const baselineError = runResult?.baseline?.status === "failed" ? `
-  Baseline \u5931\u8D25\uFF1A${runResult.baseline.error || "\u672A\u77E5\u539F\u56E0"}` : "";
-    const validationIssues = Array.isArray(runResult?.validationIssues) ? runResult.validationIssues.map((issue) => `  ${issue}`) : [];
-    const deadlock = deadlockDisplay(runResult?.deadlock);
-    if (!runResult?.metricsAvailable && ganttReady) {
-      setBottleneckMetric(bottleneckSummary, "\u6CA1\u6709\u8DB3\u591F\u7684\u8D44\u6E90\u6D3B\u52A8");
-      document.getElementById("metricMakespan").textContent = Number.isFinite(Number(runResult.makespan)) ? `${Number(runResult.makespan).toFixed(2)} s` : "\u2014";
-    }
-    renderRunFailureCard({
-      cancelled,
-      errorMessage: error.message || "\u672A\u77E5\u9519\u8BEF",
-      deadlock,
-      validationIssues,
-      baselineError: baselineError.trim()
-    });
-    document.getElementById("metricValidation").textContent = runResult?.metricsAvailable ? runResult.validation === "failed" ? "\u672A\u901A\u8FC7" : validationDisplay(runResult.validation) || "\u5931\u8D25" : "\u5931\u8D25";
-    finishRunStatus(cancelled ? "cancelled" : "failed", cancelled ? "\u5F53\u524D\u6D4B\u8BD5\u5DF2\u505C\u6B62" : "\u5F53\u524D\u6D4B\u8BD5\u8FD0\u884C\u5931\u8D25");
-  } finally {
-    singleRunActive = false;
-    singleRunCancelling = false;
-    activeSingleRunId = "";
-    singleRunAbortController = null;
-    button.disabled = false;
-    button.classList.remove("running", "cancel");
-    button.textContent = "\u25B6 \u8FD0\u884C\u5F53\u524D\u6D4B\u8BD5";
-    renderWorkspaceControls();
-  }
-}
 function currentBatchGroupTests() {
   return (state.workspaceDevice?.tests || []).map((test, workspaceIndex) => ({ test, workspaceIndex })).filter(({ test }) => String(test.group || "").trim() === state.activeTestGroup).sort((left, right) => {
     const leftLabel = String(left.test.name || left.test.id || "");
     const rightLabel = String(right.test.name || right.test.id || "");
     return TEST_ORDER_COLLATOR.compare(leftLabel, rightLabel) || left.workspaceIndex - right.workspaceIndex;
   }).map(({ test }) => test);
+}
+function updateBatchResultFilterButton() {
+  const button = document.getElementById("batchResultFilterButton");
+  const tests = currentBatchGroupTests();
+  const selectedCount = resultTestFilterIds instanceof Set ? tests.filter((test) => resultTestFilterIds.has(String(test.id || ""))).length : tests.length;
+  button.disabled = tests.length === 0;
+  button.textContent = "\u9009\u62E9\u6D4B\u8BD5";
+  button.title = tests.length ? `\u5F53\u524D\u663E\u793A ${selectedCount}/${tests.length} \u4E2A\u6D4B\u8BD5` : "\u5F53\u524D\u6D4B\u8BD5\u7EC4\u6CA1\u6709\u6D4B\u8BD5";
+  button.setAttribute("aria-label", button.title);
+}
+function showCurrentGroupTestCards(resetSelection = true) {
+  const tests = currentBatchGroupTests();
+  if (resetSelection) resultTestFilterIds = new Set(tests.map((test) => String(test.id || "")));
+  batchResultItemHistory.clear();
+  resetRunResult();
+  activeRunContext = null;
+  updateBatchLogDownload({ items: [] });
+  renderBatchItems(tests.map((test, index) => ({
+    index,
+    testId: String(test.id || ""),
+    testName: String(test.name || `\u6D4B\u8BD5 ${index + 1}`),
+    status: "not-run"
+  })));
+  updateBatchResultFilterButton();
 }
 function updateBatchSelectionCount() {
   const checkboxes = [...document.querySelectorAll("[data-batch-test-selection]")];
@@ -8439,7 +8449,7 @@ function setBatchTestSelection(predicate) {
   });
   updateBatchSelectionCount();
 }
-function openBatchTestSelectionDialog() {
+function openBatchTestSelectionDialog(mode = "run") {
   if (!state.workspaceDeviceId) {
     writeTerminal("$ \u8BF7\u5148\u9009\u62E9\u8BBE\u5907\u548C\u6D4B\u8BD5\u7EC4", true);
     return;
@@ -8449,10 +8459,12 @@ function openBatchTestSelectionDialog() {
     writeTerminal("$ \u5F53\u524D\u6D4B\u8BD5\u7EC4\u6CA1\u6709\u53EF\u8FD0\u884C\u6D4B\u8BD5", true);
     return;
   }
-  document.getElementById("batchTestSelectionDialogContext").textContent = `${state.activeTestGroup || "\u672A\u5206\u7EC4"} \xB7 \u5171 ${tests.length} \u9879 \xB7 \u5C06\u6309\u4E0B\u5217\u987A\u5E8F\u6267\u884C\u5E76\u5C55\u793A`;
+  batchSelectionMode = mode;
+  document.getElementById("batchTestSelectionDialogTitle").textContent = mode === "filter" ? "\u9009\u62E9\u663E\u793A\u7684\u6D4B\u8BD5" : "\u9009\u62E9\u8981\u8FD0\u884C\u7684\u6D4B\u8BD5";
+  document.getElementById("batchTestSelectionDialogContext").textContent = mode === "filter" ? `${state.activeTestGroup || "\u672A\u5206\u7EC4"} \xB7 \u5171 ${tests.length} \u9879 \xB7 \u4EC5\u66F4\u65B0\u7ED3\u679C\u533A\u663E\u793A\uFF0C\u4E0D\u4F1A\u5F00\u59CB\u8FD0\u884C` : `${state.activeTestGroup || "\u672A\u5206\u7EC4"} \xB7 \u5171 ${tests.length} \u9879 \xB7 \u5C06\u6309\u4E0B\u5217\u987A\u5E8F\u6267\u884C\u5E76\u5C55\u793A`;
   document.getElementById("batchSelectionList").innerHTML = tests.map((test, index) => `
     <label class="batch-selection-item" title="${escapeHtml3(`${test.id || ""} \xB7 ${test.name || ""}`)}">
-      <input type="checkbox" value="${escapeHtml3(test.id || "")}" data-batch-test-selection checked>
+      <input type="checkbox" value="${escapeHtml3(test.id || "")}" data-batch-test-selection ${mode === "run" || resultTestFilterIds?.has(String(test.id || "")) ? "checked" : ""}>
       <span class="batch-selection-index">t${index + 1}</span>
       <span class="batch-selection-name">${escapeHtml3(test.name || `\u6D4B\u8BD5 ${index + 1}`)}</span>
     </label>
@@ -8463,6 +8475,8 @@ function openBatchTestSelectionDialog() {
   rangeStart.value = "1";
   rangeEnd.max = String(tests.length);
   rangeEnd.value = String(tests.length);
+  document.getElementById("batchSelectionRunAll").textContent = mode === "filter" ? "\u663E\u793A\u5168\u90E8" : "\u5168\u91CF\u8FD0\u884C";
+  document.getElementById("batchSelectionRunSelected").textContent = mode === "filter" ? "\u5B8C\u6210" : "\u8FD0\u884C\u5DF2\u9009";
   updateBatchSelectionCount();
   const dialog = document.getElementById("batchTestSelectionDialog");
   dialog.showModal();
@@ -8473,12 +8487,21 @@ function runBatchSelection(runAll = false) {
   const selectedIds = runAll ? tests.map((test) => String(test.id || "")) : [...document.querySelectorAll("[data-batch-test-selection]:checked")].map((checkbox) => String(checkbox.value));
   if (!selectedIds.length) return;
   document.getElementById("batchTestSelectionDialog").close();
+  if (batchSelectionMode === "filter") {
+    resultTestFilterIds = new Set(selectedIds);
+    if (state.batchResult) renderBatchItems(state.batchResult.items || []);
+    else showCurrentGroupTestCards(false);
+    updateBatchResultFilterButton();
+    return;
+  }
   void runCurrentTestGroup(selectedIds);
 }
-async function runCurrentTestGroup(selectedTestIds = null) {
+async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
+  const fromResultCardQueue = runOptions.fromResultCardQueue === true;
+  if (runPreparationActive) return;
   const button = document.getElementById("batchRunButton");
-  const runButton = document.getElementById("runButton");
   if (state.batchRunning) {
+    if (fromResultCardQueue) return;
     try {
       await requestBatchCancellation();
     } catch (error) {
@@ -8494,40 +8517,63 @@ async function runCurrentTestGroup(selectedTestIds = null) {
     return;
   }
   if (!Array.isArray(selectedTestIds)) {
-    openBatchTestSelectionDialog();
-    return;
+    const selectedIds = resultTestFilterIds instanceof Set ? [...resultTestFilterIds] : currentBatchGroupTests().map((test) => String(test.id || ""));
+    return runCurrentTestGroup(selectedIds, runOptions);
   }
   try {
     if (!state.workspaceDeviceId) throw new Error("\u8BF7\u5148\u9009\u62E9\u8BBE\u5907\u548C\u6D4B\u8BD5\u7EC4");
-    if (state.dirty) await saveCurrentTest(true);
+    if (!await settleTestDraft()) return;
     const selectedIdSet = new Set(selectedTestIds.map(String));
     const tests = currentBatchGroupTests().filter((test) => selectedIdSet.has(String(test.id || "")));
     if (!tests.length) throw new Error("\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u53EF\u8FD0\u884C\u6D4B\u8BD5");
+    if (fromResultCardQueue) {
+      resultTestFilterIds = new Set(currentBatchGroupTests().map((test) => String(test.id || "")));
+    } else {
+      batchResultItemHistory.clear();
+      resultTestFilterIds = new Set(tests.map((test) => String(test.id || "")));
+    }
+    updateBatchResultFilterButton();
+    runPreparationActive = true;
+    renderWorkspaceControls();
+    const savedTests = [];
+    const readConcurrency = 4;
+    for (let offset = 0; offset < tests.length; offset += readConcurrency) {
+      const selected = tests.slice(offset, offset + readConcurrency);
+      const responses = await Promise.all(selected.map((test) => requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${test.id}`)));
+      savedTests.push(...responses.map((response2) => response2.test));
+    }
+    if (!fromResultCardQueue) resetRunResult();
+    activeRunContext = null;
+    const knownTests = fromResultCardQueue ? activeBatchContext?.tests || [] : [];
+    const testsById = new Map([...knownTests, ...savedTests].map((test) => [String(test.id || ""), test]));
+    activeBatchContext = { device: structuredClone(state.device), routes: structuredClone(state.routes), tests: structuredClone([...testsById.values()]) };
+    runPreparationActive = false;
     state.batchRunning = true;
     state.activeBatchId = "";
     state.batchCancelRequested = false;
     state.batchCancelSent = false;
     state.batchResult = null;
-    state.selectedBatchTestId = "";
+    renderWorkspaceControls();
     startRunStatus(`\u6279\u91CF\u6D4B\u8BD5 \xB7 ${state.activeTestGroup || "\u672A\u5206\u7EC4"}`, `\u7B49\u5F85 ${tests.length} \u4E2A\u6D4B\u8BD5`);
-    batchPerformanceAnalyses.clear();
-    batchBottleneckSummaries.clear();
-    batchBottleneckRequests.clear();
-    batchBottleneckErrors.clear();
     batchCardAnalyses.clear();
     batchCardAnalysisRequests.clear();
     lastBatchItemsRenderSignature = "";
-    document.getElementById("testGroupAnalysisButton").hidden = true;
     document.getElementById("testGroupAnalysisPanel").hidden = true;
     document.getElementById("testGroupAnalysisPanel").innerHTML = "";
-    document.getElementById("batchOverviewButton").hidden = true;
+    updateAnalysisReportAvailability();
     button.disabled = false;
-    runButton.disabled = true;
     button.classList.add("cancel");
     button.textContent = "\u25A0 \u7EC8\u6B62\u8C03\u5EA6";
-    document.getElementById("batchResults").innerHTML = "";
+    const queuedItems = tests.map((test, index) => ({
+      index,
+      testId: String(test.id || ""),
+      testName: String(test.name || `\u6D4B\u8BD5 ${index + 1}`),
+      status: "queued"
+    }));
+    renderBatchItems(queuedItems);
+    lastBatchItemsRenderSignature = batchItemsRenderSignature(queuedItems);
     const validationSummary = hongYeCheckEnabled() ? ` \xB7 HongYe \u6821\u9A8C\u5E76\u884C ${validationParallelism()} \u8DEF` : "";
-    writeTerminal(`$ \u6279\u91CF\u8FD0\u884C\u5F53\u524D\u6D4B\u8BD5\u7EC4
+    writeTerminal(`$ \u8FD0\u884C\u6240\u9009\u6D4B\u8BD5
   \u7EC4\u522B: ${state.activeTestGroup || "\u672A\u5206\u7EC4"}
   \u7B56\u7565: ${displayStrategyName(state.strategy)}
   \u6D4B\u8BD5\u6570: ${tests.length}
@@ -8535,7 +8581,7 @@ async function runCurrentTestGroup(selectedTestIds = null) {
     const response = await fetch("/api/run-batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deviceId: state.workspaceDeviceId, group: state.activeTestGroup, testIds: tests.map((test) => test.id), strategy: state.strategy, options: schedulingRequestOptions(), hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() })
+      body: JSON.stringify({ deviceId: state.workspaceDeviceId, group: state.activeTestGroup, testIds: tests.map((test) => test.id), strategy: state.strategy, options: schedulingRequestOptions(), hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: fromResultCardQueue ? 1 : batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() })
     });
     let result = await response.json();
     if (!response.ok || !result.batchId || !Array.isArray(result.items)) throw new Error(result.error || `\u670D\u52A1\u8FD4\u56DE ${response.status}`);
@@ -8559,26 +8605,89 @@ async function runCurrentTestGroup(selectedTestIds = null) {
       return;
     }
     if (result.status === "failed" && !Array.isArray(result.items)) throw new Error(result.error || "\u6279\u91CF\u4EFB\u52A1\u5931\u8D25");
+    if (fromResultCardQueue) {
+      for (const item of result.items || []) batchResultItemHistory.set(String(item.testId || ""), item);
+      result = {
+        ...result,
+        items: currentBatchGroupTests().map((test) => batchResultItemHistory.get(String(test.id || ""))).filter((item) => item && item.status !== "not-run")
+      };
+      result.testCount = result.items.length;
+      result.completed = result.items.filter((item) => ["succeeded", "failed", "cancelled"].includes(item.status)).length;
+      result.succeeded = result.items.filter((item) => item.status === "succeeded").length;
+      result.failed = result.items.filter((item) => item.status === "failed").length;
+      result.cancelled = result.items.filter((item) => item.status === "cancelled").length;
+    }
     showBatchResult(result);
-    finishRunStatus(Number(result.failed || 0) ? "failed" : "completed", Number(result.failed || 0) ? "\u6279\u91CF\u6D4B\u8BD5\u5B8C\u6210\uFF08\u6709\u5931\u8D25\uFF09" : "\u6279\u91CF\u6D4B\u8BD5\u8FD0\u884C\u5B8C\u6210");
+    if (!fromResultCardQueue || resultCardRunQueue.size <= 1) {
+      finishRunStatus(Number(result.failed || 0) ? "failed" : "completed", Number(result.failed || 0) ? "\u6279\u91CF\u6D4B\u8BD5\u5B8C\u6210\uFF08\u6709\u5931\u8D25\uFF09" : "\u6279\u91CF\u6D4B\u8BD5\u8FD0\u884C\u5B8C\u6210");
+    }
   } catch (error) {
+    if (fromResultCardQueue && Array.isArray(selectedTestIds)) {
+      for (const testId of selectedTestIds.map(String)) {
+        const previous = batchResultItemHistory.get(testId);
+        if (previous) batchResultItemHistory.set(testId, { ...previous, ok: false, status: "failed", error: error.message || "\u672A\u77E5\u9519\u8BEF" });
+      }
+      renderBatchItems([]);
+    }
     writeTerminal(`$ \u6279\u91CF\u8FD0\u884C\u5931\u8D25\uFF1A${error.message || "\u672A\u77E5\u9519\u8BEF"}`, true);
-    document.getElementById("metricValidation").textContent = "\u5931\u8D25";
     finishRunStatus("failed", "\u6279\u91CF\u6D4B\u8BD5\u8FD0\u884C\u5931\u8D25");
   } finally {
+    runPreparationActive = false;
     state.batchRunning = false;
     state.activeBatchId = "";
     state.batchCancelRequested = false;
     state.batchCancelSent = false;
     button.disabled = !state.serviceCompatible;
-    runButton.disabled = !state.serviceCompatible;
     button.classList.remove("running", "cancel");
-    button.textContent = "\u25A6 \u8FD0\u884C\u5F53\u524D\u6D4B\u8BD5\u7EC4";
+    button.textContent = "\u25B6 \u8FD0\u884C\u6240\u9009\u6D4B\u8BD5";
     renderWorkspaceControls();
+  }
+}
+function markResultCardTestQueued(testId) {
+  const tests = currentBatchGroupTests();
+  const index = tests.findIndex((test2) => String(test2.id || "") === testId);
+  if (index < 0) return;
+  const test = tests[index];
+  batchResultItemHistory.set(testId, {
+    index,
+    testId,
+    testName: String(test.name || `\u6D4B\u8BD5 ${index + 1}`),
+    status: "queued"
+  });
+  resultTestFilterIds = new Set(tests.map((item) => String(item.id || "")));
+  renderBatchItems([]);
+  updateBatchResultFilterButton();
+}
+var resultCardRunQueue = createResultCardRunQueue({
+  runTest: (testId) => runCurrentTestGroup([testId], { fromResultCardQueue: true }),
+  onStateChange(testId, event) {
+    if (event === "queued") {
+      markResultCardTestQueued(testId);
+      return;
+    }
+    if (event === "settled" && batchResultItemHistory.get(testId)?.status === "queued") {
+      batchResultItemHistory.set(testId, { ...batchResultItemHistory.get(testId), status: "not-run" });
+      renderBatchItems([]);
+    }
+  }
+});
+function enqueueResultCardTest(testId) {
+  if (!state.serviceCompatible) {
+    writeTerminal("$ \u8C03\u5EA6\u670D\u52A1\u5C1A\u672A\u5C31\u7EEA\uFF0C\u6682\u65F6\u65E0\u6CD5\u8FD0\u884C\u6D4B\u8BD5", true);
+    return;
+  }
+  if ((runPreparationActive || state.batchRunning) && resultCardRunQueue.size === 0) {
+    writeTerminal("$ \u5F53\u524D\u6279\u91CF\u4EFB\u52A1\u6B63\u5728\u8FD0\u884C\uFF0C\u8BF7\u5728\u7ED3\u675F\u540E\u4F7F\u7528\u5361\u7247\u53CC\u51FB\u961F\u5217", true);
+    return;
+  }
+  if (!currentBatchGroupTests().some((test) => String(test.id || "") === String(testId || ""))) return;
+  if (!resultCardRunQueue.enqueue(String(testId))) {
+    writeTerminal("$ \u8BE5\u6D4B\u8BD5\u5DF2\u5728\u8FD0\u884C\u961F\u5217\u4E2D");
   }
 }
 async function requestBatchCancellation() {
   if (!state.batchRunning || state.batchCancelRequested) return;
+  resultCardRunQueue.clearPending();
   state.batchCancelRequested = true;
   const button = document.getElementById("batchRunButton");
   button.disabled = true;
@@ -8595,127 +8704,8 @@ async function sendBatchCancellation() {
   if (!response.ok) throw new Error(result.error || `\u7EC8\u6B62\u5931\u8D25\uFF0C\u670D\u52A1\u8FD4\u56DE ${response.status}`);
   showBatchProgress(result);
 }
-function setResultMetric(key, label, value, detail = "") {
-  document.getElementById(`metric${key}Label`).textContent = label;
-  document.getElementById(`metric${key}`).textContent = value;
-  document.getElementById(`metric${key}Detail`).textContent = detail;
-}
 function hasBatchResultMetrics(item) {
   return item?.status === "succeeded" || item?.metricsAvailable === true;
-}
-function setBottleneckMetric(summary, emptyDetail = "") {
-  const utilization = Number(summary?.utilization);
-  const available = summary && Number.isFinite(utilization);
-  const resourceName = String(summary?.resourceName || "\u672A\u77E5\u8D44\u6E90").replace(/^工序容量组\s*[·:：-]?\s*/, "").trim() || "\u672A\u77E5\u8D44\u6E90";
-  setResultMetric(
-    "Moves",
-    "Bottleneck Utilization",
-    available ? `${resourceName} ${(utilization * 100).toFixed(1)}%` : "\u2014",
-    available ? "" : emptyDetail
-  );
-}
-function showBatchOverviewMetrics(result) {
-  const measured = (result.items || []).filter(hasBatchResultMetrics);
-  const averageMakespan = measured.length ? measured.reduce((sum, item) => sum + Number(item.makespan), 0) / measured.length : 0;
-  const comparable = measured.filter((item) => item.baseline?.status === "succeeded");
-  const totalMakespan = comparable.reduce((sum, item) => sum + Number(item.makespan), 0);
-  const totalBaseline = comparable.reduce((sum, item) => sum + Number(item.baseline.makespan), 0);
-  const aggregateImprovement = totalBaseline > 0 ? (totalBaseline - totalMakespan) / totalBaseline * 100 : NaN;
-  const moveCount = measured.reduce((sum, item) => sum + Number(item.moveCount || 0), 0);
-  const timeText = result.status === "completed" ? `${(Number(result.totalElapsedMs) / 1e3).toFixed(2)} s` : result.status === "cancelled" ? "\u5DF2\u7EC8\u6B62" : "\u8FD0\u884C\u4E2D";
-  const makespanText = comparable.length ? `${totalMakespan.toFixed(2)} / ${totalBaseline.toFixed(2)} s` : measured.length ? `${averageMakespan.toFixed(2)} s` : "\u2014";
-  const improvementText = comparable.length && Number.isFinite(aggregateImprovement) ? `${aggregateImprovement >= 0 ? "\u63D0\u5347" : "\u9000\u5316"} ${Math.abs(aggregateImprovement).toFixed(2)}%` : "";
-  document.getElementById("metricContext").textContent = `\u6279\u91CF\u603B\u89C8 \xB7 ${result.group || "\u672A\u5206\u7EC4"}`;
-  document.getElementById("batchOverviewButton").hidden = true;
-  setResultMetric("Time", "Total Time", timeText);
-  setResultMetric("Makespan", comparable.length ? "\u603B Makespan / Baseline" : "\u5E73\u5747 Makespan", makespanText, improvementText);
-  setResultMetric("Moves", "\u603B Move \u6570", moveCount || "\u2014");
-  setResultMetric("Validation", result.cancelled ? "\u6210\u529F / \u5931\u8D25 / \u7EC8\u6B62" : "\u6210\u529F / \u5931\u8D25", result.cancelled ? `${result.succeeded || 0} / ${result.failed || 0} / ${result.cancelled}` : `${result.succeeded || 0} / ${result.failed || 0}`);
-}
-function showBatchItemOverview(item, index) {
-  const hasMetrics = hasBatchResultMetrics(item);
-  const baseline = item.baseline || {};
-  const baselineReady = baseline.status === "succeeded";
-  const cpuTime = Number(item.cpuTimeMs ?? item.totalElapsedMs);
-  const elapsedTime = Number(item.totalElapsedMs);
-  const makespan = Number(item.makespan);
-  const improvement = Number(item.improvementPercent);
-  const validationText = item.validation === "passed" ? "\u901A\u8FC7" : item.validation === "skipped" ? "\u8DF3\u8FC7" : item.validation ? String(item.validation) : item.status === "failed" ? "\u8FD0\u884C\u5931\u8D25" : item.status === "cancelled" ? "\u5DF2\u7EC8\u6B62" : "\u7B49\u5F85\u5B8C\u6210";
-  const comparisonDetail = baselineReady && Number.isFinite(improvement) ? `${improvement >= 0 ? "\u63D0\u5347" : "\u9000\u5316"} ${Math.abs(improvement).toFixed(2)}%` : baseline.status && baseline.status !== "succeeded" && baseline.status !== "skipped" ? `Baseline ${baseline.status === "failed" ? "\u5931\u8D25" : "\u5931\u6548"}` : "";
-  const resultUrl = String(item.resultUrl || "");
-  const bottleneckReady = resultUrl && batchBottleneckSummaries.has(resultUrl);
-  const bottleneckSummary = bottleneckReady ? batchBottleneckSummaries.get(resultUrl) : null;
-  const bottleneckError = resultUrl ? batchBottleneckErrors.get(resultUrl) : "";
-  document.getElementById("metricContext").textContent = `t${index + 1} \xB7 ${item.testName || `\u6D4B\u8BD5 ${index + 1}`} \xB7 ${displayStrategyName(state.batchResult?.strategy)}`;
-  document.getElementById("batchOverviewButton").hidden = false;
-  setResultMetric("Time", "CPU Time / \u8017\u65F6", Number.isFinite(cpuTime) ? `${cpuTime.toFixed(1)} ms` : "\u2014", Number.isFinite(elapsedTime) ? `\u7AEF\u5230\u7AEF\u8017\u65F6 ${elapsedTime.toFixed(1)} ms` : "");
-  setResultMetric("Makespan", "Makespan / Baseline", Number.isFinite(makespan) ? `${makespan.toFixed(2)} / ${baselineReady ? Number(baseline.makespan).toFixed(2) : "\u2014"} s` : "\u2014", comparisonDetail);
-  setBottleneckMetric(
-    bottleneckSummary,
-    hasMetrics && resultUrl ? bottleneckError ? `\u74F6\u9888\u8BA1\u7B97\u5931\u8D25\uFF1A${bottleneckError}` : bottleneckReady ? "\u6CA1\u6709\u8DB3\u591F\u7684\u8D44\u6E90\u6D3B\u52A8" : "\u6B63\u5728\u8BA1\u7B97\u7A33\u6001\u74F6\u9888\u2026" : "\u6CA1\u6709\u53EF\u5206\u6790\u7684 MoveList"
-  );
-  setResultMetric("Validation", "Validation", validationText, item.error || "");
-}
-async function loadBatchItemPerformance(item, index) {
-  const resultUrl = String(item?.resultUrl || "");
-  if (!resultUrl || !hasBatchResultMetrics(item)) return null;
-  if (batchPerformanceAnalyses.has(resultUrl)) {
-    return batchPerformanceAnalyses.get(resultUrl);
-  }
-  if (batchBottleneckErrors.has(resultUrl)) return null;
-  let request = batchBottleneckRequests.get(resultUrl);
-  if (!request) {
-    request = (async () => {
-      const testCase = (state.workspaceDevice?.tests || []).find(
-        (test) => String(test.id) === String(item.testId)
-      );
-      const resultId = resultUrl.startsWith("/api/results/") ? decodeURIComponent(resultUrl.slice("/api/results/".length)) : "";
-      if (!resultId) throw new Error("\u7ED3\u679C\u5730\u5740\u4E0D\u7B26\u5408\u670D\u52A1\u7AEF\u5206\u6790\u5951\u7EA6");
-      const response = await requestScheduleAnalysis({
-        resultId,
-        device: state.device,
-        windowMode: "steady",
-        routes: state.workspaceDevice?.routes || state.routes,
-        rounds: testCase?.rounds || state.rounds
-      });
-      batchPerformanceAnalyses.set(resultUrl, response.analysis);
-      batchBottleneckSummaries.set(resultUrl, response.bottleneck);
-      return response.analysis;
-    })();
-    batchBottleneckRequests.set(resultUrl, request);
-  }
-  try {
-    return await request;
-  } catch (error) {
-    batchBottleneckErrors.set(resultUrl, error.message || "\u672A\u77E5\u9519\u8BEF");
-    if (state.selectedBatchTestId === String(item.testId || `index-${index}`)) {
-      setBottleneckMetric(null, `\u74F6\u9888\u8BA1\u7B97\u5931\u8D25\uFF1A${error.message || "\u672A\u77E5\u9519\u8BEF"}`);
-    }
-    return null;
-  } finally {
-    batchBottleneckRequests.delete(resultUrl);
-  }
-}
-async function loadBatchItemBottleneck(item, index) {
-  await loadBatchItemPerformance(item, index);
-  const currentIndex = (state.batchResult?.items || []).findIndex(
-    (candidate, candidateIndex) => String(candidate.testId || `index-${candidateIndex}`) === state.selectedBatchTestId
-  );
-  if (currentIndex >= 0) showBatchItemOverview(state.batchResult.items[currentIndex], currentIndex);
-}
-function selectBatchItem(index) {
-  const item = state.batchResult?.items?.[index];
-  if (!item) return;
-  state.selectedBatchTestId = String(item.testId || `index-${index}`);
-  renderBatchItems(state.batchResult.items || []);
-  showBatchItemOverview(item, index);
-  void loadBatchItemBottleneck(item, index);
-}
-function showCurrentBatchOverview() {
-  if (!state.batchResult) return;
-  state.selectedBatchTestId = "";
-  renderBatchItems(state.batchResult.items || []);
-  showBatchOverviewMetrics(state.batchResult);
 }
 function groupAnalysisComparisonKey(testCase) {
   return JSON.stringify({ rounds: testCase?.rounds || [] });
@@ -8747,7 +8737,7 @@ function showAnalysisWizardStep(step) {
 function openGroupAnalysisOptions() {
   const result = state.batchResult;
   if (!result?.items?.length) return;
-  const testsById = new Map((state.workspaceDevice?.tests || []).map((test) => [String(test.id), test]));
+  const testsById = new Map((activeBatchContext?.tests || []).map((test) => [String(test.id), test]));
   const analyzable = result.items.filter((item) => hasBatchResultMetrics(item) && item.resultUrl);
   const options = document.getElementById("analysisTestOptions");
   options.innerHTML = analyzable.map((item, index) => `
@@ -8787,7 +8777,7 @@ async function showTestGroupAnalysis() {
   if (!selectedIds.size) throw new Error("\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u6D4B\u8BD5");
   const metricIds = [...document.querySelectorAll("[data-analysis-metric]:checked")].map((input) => String(input.value));
   if (!metricIds.length) throw new Error("\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u8BA1\u7B97\u6307\u6807");
-  const testsById = new Map((state.workspaceDevice?.tests || []).map((test) => [String(test.id), test]));
+  const testsById = new Map((activeBatchContext?.tests || []).map((test) => [String(test.id), test]));
   const cases = result.items.map((item, index) => ({ item, index })).filter(({ item, index }) => selectedIds.has(String(item.testId || `index-${index}`))).map(({ item, index }) => {
     const testId = String(item.testId || `index-${index}`);
     const testCase = testsById.get(testId);
@@ -8812,8 +8802,8 @@ async function showTestGroupAnalysis() {
   await saveAnalysisSettingsPreferences();
   const job = await createTestGroupAnalysisJob({
     cases,
-    device: state.device,
-    routes: state.workspaceDevice?.routes || state.routes,
+    device: activeBatchContext?.device,
+    routes: activeBatchContext?.routes || [],
     metricIds,
     referenceCaseId,
     windowMode: document.getElementById("analysisWindowMode").value,
@@ -8838,9 +8828,11 @@ async function showTestGroupAnalysis() {
   document.getElementById("analysisOptionsCancel").disabled = false;
   document.getElementById("analysisOptionsClose").disabled = false;
   document.getElementById("analysisOptionsDialog").close();
-  switchTab("workspace");
+  await switchTab("schedule");
+  setRunResultView("analysis");
   const panel = document.getElementById("testGroupAnalysisPanel");
   bindTestGroupExport(panel, summary, result.group || state.activeTestGroup || "\u5F53\u524D\u6D4B\u8BD5\u7EC4");
+  panel.querySelector("[data-return-run-results]")?.addEventListener("click", () => setRunResultView("results"));
   panel.querySelector("[data-reconfigure-analysis]")?.addEventListener("click", openGroupAnalysisOptions);
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -8880,33 +8872,26 @@ function orderedBatchItems(items) {
 }
 function showBatchProgress(result) {
   result.items = orderedBatchItems(result.items || []);
+  for (const item of result.items) {
+    const testId = String(item.testId || "");
+    if (testId) batchResultItemHistory.set(testId, item);
+  }
   const completed = Number(result.completed || 0), total = Number(result.testCount || result.items?.length || 0);
   const percent = total ? Math.round(completed / total * 100) : 0;
-  const progress = document.getElementById("batchProgress");
-  document.getElementById("testGroupAnalysisButton").hidden = !["completed", "cancelled"].includes(result.status);
-  progress.classList.add("visible");
-  progress.setAttribute("aria-valuenow", String(percent));
-  document.getElementById("batchProgressCount").textContent = `${percent}%`;
-  document.getElementById("batchProgressBar").style.width = `${percent}%`;
   state.batchResult = result;
+  updateAnalysisReportAvailability();
   updateBatchLogDownload(result);
-  if (!state.selectedBatchTestId) showBatchOverviewMetrics(result);
   const items = result.items || [];
   const renderSignature = batchItemsRenderSignature(items);
   if (renderSignature !== lastBatchItemsRenderSignature) {
     renderBatchItems(items);
     lastBatchItemsRenderSignature = renderSignature;
   }
-  const selectedIndex = (result.items || []).findIndex((item, index) => String(item.testId || `index-${index}`) === state.selectedBatchTestId);
-  if (selectedIndex >= 0) {
-    showBatchItemOverview(result.items[selectedIndex], selectedIndex);
-    void loadBatchItemBottleneck(result.items[selectedIndex], selectedIndex);
-  }
   if (["completed", "cancelled"].includes(String(result.status))) {
     void hydrateBatchCardAnalyses(items);
   }
   writeTerminal([
-    "$ \u6279\u91CF\u8FD0\u884C\u5F53\u524D\u6D4B\u8BD5\u7EC4",
+    "$ \u8FD0\u884C\u6240\u9009\u6D4B\u8BD5",
     `  \u7EC4\u522B: ${result.group || "\u672A\u5206\u7EC4"} \xB7 \u7B56\u7565: ${displayStrategyName(result.strategy)}`,
     `  \u8FDB\u5EA6: ${completed}/${total} (${percent}%) \xB7 \u7B97\u6CD5\u5E76\u884C: ${result.workerCount}${result.validationWorkers > 0 ? ` \xB7 HongYe \u6821\u9A8C\u5E76\u884C: ${result.validationWorkers}` : ""}`,
     `  \u7B49\u5F85: ${(result.items || []).filter((item) => item.status === "queued").length} \xB7 \u8FD0\u884C\u4E2D: ${(result.items || []).filter((item) => item.status === "running").length} \xB7 \u6210\u529F: ${result.succeeded || 0} \xB7 \u5931\u8D25: ${result.failed || 0} \xB7 \u7EC8\u6B62: ${result.cancelled || 0}`
@@ -8929,7 +8914,7 @@ async function loadBatchCardAnalysis(item) {
   if (batchCardAnalyses.has(resultUrl)) return batchCardAnalyses.get(resultUrl);
   if (batchCardAnalysisRequests.has(resultUrl)) return batchCardAnalysisRequests.get(resultUrl);
   const request = (async () => {
-    const testCase = (state.workspaceDevice?.tests || []).find(
+    const testCase = (activeBatchContext?.tests || []).find(
       (test) => String(test.id) === String(item.testId)
     );
     const resultId = resultUrl.startsWith("/api/results/") ? decodeURIComponent(resultUrl.slice("/api/results/".length)) : "";
@@ -8937,9 +8922,9 @@ async function loadBatchCardAnalysis(item) {
     try {
       const response = await requestScheduleAnalysis({
         resultId,
-        device: state.device,
+        device: activeBatchContext?.device,
         windowMode: "steady",
-        routes: state.workspaceDevice?.routes || state.routes,
+        routes: activeBatchContext?.routes || [],
         rounds: testCase?.rounds || [],
         metricGroups: ["basic", "throughput"]
       });
@@ -8971,9 +8956,21 @@ async function hydrateBatchCardAnalyses(items) {
   await Promise.all(Array.from({ length: Math.min(2, pending.length) }, worker));
 }
 function renderBatchItems(items) {
-  items = orderedBatchItems(items);
-  const statusLabels = { queued: "\u7B49\u5F85\u4E2D", running: "\u8FD0\u884C\u4E2D", succeeded: "\u6210\u529F", failed: "\u5931\u8D25", cancelled: "\u5DF2\u7EC8\u6B62" };
-  document.getElementById("batchResults").innerHTML = items.map((item, index) => {
+  for (const item of orderedBatchItems(items)) {
+    const testId = String(item.testId || "");
+    if (testId) batchResultItemHistory.set(testId, item);
+  }
+  const entries = currentBatchGroupTests().map((test, index) => ({
+    item: batchResultItemHistory.get(String(test.id || "")) || {
+      index,
+      testId: String(test.id || ""),
+      testName: String(test.name || `\u6D4B\u8BD5 ${index + 1}`),
+      status: "not-run"
+    },
+    index
+  })).filter(({ item }) => !(resultTestFilterIds instanceof Set) || resultTestFilterIds.has(String(item.testId || "")));
+  const statusLabels = { "not-run": "\u672A\u8FD0\u884C", queued: "\u7B49\u5F85\u4E2D", running: "\u8FD0\u884C\u4E2D", succeeded: "\u6210\u529F", failed: "\u5931\u8D25", cancelled: "\u5DF2\u7EC8\u6B62" };
+  document.getElementById("batchResults").innerHTML = entries.map(({ item, index }) => {
     const hasMetrics = hasBatchResultMetrics(item);
     const resultUrl = String(item.resultUrl || "");
     const cardAnalysis = batchCardAnalyses.get(resultUrl);
@@ -8984,20 +8981,19 @@ function renderBatchItems(items) {
     const hasAverageRecomputeTime = rawAverageRecomputeTime !== null && rawAverageRecomputeTime !== void 0 && Number.isFinite(averageRecomputeTime);
     const summaryError = batchItemErrorText(item);
     const failed = Boolean(summaryError);
-    const summaryNote = item.status === "cancelled" ? "\u8C03\u5EA6\u5DF2\u7EC8\u6B62" : failed ? "" : summaryError;
+    const summaryNote = failed ? "" : summaryError;
     const displayId = `t${index + 1}`;
-    const itemSelectionId = String(item.testId || `index-${index}`);
-    const selected = itemSelectionId === state.selectedBatchTestId;
+    const testId = String(item.testId || "");
     return `
-      <div class="batch-result ${escapeHtml3(item.status || "queued")}${selected ? " selected" : ""}" data-batch-item-index="${index}">
+      <div class="batch-result ${escapeHtml3(item.status || "queued")} ${testId === expandedBatchTestId ? "details-open" : ""}" data-batch-test-card="${escapeHtml3(testId)}" role="button" tabindex="0" aria-expanded="${testId === expandedBatchTestId}" aria-label="${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}\uFF1A\u5355\u51FB\u67E5\u770B\u8BE6\u60C5\uFF0C\u53CC\u51FB\u52A0\u5165\u8FD0\u884C\u961F\u5217" title="\u5355\u51FB\u67E5\u770B\u53EA\u8BFB\u914D\u7F6E\uFF1B\u53CC\u51FB\u52A0\u5165\u8FD0\u884C\u961F\u5217">
         <div class="batch-result-head">
-          <button class="batch-result-title" type="button" aria-pressed="${selected}" aria-label="\u67E5\u770B ${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)} \u7684\u8BE6\u7EC6\u6307\u6807"><strong title="${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}">${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}</strong></button>
+          <span class="batch-result-title"><strong title="${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}">${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}</strong></span>
           <div class="batch-result-meta">
             <span class="batch-status">${statusLabels[item.status] || "\u7B49\u5F85\u4E2D"}</span>
             ${item.logUrl ? `<a class="btn" href="${escapeHtml3(item.logUrl)}" download="${escapeHtml3(readableLogFileName(item.testName || `\u6D4B\u8BD5-${index + 1}`))}">\u65E5\u5FD7</a>` : `<span class="btn" aria-disabled="true">\u65E5\u5FD7</span>`}
             ${item.resultUrl ? `<button class="btn primary" type="button" data-playback-result="${escapeHtml3(item.resultUrl)}" data-playback-name="${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}">\u56DE\u653E</button>` : `<span class="btn" aria-disabled="true">\u56DE\u653E</span>`}
             ${item.ganttUrl ? `<a class="btn" href="${escapeHtml3(item.ganttUrl)}" target="_blank">\u7518\u7279\u56FE</a>` : `<span class="btn" aria-disabled="true">\u7518\u7279\u56FE</span>`}
-            ${failed ? `<button class="btn danger" type="button" data-batch-error="${index}" aria-label="\u67E5\u770B ${escapeHtml3(displayId)} \u7684\u62A5\u9519\u4FE1\u606F">\u62A5\u9519</button>` : ""}
+            ${failed ? `<button class="btn danger" type="button" data-batch-error="${escapeHtml3(testId)}" aria-label="\u67E5\u770B ${escapeHtml3(displayId)} \u7684\u62A5\u9519\u4FE1\u606F">\u62A5\u9519</button>` : ""}
           </div>
         </div>
         <div class="batch-result-summary">
@@ -9010,11 +9006,91 @@ function renderBatchItems(items) {
       </div>`;
   }).join("");
 }
-function openBatchErrorDialog(index) {
-  const item = state.batchResult?.items?.[index];
+function closeBatchTestDetails() {
+  expandedBatchTestId = "";
+  batchTestDetailsRequestVersion += 1;
+  const panel = document.getElementById("batchTestDetails");
+  panel.hidden = true;
+  panel.innerHTML = "";
+}
+function updateBatchTestCardDetailState() {
+  document.querySelectorAll("[data-batch-test-card]").forEach((card) => {
+    const expanded = card.dataset.batchTestCard === expandedBatchTestId;
+    card.classList.toggle("details-open", expanded);
+    card.setAttribute("aria-expanded", String(expanded));
+  });
+}
+function renderBatchTestDetailField(label, value) {
+  const text = readonlyText(value);
+  return `<div class="batch-test-detail-field"><span>${escapeHtml3(label)}</span><strong title="${escapeHtml3(text)}">${escapeHtml3(text)}</strong></div>`;
+}
+function batchTestDetailRouteSummary(testCase, pjob) {
+  const routeName = String(pjob?.routeRef || "");
+  const template = (state.workspaceDevice?.routes || state.routes || []).find((route) => String(route?.name || "") === routeName);
+  if (!template) return routeName || "\u672A\u914D\u7F6E\u8DEF\u5F84";
+  const routeConfig = pjob?.routeConfig || testCase?.routeConfigs?.[routeName] || defaultRouteConfigForRoute(template);
+  return routePickerCompactPath(runtimeRouteForTemplate(template, routeConfig), true, pjob?.loadPort || "");
+}
+function renderBatchTestDetails(testCase) {
+  const rounds = Array.isArray(testCase?.rounds) ? testCase.rounds : [];
+  const details = rounds.map((round, roundIndex) => {
+    const cjobs = Array.isArray(round?.cjobs) ? round.cjobs : [];
+    const cjobMarkup = cjobs.map((cjob, cjobIndex) => {
+      const pjobs = Array.isArray(cjob?.pjobs) ? cjob.pjobs : [];
+      const pjobMarkup = pjobs.map((pjob, pjobIndex) => `<div class="batch-test-detail-pjob">
+        <div class="batch-test-detail-pjob-name"><span>PJob</span><strong>${escapeHtml3(pjob?.jobName || `P${pjobIndex + 1}`)}</strong></div>
+        <div class="batch-test-detail-pjob-fields">
+          ${renderBatchTestDetailField("Material", pjob?.waferCount)}
+          ${renderBatchTestDetailField("Priority", pjob?.priority)}
+          ${renderBatchTestDetailField("OriginRoute", batchTestDetailRouteSummary(testCase, pjob))}
+        </div>
+      </div>`).join("") || '<span class="hint">\u6B64 CJob \u6CA1\u6709 PJob\u3002</span>';
+      return `<section class="batch-test-detail-cjob">
+        <header class="batch-test-detail-cjob-head"><strong>CJob ${cjobIndex + 1}</strong><span>TaskID ${escapeHtml3(cjob?.taskId)}</span></header>
+        <div class="batch-test-detail-fields">
+          ${renderBatchTestDetailField("JobType", cjob?.jobType)}
+          ${renderBatchTestDetailField("LoadPort", cjob?.loadPort)}
+          ${renderBatchTestDetailField("Priority", cjob?.priority)}
+          ${renderBatchTestDetailField("TaskMode", cjob?.taskMode)}
+          ${renderBatchTestDetailField("CJobCycle", cjob?.cjobCycle)}
+        </div>
+        <div class="batch-test-detail-pjobs">${pjobMarkup}</div>
+      </section>`;
+    }).join("") || '<span class="hint">\u6B64\u8F6E\u6CA1\u6709 CJob\u3002</span>';
+    return `<section class="batch-test-detail-round">
+      <header class="batch-test-detail-round-head"><span class="batch-test-detail-round-number">${roundIndex + 1}</span><strong>${roundIndex ? `\u7B2C ${roundIndex + 1} \u8F6E\u91CD\u7B97` : "\u9996\u6B21\u6392\u7A0B"}</strong><span>${roundIndex ? "\u91CD\u7B97\u65F6\u95F4" : "\u6392\u7A0B\u65F6\u95F4"} ${escapeHtml3(formatCleanSeconds(round?.currentTime ?? 0))}</span></header>
+      <div class="batch-test-detail-cjobs">${cjobMarkup}</div>
+    </section>`;
+  }).join("") || '<p class="hint">\u8BE5\u6D4B\u8BD5\u6CA1\u6709\u53EF\u663E\u793A\u7684\u4EFB\u52A1\u914D\u7F6E\u3002</p>';
+  return `<div class="batch-test-details-body">${details}</div>`;
+}
+async function toggleBatchTestDetails(testId) {
+  if (!testId || !state.workspaceDeviceId) return;
+  if (expandedBatchTestId === testId) {
+    closeBatchTestDetails();
+    updateBatchTestCardDetailState();
+    return;
+  }
+  expandedBatchTestId = testId;
+  const requestVersion = ++batchTestDetailsRequestVersion;
+  const panel = document.getElementById("batchTestDetails");
+  panel.hidden = false;
+  panel.innerHTML = '<div class="batch-test-details-body"><p class="hint">\u6B63\u5728\u8BFB\u53D6\u6D4B\u8BD5\u8BE6\u60C5\u2026</p></div>';
+  updateBatchTestCardDetailState();
+  try {
+    const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${encodeURIComponent(testId)}`);
+    if (requestVersion !== batchTestDetailsRequestVersion || expandedBatchTestId !== testId) return;
+    panel.innerHTML = renderBatchTestDetails(result.test);
+  } catch (error) {
+    if (requestVersion !== batchTestDetailsRequestVersion || expandedBatchTestId !== testId) return;
+    panel.innerHTML = `<div class="batch-test-details-body"><p class="hint">\u8BFB\u53D6\u6D4B\u8BD5\u8BE6\u60C5\u5931\u8D25\uFF1A${escapeHtml3(error?.message || "\u672A\u77E5\u9519\u8BEF")}</p></div>`;
+  }
+}
+function openBatchErrorDialog(testId) {
+  const item = batchResultItemHistory.get(String(testId || ""));
   if (!item) return;
   const errorText = batchItemErrorText(item) || "\u672A\u77E5\u9519\u8BEF";
-  document.getElementById("batchErrorDialogContext").textContent = `${item.testName || `\u6D4B\u8BD5 ${index + 1}`} \xB7 ${item.status === "failed" ? "\u8FD0\u884C\u5931\u8D25" : "\u57FA\u7EBF\u5F02\u5E38"}`;
+  document.getElementById("batchErrorDialogContext").textContent = `${item.testName || "\u5F53\u524D\u6D4B\u8BD5"} \xB7 ${item.status === "failed" ? "\u8FD0\u884C\u5931\u8D25" : "\u57FA\u7EBF\u5F02\u5E38"}`;
   document.getElementById("batchErrorDialogContent").textContent = errorText;
   document.getElementById("batchErrorDialog").showModal();
 }
@@ -9026,26 +9102,34 @@ function batchGanttUrl(items) {
   });
   return params.size ? `/movelist_gantt_viewer.html?${params.toString()}` : "";
 }
+function resetBatchGanttLink() {
+  const link = document.getElementById("batchGanttButton");
+  link.href = "#";
+  link.setAttribute("aria-disabled", "true");
+}
 function updateBatchLogDownload(result) {
-  const button = document.getElementById("batchLogButton");
+  const buttons = document.querySelectorAll(".batch-log-download");
   const hasLogs = (result.items || []).some((item) => item.logUrl);
   if (!result.batchId || !hasLogs) {
-    button.href = "#";
-    button.setAttribute("aria-disabled", "true");
+    buttons.forEach((button) => {
+      button.href = "#";
+      button.setAttribute("aria-disabled", "true");
+    });
     return;
   }
-  button.href = `/api/run-batches/${encodeURIComponent(result.batchId)}/logs`;
   const deviceName = String(result.deviceName || "\u5F53\u524D\u8BBE\u5907").replace(/\.json$/i, "");
   const readableDeviceName = deviceName.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_") || "\u5F53\u524D\u8BBE\u5907";
   const readableGroupName = String(result.group || "\u5F53\u524D\u6D4B\u8BD5\u7EC4").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_") || "\u5F53\u524D\u6D4B\u8BD5\u7EC4";
-  button.download = `\u6279\u91CF\u590D\u73B0\u65E5\u5FD7-${readableDeviceName}-${readableGroupName}.zip`;
-  button.removeAttribute("aria-disabled");
+  buttons.forEach((button) => {
+    button.href = `/api/run-batches/${encodeURIComponent(result.batchId)}/logs`;
+    button.download = `\u6279\u91CF\u590D\u73B0\u65E5\u5FD7-${readableDeviceName}-${readableGroupName}.zip`;
+    button.removeAttribute("aria-disabled");
+  });
 }
 function showBatchResult(result) {
   state.batchResult = result;
   updateBatchLogDownload(result);
-  document.getElementById("testGroupAnalysisButton").hidden = false;
-  if (!state.selectedBatchTestId) showBatchOverviewMetrics(result);
+  updateAnalysisReportAvailability();
   const resultErrors = result.items.flatMap((item, index) => {
     if (item.status === "failed") {
       return [`t${index + 1} ${item.testName || ""}\uFF1A${item.error || "\u8FD0\u884C\u5931\u8D25"}`];
@@ -9057,112 +9141,12 @@ function showBatchResult(result) {
   });
   writeTerminal(resultErrors.join("\n"), resultErrors.length > 0);
   renderBatchItems(result.items);
-  const selectedIndex = result.items.findIndex((item, index) => String(item.testId || `index-${index}`) === state.selectedBatchTestId);
-  if (selectedIndex >= 0) {
-    showBatchItemOverview(result.items[selectedIndex], selectedIndex);
-    void loadBatchItemBottleneck(result.items[selectedIndex], selectedIndex);
-  }
-  const first = result.items.find((item) => item.ganttUrl || item.logUrl);
-  if (first) {
-    if (first.ganttUrl) {
-      const gantt = document.getElementById("ganttButton");
-      gantt.href = first.ganttUrl;
-      gantt.removeAttribute("aria-disabled");
-    }
-    if (first.logUrl) {
-      const log = document.getElementById("logButton");
-      log.href = first.logUrl;
-      log.download = readableLogFileName(first.testName);
-      log.removeAttribute("aria-disabled");
-    }
-  }
   const allGanttUrl = batchGanttUrl(result.items);
   const allGantt = document.getElementById("batchGanttButton");
   if (allGanttUrl) {
     allGantt.href = allGanttUrl;
     allGantt.removeAttribute("aria-disabled");
   }
-}
-function showResult(result) {
-  state.batchResult = null;
-  state.selectedBatchTestId = "";
-  document.getElementById("testGroupAnalysisButton").hidden = true;
-  document.getElementById("testGroupAnalysisPanel").hidden = true;
-  document.getElementById("batchProgress").classList.remove("visible");
-  document.getElementById("batchResults").innerHTML = "";
-  const allGantt = document.getElementById("batchGanttButton");
-  allGantt.href = "#";
-  allGantt.setAttribute("aria-disabled", "true");
-  updateBatchLogDownload({});
-  const baseline = result.baseline || {}, baselineReady = baseline.status === "succeeded";
-  const cpuTime = Number(result.cpuTimeMs ?? result.totalElapsedMs);
-  document.getElementById("metricContext").textContent = "\u5F53\u524D\u6D4B\u8BD5";
-  document.getElementById("batchOverviewButton").hidden = true;
-  ["metricTimeDetail", "metricMakespanDetail", "metricMovesDetail", "metricValidationDetail"].forEach((id) => {
-    document.getElementById(id).textContent = "";
-  });
-  document.getElementById("metricTimeLabel").textContent = "CPU Time";
-  document.getElementById("metricMakespanLabel").textContent = "Makespan / Baseline";
-  setBottleneckMetric(result.bottleneckUtilization, "\u6CA1\u6709\u8DB3\u591F\u7684\u8D44\u6E90\u6D3B\u52A8");
-  document.getElementById("metricValidationLabel").textContent = "Validation";
-  document.getElementById("metricTime").textContent = `${cpuTime.toFixed(1)} ms`;
-  document.getElementById("metricMakespan").textContent = `${result.makespan.toFixed(2)} / ${baselineReady ? Number(baseline.makespan).toFixed(2) : "\u2014"} s`;
-  const validationValue = validationDisplay(result.validation);
-  document.getElementById("metricValidation").textContent = validationValue;
-  document.getElementById("metricValidation").closest(".metric").classList.toggle("is-success", result.validation === "passed");
-  document.getElementById("metricValidation").closest(".metric").classList.toggle("is-error", result.validation !== "passed" && result.validation !== "skipped");
-  const objectiveDiagnostics = [...result.rounds || []].reverse().map((round) => round.strategyDiagnostics).find((diagnostics) => diagnostics?.metrics);
-  if (objectiveDiagnostics) {
-    const metrics = objectiveDiagnostics.metrics;
-    document.getElementById("metricValidationLabel").textContent = "Validation / Multi-metric";
-    document.getElementById("metricValidationDetail").textContent = `\u9A7B\u7559\u8D85\u9650 ${Number(metrics.residencyViolationCount) || 0} \u6B21 \xB7 \u6700\u5927\u6301\u7247 ${Number(metrics.maximumRobotHoldingSeconds || 0).toFixed(2)} s \xB7 \u7CFB\u7EDF\u505C\u7559 CV ${Number(metrics.systemResidenceCv || 0).toFixed(3)}`;
-  }
-  const dualActorDiagnostics = (result.rounds || []).map((round) => round.strategyDiagnostics).filter((diagnostics) => diagnostics?.selectedSource === "dual-actor-e2e");
-  if (dualActorDiagnostics.length) {
-    const totals = dualActorDiagnostics.reduce((summary, diagnostics) => ({
-      atmosphere: summary.atmosphere + (Number(diagnostics.actorDecisionCounts?.atmosphere) || 0),
-      vacuum: summary.vacuum + (Number(diagnostics.actorDecisionCounts?.vacuum) || 0),
-      pick: summary.pick + (Number(diagnostics.primitiveActionCounts?.pick) || 0),
-      place: summary.place + (Number(diagnostics.primitiveActionCounts?.place) || 0),
-      swap: summary.swap + (Number(diagnostics.primitiveActionCounts?.swap) || 0)
-    }), { atmosphere: 0, vacuum: 0, pick: 0, place: 0, swap: 0 });
-    document.getElementById("metricValidationLabel").textContent = "Validation / Dual Actor";
-    document.getElementById("metricValidationDetail").textContent = `\u51B3\u7B56\uFF1A\u5927\u6C14 ${totals.atmosphere} \xB7 \u771F\u7A7A ${totals.vacuum}\uFF1B\u539F\u5B50\u52A8\u4F5C\uFF1APick ${totals.pick} \xB7 Place ${totals.place} \xB7 Swap ${totals.swap}`;
-  }
-  writeTerminal(["$ \u8C03\u5EA6\u5B8C\u6210", ...(result.rounds || []).map((round) => {
-    if (round.kind === "initial") return `  #${round.index} \u9996\u6B21 | ${round.elapsedMs.toFixed(1)} ms`;
-    const request = Number(round.requestedTime);
-    const recoveryEnd = Number(round.recoveryEndTime ?? round.effectiveTime);
-    const triggerLabel = round.trigger === "cjob-cycle" ? "CJobCycle \u8865\u7247\u91CD\u7B97" : "\u5B9A\u65F6\u91CD\u7B97";
-    const timing = Math.abs(recoveryEnd - request) > 1e-6 ? `@${request}s ${triggerLabel} \xB7 \u56FA\u5B9A\u65E7\u52A8\u4F5C\u6536\u5C3E\u81F3 @${recoveryEnd}s` : `@${request}s ${triggerLabel}`;
-    return `  #${round.index} ${timing} | ${round.elapsedMs.toFixed(1)} ms`;
-  }), "", ...result.logs || []].join("\n"));
-  const gantt = document.getElementById("ganttButton");
-  gantt.href = result.ganttUrl;
-  gantt.removeAttribute("aria-disabled");
-}
-function showFailedResultMetrics(result) {
-  state.batchResult = null;
-  state.selectedBatchTestId = "";
-  document.getElementById("testGroupAnalysisButton").hidden = true;
-  document.getElementById("testGroupAnalysisPanel").hidden = true;
-  document.getElementById("batchProgress").classList.remove("visible");
-  document.getElementById("batchResults").innerHTML = "";
-  const baseline = result?.baseline || {};
-  const baselineMakespan = baseline.status === "succeeded" ? Number(baseline.makespan) : NaN;
-  const makespan = Number(result?.makespan);
-  const elapsedTime = Number(result?.totalElapsedMs ?? result?.cpuTimeMs);
-  const improvement = Number(result?.improvementPercent);
-  const makespanText = `${Number.isFinite(makespan) ? makespan.toFixed(2) : "\u2014"} / ${Number.isFinite(baselineMakespan) ? baselineMakespan.toFixed(2) : "\u2014"} s`;
-  const comparisonDetail = Number.isFinite(improvement) ? `${improvement >= 0 ? "\u63D0\u5347" : "\u9000\u5316"} ${Math.abs(improvement).toFixed(2)}% \xB7 \u7ED3\u679C\u6821\u9A8C\u672A\u901A\u8FC7` : baseline.status === "skipped" ? "" : baseline.status && baseline.status !== "succeeded" ? `Baseline ${baseline.status === "failed" ? "\u5931\u8D25" : "\u5931\u6548"}` : "\u5916\u90E8\u7B97\u6CD5\u672A\u8FD4\u56DE\u53EF\u6BD4\u8F83\u7684\u5B8C\u6574 Makespan";
-  document.getElementById("metricContext").textContent = "\u5F53\u524D\u6D4B\u8BD5 \xB7 \u5916\u90E8\u7B97\u6CD5\u5931\u8D25\u7ED3\u679C";
-  document.getElementById("batchOverviewButton").hidden = true;
-  setResultMetric("Time", "\u5931\u8D25\u524D\u8017\u65F6", Number.isFinite(elapsedTime) ? `${elapsedTime.toFixed(1)} ms` : "\u2014", "\u4ECE\u63D0\u4EA4\u5230\u8FD4\u56DE\u5931\u8D25\u7ED3\u679C");
-  setResultMetric("Makespan", "Makespan / Baseline", makespanText, comparisonDetail);
-  setBottleneckMetric(result?.bottleneckUtilization, result?.resultId ? "\u5931\u8D25\u7ED3\u679C\u6CA1\u6709\u8DB3\u591F\u7684\u8D44\u6E90\u6D3B\u52A8" : "\u672A\u751F\u6210\u53EF\u5206\u6790\u7684 MoveList");
-  setResultMetric("Validation", "Validation", result?.validation === "failed" ? "\u672A\u901A\u8FC7" : String(result?.validation || "\u5931\u8D25"), result?.error || "");
-  document.getElementById("metricValidation").closest(".metric").classList.remove("is-success");
-  document.getElementById("metricValidation").closest(".metric").classList.add("is-error");
 }
 function writeTerminal(message, error = false) {
   const panel = document.getElementById("resultErrorPanel");
@@ -9182,53 +9166,8 @@ function writeTerminal(message, error = false) {
   terminal.textContent = String(message || "\u672A\u77E5\u9519\u8BEF").replace(/^\$\s*/, "");
   panel.hidden = false;
 }
-function renderRunFailureCard({
-  cancelled,
-  errorMessage,
-  deadlock,
-  validationIssues,
-  baselineError
-}) {
-  const panel = document.getElementById("resultErrorPanel");
-  const details = document.getElementById("resultErrorDetails");
-  const terminal = document.getElementById("terminal");
-  const issueRows = validationIssues.map((rawIssue) => {
-    const issue = String(rawIssue || "").trim();
-    const matched = issue.match(/^\[([A-Z0-9-]+)\]\s*/);
-    const code = matched?.[1] || "MVL-UNKNOWN";
-    const message = matched ? issue.slice(matched[0].length) : issue;
-    return `<li><code>${escapeHtml3(code)}</code><span>${escapeHtml3(message || issue)}</span></li>`;
-  }).join("");
-  const validationFailure = validationIssues.length > 0;
-  const informationType = cancelled ? "\u8FD0\u884C\u5DF2\u7EC8\u6B62" : deadlock ? "\u7B97\u6CD5\u6B7B\u9501" : validationFailure ? "MoveList \u6821\u9A8C\u5931\u8D25" : baselineError ? "Baseline \u5931\u8D25" : "\u8FD0\u884C\u5F02\u5E38";
-  const primaryCode = deadlock?.deadlockCode || (validationIssues[0]?.match(/^\s*\[([A-Z0-9-]+)\]/)?.[1] ?? "RUN-ERR-001");
-  const summaryText = deadlock?.message || (cancelled ? "\u7528\u6237\u7EC8\u6B62\u4E86\u672C\u6B21\u8FD0\u884C" : errorMessage);
-  const summaryMarkup = validationFailure ? `<strong>${escapeHtml3(summaryText || "\u672A\u63D0\u4F9B\u9519\u8BEF\u8BF4\u660E")}</strong>` : `<span class="error-summary-meta">[${escapeHtml3(informationType)} <i aria-hidden="true">|</i> <code>${escapeHtml3(primaryCode)}</code>]</span><strong>${escapeHtml3(summaryText || "\u672A\u63D0\u4F9B\u9519\u8BEF\u8BF4\u660E")}</strong>`;
-  const validationSection = validationFailure ? "" : issueRows ? `
-    <section class="error-detail-section" aria-labelledby="errorValidationTitle">
-      <div class="error-detail-heading"><span id="errorValidationTitle">MoveList \u6821\u9A8C\u95EE\u9898</span><b>${validationIssues.length} \u9879</b></div>
-      <ul class="error-issue-list">${issueRows}</ul>
-    </section>` : "";
-  const baselineSection = baselineError ? `
-    <section class="error-detail-section">
-      <div class="error-detail-heading"><span>Baseline</span><b>\u5931\u8D25</b></div>
-      <p>${escapeHtml3(baselineError.replace(/^Baseline\s*失败：?\s*/, ""))}</p>
-    </section>` : "";
-  details.innerHTML = `
-    <div class="error-summary-line">
-      ${summaryMarkup}
-    </div>
-    ${validationSection}
-    ${baselineSection}
-  `;
-  terminal.textContent = "";
-  terminal.hidden = true;
-  details.hidden = false;
-  panel.hidden = false;
-}
 async function checkService() {
   const pill = document.getElementById("serviceState");
-  const runButton = document.getElementById("runButton");
   const batchRunButton = document.getElementById("batchRunButton");
   try {
     const response = await fetch("/api/health", { cache: "no-store" });
@@ -9237,8 +9176,7 @@ async function checkService() {
     state.serviceCompatible = compatible;
     state.algorithmMetadata = status.algorithmMetadata || {};
     renderOtherAlgorithmOptions(status.algorithms || status.otherAlgorithms || []);
-    runButton.disabled = !compatible || singleRunCancelling || state.batchRunning;
-    batchRunButton.disabled = !compatible || singleRunActive || state.batchRunning && state.batchCancelRequested;
+    batchRunButton.disabled = !compatible || state.batchRunning && state.batchCancelRequested;
     renderWorkspaceControls();
     pill.textContent = compatible ? "\u672C\u5730\u670D\u52A1\u5DF2\u8FDE\u63A5" : "\u670D\u52A1\u7248\u672C\u8FC7\u65E7";
     if (!compatible) {
@@ -9248,7 +9186,6 @@ async function checkService() {
     }
   } catch {
     state.serviceCompatible = false;
-    runButton.disabled = true;
     batchRunButton.disabled = true;
     renderWorkspaceControls();
     pill.textContent = "\u672C\u5730\u670D\u52A1\u672A\u8FDE\u63A5";
@@ -9417,8 +9354,68 @@ document.getElementById("testExchangeFile").addEventListener("change", (event) =
   ${error.message}`, true);
   });
 });
+document.getElementById("resultPreviewViewButton").addEventListener("click", () => setRunResultView("results"));
+document.getElementById("analysisReportViewButton").addEventListener("click", () => {
+  if (!canOpenAnalysisReport()) return;
+  if (document.getElementById("testGroupAnalysisPanel").hidden) openGroupAnalysisOptions();
+  else setRunResultView("analysis");
+});
+document.getElementById("batchResultFilterButton").addEventListener("click", () => openBatchTestSelectionDialog("filter"));
+for (const [sourceId, targetId] of [["runDeviceSelect", "deviceSelect"], ["runGroupSelect", "testGroupSelect"]]) {
+  document.getElementById(sourceId).addEventListener("change", (event) => {
+    const target = document.getElementById(targetId);
+    target.value = event.target.value;
+    target.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+document.getElementById("discardTestButton").addEventListener("click", () => discardTestDraft().catch((error) => setWorkspaceStatus(`\u64A4\u9500\u5931\u8D25\uFF1A${error.message}`, "dirty")));
+document.getElementById("saveAndRunPageButton").addEventListener("click", async () => {
+  try {
+    await saveCurrentTest(false);
+    showTestCatalog();
+  } catch (error) {
+    setWorkspaceStatus(`\u4FDD\u5B58\u5931\u8D25\uFF1A${error.message}`, "dirty");
+  }
+});
+document.getElementById("cancelTestEditButton").addEventListener("click", async () => {
+  try {
+    if (await settleTestDraft()) showTestCatalog();
+  } catch (error) {
+    setWorkspaceStatus(`\u65E0\u6CD5\u8FD4\u56DE\u5217\u8868\uFF1A${error.message}`, "dirty");
+  }
+});
+document.querySelectorAll("[data-management-target]").forEach((button) => button.addEventListener("click", () => {
+  (async () => {
+    await switchTab("test-management");
+    await switchManagementSection(button.dataset.managementTarget);
+  })().catch((error) => setWorkspaceStatus(`\u5207\u6362\u5931\u8D25\uFF1A${error.message}`, "dirty"));
+}));
+document.getElementById("testCatalogBody").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-test-action]");
+  if (!button || button.disabled) return;
+  (async () => {
+    if (button.dataset.testId !== state.testCaseId) await selectWorkspaceTest(button.dataset.testId);
+    if (button.dataset.testAction === "edit") showTestEditor();
+    if (button.dataset.testAction === "copy") {
+      await createTestCase(true);
+      showTestCatalog();
+    }
+    if (button.dataset.testAction === "delete") {
+      await deleteCurrentTest();
+      showTestCatalog();
+    }
+  })().catch((error) => setWorkspaceStatus(`\u6D4B\u8BD5\u64CD\u4F5C\u5931\u8D25\uFF1A${error.message}`, "dirty"));
+});
+document.getElementById("deviceImportButton").addEventListener("click", () => document.getElementById("workspaceImportButton").click());
+document.getElementById("deviceExportButton").addEventListener("click", () => document.getElementById("workspaceExportButton").click());
+window.addEventListener("beforeunload", (event) => {
+  if (state.dirty) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
 document.getElementById("deviceSelect").addEventListener("change", (event) => (async () => {
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   if (state.deviceTimingDirty) await saveDeviceTiming();
   await selectWorkspaceDevice(event.target.value);
 })().catch((error) => writeTerminal(`$ \u8BBE\u5907\u5207\u6362\u5931\u8D25
@@ -9463,9 +9460,9 @@ document.getElementById("deleteGroupButton").addEventListener("click", () => del
   writeTerminal(`$ \u5220\u9664\u6D4B\u8BD5\u7EC4\u522B\u5931\u8D25
   ${error.message}`, true);
 }));
-document.getElementById("newTestButton").addEventListener("click", () => createTestCase(false).catch((error) => writeTerminal(`$ \u65B0\u5EFA\u6D4B\u8BD5\u96C6\u5931\u8D25
+document.getElementById("newTestButton").addEventListener("click", () => createTestCase(false).then(showTestEditor).catch((error) => writeTerminal(`$ \u65B0\u5EFA\u6D4B\u8BD5\u96C6\u5931\u8D25
   ${error.message}`, true)));
-document.getElementById("emptyGroupNewTestButton").addEventListener("click", () => createTestCase(false).catch((error) => writeTerminal(`$ \u65B0\u5EFA\u6D4B\u8BD5\u96C6\u5931\u8D25
+document.getElementById("emptyGroupNewTestButton").addEventListener("click", () => createTestCase(false).then(showTestEditor).catch((error) => writeTerminal(`$ \u65B0\u5EFA\u6D4B\u8BD5\u96C6\u5931\u8D25
   ${error.message}`, true)));
 document.getElementById("copyTestButton").addEventListener("click", () => createTestCase(true).catch((error) => writeTerminal(`$ \u590D\u5236\u6D4B\u8BD5\u96C6\u5931\u8D25
   ${error.message}`, true)));
@@ -9477,7 +9474,6 @@ document.getElementById("roundCount").addEventListener("input", (event) => {
   resizeRounds(event.target.value);
   markTestDirty();
 });
-document.getElementById("runButton").addEventListener("click", runPlan);
 document.getElementById("batchRunButton").addEventListener("click", runCurrentTestGroup);
 document.getElementById("openRunSettingsButton").addEventListener("click", openRunSettingsDialog);
 document.getElementById("runSettingsDialogClose").addEventListener("click", closeRunSettingsDialog);
@@ -9541,8 +9537,6 @@ document.getElementById("searchTreeOptionsForm").addEventListener("submit", (eve
     document.getElementById("searchTreeCheckpointHint").textContent = error.message || "\u53C2\u6570\u4FDD\u5B58\u5931\u8D25";
   });
 });
-document.getElementById("batchOverviewButton").addEventListener("click", showCurrentBatchOverview);
-document.getElementById("testGroupAnalysisButton").addEventListener("click", openGroupAnalysisOptions);
 var cancelOrCloseAnalysisWizard = async () => {
   if (activeGroupAnalysisJobId) {
     document.getElementById("analysisOptionsCancel").disabled = true;
@@ -9606,19 +9600,16 @@ document.getElementById("analysisOptionsForm").addEventListener("submit", (event
       document.getElementById("analysisOptionsCancel").textContent = "\u53D6\u6D88";
     } else {
       visualizationWorkspace.showGroupAnalysis(`<section class="group-analysis-warning"><strong>\u7ED3\u679C\u5206\u6790\u5931\u8D25</strong><br>${escapeHtml3(error.message || "\u672A\u77E5\u9519\u8BEF")}</section>`);
+      setRunResultView("analysis");
     }
     writeTerminal(`$ \u6D4B\u8BD5\u7EC4\u7ED3\u679C\u5206\u6790\u5931\u8D25
   ${error.message || "\u672A\u77E5\u9519\u8BEF"}`, true);
   });
 });
-document.getElementById("logButton").addEventListener("click", (event) => {
-  if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault();
-});
-document.getElementById("ganttButton").addEventListener("click", (event) => {
-  if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault();
-});
-document.getElementById("batchLogButton").addEventListener("click", (event) => {
-  if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault();
+document.querySelectorAll(".batch-log-download").forEach((button) => {
+  button.addEventListener("click", (event) => {
+    if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault();
+  });
 });
 document.getElementById("batchGanttButton").addEventListener("click", (event) => {
   if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault();
@@ -9632,7 +9623,33 @@ document.addEventListener("keydown", (event) => {
 });
 document.addEventListener("keydown", (event) => {
   const card = event.target.closest?.("[data-step-card]");
-  if (card && event.key === "Enter") openPJobStepDrawer(Number(card.dataset.routeIndex), Number(card.dataset.stageIndex));
+  if (!card || event.key !== "Enter") return;
+  const inlineContext = card.dataset.roundIndex === void 0 ? null : {
+    roundIndex: Number(card.dataset.roundIndex),
+    cjobIndex: Number(card.dataset.cjobIndex),
+    pjobIndex: Number(card.dataset.pjobIndex)
+  };
+  openPJobStepDrawer(Number(card.dataset.routeIndex), Number(card.dataset.stageIndex), inlineContext);
+});
+document.addEventListener("keydown", (event) => {
+  const card = event.target.closest?.("[data-batch-test-card]");
+  if (!card || !["Enter", " "].includes(event.key)) return;
+  if (event.target.closest("a, button, input, select, textarea, label")) return;
+  event.preventDefault();
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    enqueueResultCardTest(card.dataset.batchTestCard);
+    return;
+  }
+  toggleBatchTestDetails(card.dataset.batchTestCard).catch((error) => writeTerminal(`$ \u6D4B\u8BD5\u8BE6\u60C5\u8BFB\u53D6\u5931\u8D25
+  ${error.message || "\u672A\u77E5\u9519\u8BEF"}`, true));
+});
+document.addEventListener("dblclick", (event) => {
+  const card = event.target.closest?.("[data-batch-test-card]");
+  if (!card || event.target.closest("a, button, input, select, textarea, label")) return;
+  event.preventDefault();
+  window.clearTimeout(batchCardClickTimer);
+  batchCardClickTimer = 0;
+  enqueueResultCardTest(card.dataset.batchTestCard);
 });
 document.addEventListener("input", (event) => {
   if (event.target.matches("[data-device-timing-target], [data-device-execution-target]")) updateDeviceTimingFromControl(event.target);
@@ -9705,8 +9722,6 @@ document.addEventListener("change", (event) => {
     retainSessionSchedulingConfiguration();
     document.getElementById("roundCount").disabled = false;
     updateStrategyOptionVisibility();
-    showAlgorithmDetails(state.strategy);
-    markTestDirty();
     renderAll();
   }
 });
@@ -9737,11 +9752,9 @@ document.addEventListener("click", (event) => {
   }
   const batchErrorButton = event.target.closest("[data-batch-error]");
   if (batchErrorButton) {
-    openBatchErrorDialog(Number(batchErrorButton.dataset.batchError));
+    openBatchErrorDialog(batchErrorButton.dataset.batchError);
     return;
   }
-  const batchResultCard = event.target.closest("[data-batch-item-index]");
-  if (batchResultCard && !event.target.closest(".batch-result-meta")) selectBatchItem(Number(batchResultCard.dataset.batchItemIndex));
   const playbackResult = event.target.closest("[data-playback-result]");
   if (playbackResult) {
     visualizationWorkspace.loadResult(playbackResult.dataset.playbackResult, playbackResult.dataset.playbackName).then(() => visualizationWorkspace.showPlayback()).catch((error) => writeTerminal(`$ \u56DE\u653E\u8BCA\u65AD\u52A0\u8F7D\u5931\u8D25
@@ -9754,13 +9767,31 @@ document.addEventListener("click", (event) => {
   ${error.message || "\u672A\u77E5\u9519\u8BEF"}`, true));
     return;
   }
+  const batchTestCard = event.target.closest("[data-batch-test-card]");
+  if (batchTestCard) {
+    if (event.target.closest("a, button, input, select, textarea, label")) return;
+    window.clearTimeout(batchCardClickTimer);
+    batchCardClickTimer = window.setTimeout(() => {
+      batchCardClickTimer = 0;
+      toggleBatchTestDetails(batchTestCard.dataset.batchTestCard).catch((error) => writeTerminal(`$ \u6D4B\u8BD5\u8BE6\u60C5\u8BFB\u53D6\u5931\u8D25
+  ${error.message || "\u672A\u77E5\u9519\u8BEF"}`, true));
+    }, BATCH_CARD_SINGLE_CLICK_DELAY_MILLISECONDS);
+    return;
+  }
   const button = event.target.closest("[data-action]");
   if (button && !button.disabled) {
     handleAction(button);
     return;
   }
   const card = event.target.closest("[data-step-card]");
-  if (card) openPJobStepDrawer(Number(card.dataset.routeIndex), Number(card.dataset.stageIndex));
+  if (card) {
+    const inlineContext = card.dataset.roundIndex === void 0 ? null : {
+      roundIndex: Number(card.dataset.roundIndex),
+      cjobIndex: Number(card.dataset.cjobIndex),
+      pjobIndex: Number(card.dataset.pjobIndex)
+    };
+    openPJobStepDrawer(Number(card.dataset.routeIndex), Number(card.dataset.stageIndex), inlineContext);
+  }
 });
 window.addEventListener("pagehide", () => {
   if (runSettingsPreferencesDirty) {
@@ -9790,16 +9821,9 @@ window.addEventListener("pagehide", () => {
     }).catch(() => {
     });
   }
-  if (state.dirty && state.workspaceDeviceId && state.testCaseId) {
-    fetch(`/api/workspaces/${state.workspaceDeviceId}/tests/${state.testCaseId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(currentTestSnapshot()),
-      keepalive: true
-    }).catch(() => {
-    });
-  }
 });
+var managementSections = document.getElementById("testManagementSections");
+for (const id of ["routeManagementSection", "deviceManagementSection"]) managementSections.append(document.getElementById(id));
 initializeCompactSelects();
 renderAll();
 renderWorkspaceControls();

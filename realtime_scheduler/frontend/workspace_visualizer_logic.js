@@ -2033,7 +2033,7 @@ function collectElements(root) {
     importButton: root.getElementById("visualImportButton"),
     exportDiagnosticButton: root.getElementById("visualExportDeadlockDiagnostic"),
     openGantt: required("visualOpenGantt"),
-    resultButton: required("workspaceResultButton"),
+    resultButton: root.getElementById("workspaceResultButton"),
     performance: required("visualPerformance"),
     performanceWindow: required("performanceWindow")
   };
@@ -3705,7 +3705,11 @@ var VisualizationWorkspace = class {
         if (replayContext && typeof replayContext === "object" && !Array.isArray(replayContext)) {
           const embeddedPlan = replayContext.plan;
           if (embeddedPlan && typeof embeddedPlan === "object" && !Array.isArray(embeddedPlan)) {
-            this.setReplayPlan(embeddedPlan);
+            const plan = embeddedPlan;
+            this.device = plan.device || this.device;
+            this.analysisRoutes = structuredClone(plan.routes || []);
+            this.analysisRounds = structuredClone(plan.rounds || []);
+            this.setReplayPlan(plan);
           }
         }
       }
@@ -3863,7 +3867,7 @@ var VisualizationWorkspace = class {
     this.bottleneckSummary = null;
     this.analysisRequestVersion += 1;
     this.time = 0;
-    this.elements.resultButton.disabled = true;
+    if (this.elements.resultButton) this.elements.resultButton.disabled = true;
     this.elements.range.disabled = false;
     this.elements.playButton.disabled = false;
     this.elements.openGantt.href = "#";
@@ -3921,7 +3925,7 @@ var VisualizationWorkspace = class {
     if (this.elements.exportDiagnosticButton) {
       this.elements.exportDiagnosticButton.disabled = !this.replayPlan;
     }
-    this.elements.resultButton.disabled = false;
+    if (this.elements.resultButton) this.elements.resultButton.disabled = false;
     this.showSingleResult();
     this.setTopologyVisible(true);
     this.render(snapshot);
@@ -3972,7 +3976,7 @@ var VisualizationWorkspace = class {
       this.performanceWindowMode = this.elements.performanceWindow.value === "full" ? "full" : "steady";
       void this.renderPerformance();
     });
-    this.elements.resultButton.addEventListener("click", () => this.show());
+    this.elements.resultButton?.addEventListener("click", () => this.show());
     this.elements.openGantt.addEventListener("click", (event) => {
       if (this.elements.openGantt.getAttribute("aria-disabled") === "true") event.preventDefault();
     });
@@ -4059,11 +4063,9 @@ var VisualizationWorkspace = class {
     this.elements.playButton.setAttribute("aria-label", this.playing ? "\u6682\u505C\u56DE\u653E" : "\u64AD\u653E\u56DE\u653E");
     this.elements.playButton.classList.toggle("is-playing", this.playing);
   }
-  /** 单次结果只显示回放数据，结果分析页保持批量分析空态。 */
+  /** 单次结果只更新回放，不改变首页已经生成的批量报告。 */
   showSingleResult() {
     this.elements.toolbar.hidden = false;
-    this.elements.groupAnalysis.hidden = true;
-    this.elements.empty.hidden = false;
     this.elements.content.hidden = true;
     this.elements.playbackEmpty.hidden = true;
   }
@@ -4286,16 +4288,11 @@ var VisualizationWorkspace = class {
     this.pause();
     this.setTopologyVisible(false);
     this.elements.toolbar.hidden = false;
-    this.elements.groupAnalysis.hidden = true;
     this.elements.content.hidden = true;
-    this.elements.empty.hidden = false;
     this.elements.playbackEmpty.hidden = false;
-    this.elements.empty.classList.toggle("is-loading", loading);
     this.elements.playbackEmpty.classList.toggle("is-loading", loading);
-    this.elements.empty.classList.remove("is-error");
     this.elements.playbackEmpty.classList.remove("is-error");
     const loadingMarkup = loading ? `<span class="visual-loader" aria-hidden="true"></span><strong>${escapeHtml(message)}</strong>` : `<strong>${escapeHtml(message)}</strong>`;
-    this.elements.empty.innerHTML = loadingMarkup;
     this.elements.playbackEmpty.innerHTML = loadingMarkup;
   }
   /** 在工作台空状态中显示可恢复的错误。 */
@@ -4303,21 +4300,16 @@ var VisualizationWorkspace = class {
     this.pause();
     this.setTopologyVisible(false);
     this.elements.toolbar.hidden = false;
-    this.elements.groupAnalysis.hidden = true;
     this.elements.content.hidden = true;
-    this.elements.empty.hidden = false;
     this.elements.playbackEmpty.hidden = false;
-    this.elements.empty.classList.remove("is-loading");
     this.elements.playbackEmpty.classList.remove("is-loading");
-    this.elements.empty.classList.add("is-error");
     this.elements.playbackEmpty.classList.add("is-error");
     const errorMarkup = `
       <strong>\u65E0\u6CD5\u52A0\u8F7D MoveList</strong>
       <span>${escapeHtml(message)}</span>
       <label class="btn visual-import-button">${icon("upload")}\u91CD\u65B0\u9009\u62E9\u6587\u4EF6<input type="file" accept=".json,application/json" data-visual-retry></label>`;
-    this.elements.empty.innerHTML = errorMarkup;
     this.elements.playbackEmpty.innerHTML = errorMarkup;
-    [this.elements.empty, this.elements.playbackEmpty].forEach((container) => {
+    [this.elements.playbackEmpty].forEach((container) => {
       const retryInput = container.querySelector("[data-visual-retry]");
       retryInput?.addEventListener("change", () => {
         const file = retryInput.files?.item(0);

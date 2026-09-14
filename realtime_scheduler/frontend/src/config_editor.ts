@@ -1,12 +1,13 @@
 /**
  * 调度平台的浏览器入口。
- * 负责页面状态、编辑交互和本地调度 API 协作；纯 Route 逻辑位于 route_editor_logic.ts。
+ * 负责既有编辑与运行 API 协作；测试草稿离开决策位于 test_draft_navigation.ts。
  *
  * 该文件由原有页面控制器无行为变化迁移而来；DOM 事件仍采用动态结构，
  * 暂由构建器校验语法，新增的独立业务模块必须通过完整 TypeScript 类型检查。
  */
 
 // @ts-nocheck
+import { createDraftChoiceDialog, resolveTestDraft } from "./test_draft_navigation";
 import * as RouteEditorLogic from "./route_editor_logic";
 import {
   cancelTestGroupAnalysisJob,
@@ -19,6 +20,7 @@ import {
 } from "./api_client";
 import { createVisualizationWorkspace, detectDeviceTopologyLayout, updateThroughputChartRange } from "./workspace_visualizer";
 import { renderTestGroupAnalysis, testGroupSummaryCsv } from "./group_analysis_view";
+import { createResultCardRunQueue } from "./result_card_run_queue";
 import {
   CJOB_TYPES,
   TASK_MODES,
@@ -35,10 +37,18 @@ import {
 
 const { VISIT_SHARED_FIELDS, automaticTemplateName } = RouteEditorLogic;
 const visualizationWorkspace = createVisualizationWorkspace();
-const batchPerformanceAnalyses = new Map();
-const batchBottleneckSummaries = new Map();
-const batchBottleneckRequests = new Map();
-const batchBottleneckErrors = new Map();
+const chooseTestDraft = createDraftChoiceDialog(document.getElementById("testDraftDialog") as HTMLDialogElement);
+let activeRunContext = null;
+let activeBatchContext = null;
+let batchSelectionMode: "run" | "filter" = "run";
+let resultTestFilterIds: Set<string> | null = null;
+let expandedBatchTestId = "";
+let batchTestDetailsRequestVersion = 0;
+let batchCardClickTimer = 0;
+const batchResultItemHistory = new Map<string, any>();
+let runPreparationActive = false;
+let navigationPending = false;
+let activeManagementSection = "cases";
 const batchCardAnalyses = new Map();
 const batchCardAnalysisRequests = new Map();
 let activeGroupAnalysisJobId = "";
@@ -113,6 +123,7 @@ const FIRST_ROBOT_SLOT_ID = 1;
 const DUAL_ARM_SLOT_COUNT = 2;
 const SEARCH_TELEMETRY_POLL_MILLISECONDS = 75;
 const BATCH_STATUS_POLL_MILLISECONDS = 1000;
+const BATCH_CARD_SINGLE_CLICK_DELAY_MILLISECONDS = 500;
 const WORKSPACE_TRANSFER_POLL_MILLISECONDS = 500;
 const TEST_ORDER_COLLATOR = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
 const DEFAULT_DUMMY_WAFER_COUNT = 8;
@@ -130,7 +141,7 @@ const ROBOT_ACTION_TIME_FIELDS = [
 
 const state = {
   workspaceDevices: [], workspaceDevice: null, workspaceDeviceId: "", testCaseId: "", testCaseName: "", testCaseGroup: "", activeTestGroup: "", serviceCompatible: false, dirty: false,
-  activeBatchId: "", batchRunning: false, batchCancelRequested: false, batchCancelSent: false, batchResult: null, selectedBatchTestId: "",
+  activeBatchId: "", batchRunning: false, batchCancelRequested: false, batchCancelSent: false, batchResult: null,
   deviceName: "", baseDevice: null, device: null, stationNames: [], loadPorts: [], processModules: [], robotNames: [], robotScopes: {}, robotSlots: {}, robotSlotsSaving: new Set(),
   deviceConfigSection: "station-time", deviceStationName: "", deviceRobotName: "", deviceRobotTransferAxes: {}, deviceRobotTransferSources: {}, deviceTimingDraft: null, deviceTimingDirty: false, deviceTimingSaving: false, deviceTimingStatusMessage: "选择设备后开始配置",
   strategy: "heuristic", availableAlgorithms: [], algorithmMetadata: {}, roundCount: 2, times: [0, 70], options: { ...DEFAULT_SCHEDULE_OPTIONS },
@@ -157,11 +168,6 @@ let playbackMode = "replay";
 let userChosenActionKey = "";
 let userChosenSearchId = "";
 let pendingModeSync = "";
-/** 普通单测通过 clientRunId 轮询真实 init/update/output 阶段。 */
-let singleRunActive = false;
-let singleRunCancelling = false;
-let activeSingleRunId = "";
-let singleRunAbortController: AbortController | null = null;
 let runStatusStartedAt = 0;
 let runStatusElapsedMs = 0;
 let runStatusTimer = 0;
@@ -624,7 +630,7 @@ function parseDeviceFileText(text: string) {
 /** 导入设备到本地工作区；相同拓扑会直接复用已有设备。 */
 async function loadDevice(file) {
   if (!file) return;
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   updateDataTransferProgress({ progress: 5, message: "正在读取 init JSON" });
   const fileText = await file.text();
   updateDataTransferProgress({ progress: 25, message: "正在校验设备拓扑" });
@@ -722,7 +728,7 @@ function uploadWorkspaceTransferContent(transferId: string, file: File) {
 async function runWorkspaceTransfer(kind: "device" | "test", file?: File) {
   if (dataTransferMode === "export") {
     if (!state.workspaceDeviceId) throw new Error("请先选择设备");
-    if (state.dirty) await saveCurrentTest(true);
+    if (!await settleTestDraft()) return;
     if (state.deviceTimingDirty) await saveDeviceTiming();
     if (kind === "test" && !state.testCaseId) throw new Error("请先选择测试集");
   }
@@ -945,7 +951,7 @@ function applyDeviceTopology(device, deviceName, rawRobotSlots = {}) {
     .sort(natural);
   state.robotNames = Object.keys(state.device.Robots).sort(natural);
   state.robotScopes = Object.fromEntries(Object.entries(state.device.Robots).map(([name, robot]) => [name, [...new Set(Object.values(robot.ArmInfo || {}).filter(arm => arm.IsEnable !== false).flatMap(arm => arm.AccessibleStations || []))]]));
-  visualizationWorkspace.setDevice(state.device);
+  if (!activeRunContext && !state.batchResult) visualizationWorkspace.setDevice(state.device);
   if (!state.loadPorts.length || !state.processModules.length) throw new Error("设备必须包含 LoadPort 和 ProcessChamber");
 }
 
@@ -1397,7 +1403,7 @@ async function saveDeviceTiming() {
     });
     state.workspaceDevice.device = structuredClone(result.device);
     applyDeviceTopology(result.device, state.deviceName, state.robotSlots);
-    resetRunResult();
+
     resetDeviceTimingDraft("时间参数已保存并应用到全部测试");
     setWorkspaceStatus("设备时间参数已保存", "saved");
   } catch (error) {
@@ -1519,7 +1525,7 @@ function refreshCompactSelect(select) {
   trigger.disabled = select.disabled;
   trigger.setAttribute("aria-label", `${compactSelectLabel(select)}：${selectedOption?.textContent?.trim() || "未选择"}`);
   trigger.querySelector(".compact-select-value").textContent = selectedOption?.textContent?.trim() || "未选择";
-  menu.innerHTML = Array.from(select.options).map((option, index) => `<button class="compact-select-option" type="button" role="option" data-option-index="${index}" aria-selected="${option.selected}" ${option.disabled ? "disabled" : ""}>${escapeHtml(option.textContent?.trim() || "未命名选项")}</button>`).join("");
+  menu.innerHTML = Array.from(select.options).map((option, index) => `<button class="compact-select-option" type="button" role="option" data-option-index="${index}" aria-selected="${option.selected}" ${option.disabled ? "disabled" : ""} ${option.hidden ? "hidden" : ""}>${escapeHtml(option.textContent?.trim() || "未命名选项")}</button>`).join("");
 }
 
 /** 为首页主选择器建立带标签、选中状态和键盘焦点的浅色下拉交互。 */
@@ -1625,8 +1631,9 @@ function renderWorkspaceControls() {
   document.getElementById("copyTestButton").disabled = !hasTest;
   document.getElementById("saveTestButton").disabled = !hasTest;
   document.getElementById("deleteTestButton").disabled = tests.length <= 1;
-  const batchDisabled = (state.batchRunning && state.batchCancelRequested) || singleRunActive || !state.serviceCompatible || !visibleTests.length;
+  const batchDisabled = runPreparationActive || (state.batchRunning && state.batchCancelRequested) || !state.serviceCompatible || !visibleTests.length;
   document.getElementById("batchRunButton").disabled = batchDisabled;
+  document.getElementById("batchResultFilterButton").disabled = !visibleTests.length;
   const emptyHint = document.getElementById("emptyGroupHint");
   emptyHint.classList.toggle("visible", Boolean(state.workspaceDeviceId) && !visibleTests.length);
   document.getElementById("emptyGroupNewTestButton").disabled = !state.workspaceDeviceId;
@@ -1636,23 +1643,99 @@ function renderWorkspaceControls() {
     cascade: "级联",
   }[detectDeviceTopologyLayout(state.device)];
   document.getElementById("deviceSummary").innerHTML = state.device ? `<span class="chip good">${escapeHtml(deviceType)}</span>` : `<span class="chip">尚未选择设备</span>`;
+  const busy = runPreparationActive || state.batchRunning;
+  document.getElementById("runStrategyFields").disabled = busy;
+  document.getElementById("openRunSettingsButton").disabled = busy;
+  for (const [sourceId, targetId] of [["deviceSelect", "runDeviceSelect"], ["testGroupSelect", "runGroupSelect"]]) {
+    const source = document.getElementById(sourceId) as HTMLSelectElement;
+    const target = document.getElementById(targetId) as HTMLSelectElement;
+    target.innerHTML = source.innerHTML; target.value = source.value; target.disabled = source.disabled || busy;
+  }
+  document.getElementById("testContentFields").disabled = !hasTest;
+  if (!hasTest) document.getElementById("roundList").innerHTML = '<p class="hint">选择或新建测试后开始编辑。</p>';
+  document.getElementById("roundCount").disabled = !hasTest;
+  document.getElementById("saveAndRunPageButton").disabled = !hasTest;
+  document.getElementById("discardTestButton").disabled = !hasTest || !state.dirty;
+  document.querySelectorAll('[data-tab-target="test-management"], [data-tab-target="device-config"], [data-tab-target="route"]').forEach(button => {
+    button.disabled = busy; button.title = busy ? "运行结束后可编辑配置" : "";
+  });
+  renderTestCatalog(visibleTests);
   compactSelectTargets().forEach(refreshCompactSelect);
+}
+
+/** 绘制当前测试组的只读目录卡片；名称居左、操作居右，编辑入口与内容表单保持分离。 */
+function renderTestCatalog(tests) {
+  const body = document.getElementById("testCatalogBody");
+  if (!body) return;
+  body.innerHTML = tests.map(test => {
+    return `<div class="test-list-row" data-test-row="${escapeHtml(test.id)}" role="listitem">
+      <strong class="test-list-name">${escapeHtml(test.name || "未命名测试")}</strong>
+      <div class="test-row-actions"><button class="btn small primary" type="button" data-test-action="edit" data-test-id="${escapeHtml(test.id)}">编辑</button><button class="btn small" type="button" data-test-action="copy" data-test-id="${escapeHtml(test.id)}">复制</button><button class="btn small danger" type="button" data-test-action="delete" data-test-id="${escapeHtml(test.id)}" ${state.workspaceDevice?.tests?.length <= 1 ? "disabled" : ""}>删除</button></div>
+    </div>`;
+  }).join("");
+}
+
+/** 进入用例编辑态；目录选择和表格暂时收起。 */
+function showTestEditor() {
+  document.getElementById("testCatalogView").hidden = true;
+  document.getElementById("testEditorPanel").hidden = false;
+  renderRounds();
+  document.getElementById("testCaseName").focus();
+}
+
+/** 返回用例列表；调用方须先处理未保存草稿。 */
+function showTestCatalog() {
+  closeStepDrawer(); closePJobRoutePicker(false);
+  document.getElementById("testEditorPanel").hidden = true;
+  document.getElementById("testCatalogView").hidden = false;
+  renderWorkspaceControls();
+}
+
+/** 切换测试管理的三个页签，并在离开编辑区前解决草稿。 */
+async function switchManagementSection(section) {
+  if (!["cases", "routes", "devices"].includes(section) || section === activeManagementSection) return;
+  if (!await settleTestDraft()) return;
+  if (activeManagementSection === "routes" && state.routeDirty) {
+    document.getElementById("testDraftTitle").textContent = "路径模板有未保存的修改";
+    try {
+      if (!await resolveTestDraft(true, chooseTestDraft, saveRoutes, async () => discardRouteChanges())) return;
+    } finally { document.getElementById("testDraftTitle").textContent = "测试有未保存的修改"; }
+  }
+  activeManagementSection = section;
+  document.querySelectorAll("[data-management-target]").forEach(button => {
+    const selected = button.dataset.managementTarget === section;
+    button.classList.toggle("active", selected);
+    if (selected) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
+  });
+  document.querySelectorAll("[data-management-view]").forEach(view => {
+    const selected = view.dataset.managementView === section;
+    view.classList.toggle("active", selected); view.hidden = !selected;
+  });
+  if (section === "devices") renderDeviceTimingConfiguration();
+  if (section === "cases") showTestCatalog();
 }
 
 /** 显示当前测试集是否已经持久化。 */
 function setWorkspaceStatus(message, kind = "") {
-  const status = document.getElementById("workspaceStatus"); status.textContent = message; status.className = `workspace-status ${kind}`.trim();
+  const status = document.getElementById("workspaceStatus"); status.textContent = message; status.className = `workspace-status sr-only ${kind}`.trim();
 }
 
-/** 延迟自动保存，确保设备共享 Route/Clean 和测试任务均能恢复。 */
-let autoSaveTimer = null;
+/** 编辑修订号用于防止保存过程覆盖之后发生的新编辑。 */
 let testEditRevision = 0;
 let testSaveInFlight: Promise<boolean> | null = null;
-function scheduleAutoSave() {
-  window.clearTimeout(autoSaveTimer);
-  autoSaveTimer = window.setTimeout(() => {
-    if (state.dirty) saveCurrentTest(true).catch(error => setWorkspaceStatus(`自动保存失败：${error.message}`, "dirty"));
-  }, 600);
+
+/** 还原服务端已保存的当前测试，不修改已有运行结果。 */
+async function discardTestDraft() {
+  if (!state.testCaseId) return;
+  const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${state.testCaseId}`);
+  applyTestCase(result.test);
+}
+
+/** 在离开或更换测试之前明确解决草稿；取消时恢复选择控件。 */
+async function settleTestDraft() {
+  const allowed = await resolveTestDraft(state.dirty, chooseTestDraft, () => saveCurrentTest(false), discardTestDraft);
+  if (!allowed) renderWorkspaceControls();
+  return allowed && !state.dirty;
 }
 
 /** 标记当前测试集有尚未保存的编辑。 */
@@ -1660,7 +1743,8 @@ function markTestDirty() {
   if (!state.testCaseId) return;
   testEditRevision += 1;
   state.dirty = true; setWorkspaceStatus(`“${state.testCaseName}”有未保存修改`, "dirty");
-  scheduleAutoSave();
+  document.getElementById("discardTestButton").disabled = false;
+
 }
 
 /** 标记路径模板有尚未保存的编辑；路径模板只在用户点击保存后写回设备共享库。 */
@@ -1669,33 +1753,20 @@ function markRoutesDirty() {
   setWorkspaceStatus("当前路径模板有未保存修改，请在模板旁点击“保存”", "dirty");
 }
 
-/** 清理上一测试集的运行指标和结果链接，避免把旧结果误认为当前结果。 */
+/** 清理上一测试集的结果链接和批量状态，避免把旧结果误认为当前结果。 */
 function resetRunResult() {
+  setRunResultView("results");
   visualizationWorkspace.clear();
-  state.batchResult = null; state.selectedBatchTestId = "";
-  batchPerformanceAnalyses.clear();
-  batchBottleneckSummaries.clear();
-  batchBottleneckRequests.clear();
-  batchBottleneckErrors.clear();
+  state.batchResult = null; activeBatchContext = null;
   batchCardAnalyses.clear();
   batchCardAnalysisRequests.clear();
-  ["metricTime", "metricMakespan", "metricMoves", "metricValidation"].forEach(id => { document.getElementById(id).textContent = "—"; });
-  ["metricTimeDetail", "metricMakespanDetail", "metricMovesDetail", "metricValidationDetail"].forEach(id => { document.getElementById(id).textContent = ""; });
-  document.getElementById("metricContext").textContent = "运行总览";
-  document.getElementById("batchOverviewButton").hidden = true;
-  document.getElementById("testGroupAnalysisButton").hidden = true;
   document.getElementById("testGroupAnalysisPanel").hidden = true;
   document.getElementById("testGroupAnalysisPanel").innerHTML = "";
-  document.getElementById("metricTimeLabel").textContent = "Total Time";
-  document.getElementById("metricMakespanLabel").textContent = "Makespan";
-  setBottleneckMetric(null);
-  document.getElementById("metricValidationLabel").textContent = "Validation";
-  document.getElementById("metricValidation").closest(".metric").classList.remove("is-success", "is-error");
-  document.getElementById("batchProgress").classList.remove("visible");
   document.getElementById("batchResults").innerHTML = "";
-  for (const id of ["logButton", "ganttButton", "batchGanttButton"]) {
-    const link = document.getElementById(id); link.href = "#"; link.setAttribute("aria-disabled", "true");
-  }
+  closeBatchTestDetails();
+  updateAnalysisReportAvailability();
+  updateBatchLogDownload({});
+  resetBatchGanttLink();
   resetSearchTelemetryView();
   writeTerminal("$ 测试集已就绪，等待运行…");
 }
@@ -2138,9 +2209,11 @@ function applyTestCase(testCase) {
   state.times.length = state.roundCount; state.rounds.length = state.roundCount; state.times[0] = 0;
   normalizeRounds(); normalizePJobRouteConfigs(); state.drawer = null; state.routeDirty = false; state.routeNameChanges.clear();
   state.routeEditingIndex = -1; state.routeEditSnapshot = null; state.routeEditGroupingProfile = null; state.routeEditIsNew = false;
-  const visualizationPlan = runtimePJobRouteInstances();
-  visualizationWorkspace.setAnalysisConfiguration(visualizationPlan.routes, visualizationPlan.rounds);
-  visualizationWorkspace.setReplayPlan(buildPayload());
+  if (!activeRunContext && !state.batchResult) {
+    const visualizationPlan = runtimePJobRouteInstances();
+    visualizationWorkspace.setAnalysisConfiguration(visualizationPlan.routes, visualizationPlan.rounds);
+    visualizationWorkspace.setReplayPlan(buildPayload());
+  }
   state.dirty = false;
   document.getElementById("roundCount").value = state.roundCount;
   document.querySelectorAll('input[name="strategy"]').forEach(input => { input.checked = input.value === state.strategy; });
@@ -2151,8 +2224,7 @@ function applyTestCase(testCase) {
   });
   updateStrategyOptionVisibility();
   document.getElementById("roundCount").disabled = false;
-  if (Object.keys(state.algorithmMetadata).length) showAlgorithmDetails(state.strategy);
-  renderAll(); renderWorkspaceControls(); resetRunResult();
+  renderAll(); renderWorkspaceControls();
   setWorkspaceStatus(`已载入“${state.testCaseName}”`, "saved");
 }
 
@@ -2163,10 +2235,10 @@ function currentTestSnapshot(name = state.testCaseName) {
   return structuredClone({
     name,
     group: state.testCaseGroup,
-    strategy: state.strategy,
+    strategy: state.workspaceDevice?.tests?.find(test => test.id === state.testCaseId)?.strategy || "heuristic",
     roundCount: state.roundCount,
     times: state.times,
-    options: state.options,
+    options: state.workspaceDevice?.tests?.find(test => test.id === state.testCaseId)?.options || {},
     cleans: state.cleans.map(runtimeClean),
     routeConfigs: state.testRouteConfigs,
     rounds: state.rounds,
@@ -2281,7 +2353,7 @@ async function saveCurrentTest(silent = false) {
   if (!state.workspaceDeviceId || !state.testCaseId) return false;
   if (testSaveInFlight) {
     await testSaveInFlight;
-    // 运行按钮与自动保存撞在一起时复用同一个请求；若期间又有编辑，再保存最新版。
+    // 多个保存操作重叠时复用请求；若期间又有编辑，再保存最新版。
     if (!state.dirty) return true;
   }
   const inputName = document.getElementById("testCaseName").value.trim();
@@ -2312,10 +2384,10 @@ async function saveCurrentTest(silent = false) {
       state.dirty = false;
       state.routeNameChanges.clear();
       renderWorkspaceControls();
-      setWorkspaceStatus(`${silent ? "已自动保存" : "已保存"}“${state.testCaseName}”`, "saved");
+      setWorkspaceStatus(`已保存“${state.testCaseName}”`, "saved");
     } else {
       state.dirty = true;
-      scheduleAutoSave();
+
     }
     return true;
   })();
@@ -2330,7 +2402,7 @@ async function saveCurrentTest(silent = false) {
 /** 新建空白测试集，或复制当前测试集形成独立副本。 */
 async function createTestCase(copyCurrent = false, targetGroup = state.activeTestGroup) {
   if (!state.workspaceDeviceId) throw new Error("请先选择设备");
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   const source = copyCurrent ? currentTestSnapshot(`${state.testCaseName} 副本`) : makeDefaultTestCase(`测试集 ${(state.workspaceDevice?.tests?.length || 0) + 1}`);
   source.group = targetGroup;
   const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests`, {
@@ -2349,7 +2421,7 @@ async function createTestGroup() {
   const exists = (state.workspaceDevice?.testGroups || []).includes(group)
     || (state.workspaceDevice?.tests || []).some(test => String(test.group || "").trim() === group);
   if (exists) throw new Error(`测试组别“${group}”已经存在`);
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   let result;
   try {
     result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/groups`, {
@@ -2361,7 +2433,7 @@ async function createTestGroup() {
   }
   state.workspaceDevice.testGroups = result.groups;
   state.activeTestGroup = group; state.testCaseId = ""; state.testCaseName = ""; state.testCaseGroup = group; state.dirty = false;
-  renderWorkspaceControls(); resetRunResult(); setWorkspaceStatus(`已新建测试组别“${group}”，请在该组中新建测试`, "saved");
+  renderWorkspaceControls();  setWorkspaceStatus(`已新建测试组别“${group}”，请在该组中新建测试`, "saved");
 }
 
 /** 重命名当前测试组别，并同步更新该组内所有测试。 */
@@ -2371,7 +2443,7 @@ async function renameCurrentTestGroup() {
   const group = await showWorkspaceDialog({ title: "重命名测试组别", message: "组内测试会保留，并同步使用新组别名称。", value: oldName, needsInput: true });
   if (group === null || group === oldName) return;
   if (!group) throw new Error("测试组别名称不能为空");
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/groups`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ oldName, name: group })
   });
@@ -2391,7 +2463,7 @@ async function deleteCurrentTestGroup() {
   const displayName = group || "未分组";
   const confirmed = await showWorkspaceDialog({ title: "删除测试组别", message: `确定删除“${displayName}”吗？${impact}`, dangerous: true });
   if (!confirmed) return;
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/groups`, {
     method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: group })
   });
@@ -2404,7 +2476,7 @@ async function deleteCurrentTestGroup() {
     const nextResult = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${nextTest.id}`);
     applyTestCase(nextResult.test);
   }
-  else { renderWorkspaceControls(); resetRunResult(); setWorkspaceStatus(`已删除测试组别“${displayName}”`, "saved"); }
+  else { renderWorkspaceControls();  setWorkspaceStatus(`已删除测试组别“${displayName}”`, "saved"); }
 }
 
 /** 删除当前测试集，并优先停留在当前测试组别的下一套剩余测试。 */
@@ -2425,12 +2497,12 @@ async function deleteCurrentTest() {
   }
   // 当前组已为空时仍保留该组选择，方便继续新建测试而不跳转到其他组。
   state.activeTestGroup = currentGroup; state.testCaseId = ""; state.testCaseName = ""; state.testCaseGroup = currentGroup; state.dirty = false;
-  renderWorkspaceControls(); resetRunResult(); setWorkspaceStatus(`已删除测试“${deletedTestName}”`, "saved");
+  renderWorkspaceControls();  setWorkspaceStatus(`已删除测试“${deletedTestName}”`, "saved");
 }
 
-/** 在当前设备中切换测试集，切换前自动保存当前编辑。 */
+/** 在当前设备中切换测试集；有草稿时先由用户决定保存、放弃或取消。 */
 async function selectWorkspaceTest(testId) {
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   const index = state.workspaceDevice?.tests?.findIndex(test => test.id === testId) ?? -1;
   if (index < 0) throw new Error(`测试集不存在：${testId}`);
   const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${testId}`);
@@ -2441,18 +2513,19 @@ async function selectWorkspaceTest(testId) {
 
 /** 切换测试组别，并载入该组中的第一个测试。 */
 async function selectWorkspaceGroup(group) {
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   state.activeTestGroup = group;
   const testCase = state.workspaceDevice?.tests?.find(test => String(test.group || "").trim() === group);
   if (!testCase) {
     state.testCaseId = ""; state.testCaseName = ""; state.testCaseGroup = group; state.dirty = false;
-    renderWorkspaceControls(); resetRunResult(); setWorkspaceStatus(`测试组别“${group || "未分组"}”暂无测试`, "saved");
+    renderWorkspaceControls(); showCurrentGroupTestCards(true); setWorkspaceStatus(`测试组别“${group || "未分组"}”暂无测试`, "saved");
     return;
   }
   await selectWorkspaceTest(testCase.id);
+  showCurrentGroupTestCards(true);
 }
 
-/** 读取一个设备及其测试集；首次导入时自动建立默认测试集。 */
+/** 读取设备与测试目录；空设备保持空状态，不通过浏览操作创建测试。 */
 async function selectWorkspaceDevice(deviceId, preferredTestId = "") {
   const result = await requestJson(`/api/workspaces/${deviceId}`);
   state.workspaceDevice = result.device; state.workspaceDeviceId = result.device.id;
@@ -2462,14 +2535,15 @@ async function selectWorkspaceDevice(deviceId, preferredTestId = "") {
   state.routes = Array.isArray(result.device.routes) ? structuredClone(result.device.routes) : [];
   state.cleans = Array.isArray(result.device.cleans) ? structuredClone(result.device.cleans).map(normalizeClean) : [];
   if (!result.device.tests.length) {
-    const created = await requestJson(`/api/workspaces/${deviceId}/tests`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(makeDefaultTestCase())
-    });
-    state.workspaceDevice.tests.push(created.test);
+    state.testCaseId = ""; state.testCaseName = ""; state.rounds = []; state.dirty = false;
+    renderAll(); renderWorkspaceControls(); showCurrentGroupTestCards(true);
+    setWorkspaceStatus("该设备暂无测试，请在测试管理中新建或导入", "saved");
+    return;
   }
   const summary = state.workspaceDevices.find(device => device.id === deviceId); if (summary) summary.testCount = state.workspaceDevice.tests.length;
   const selected = state.workspaceDevice.tests.find(test => test.id === preferredTestId) || state.workspaceDevice.tests[0];
   await selectWorkspaceTest(selected.id);
+  showCurrentGroupTestCards(true);
 }
 
 /** 加载设备目录，并选择指定设备或目录中的第一台设备。 */
@@ -2486,7 +2560,8 @@ function resetWorkspaceSelection() {
   state.deviceStationName = ""; state.deviceRobotName = ""; state.deviceRobotTransferSources = {}; state.deviceTimingDraft = null; state.deviceTimingDirty = false; state.deviceTimingSaving = false; state.deviceTimingStatusMessage = "选择设备后开始配置";
   renderWorkspaceControls();
   renderDeviceTimingConfiguration();
-  resetRunResult();
+  showCurrentGroupTestCards(true);
+
 }
 
 /** 删除当前设备及其全部测试集，并刷新设备目录。 */
@@ -2510,14 +2585,70 @@ async function deleteWorkspaceDevice() {
   }
 }
 
-/** 切换主功能标签，并只在运行页显示策略侧栏。 */
-function switchTab(name) {
-  document.querySelectorAll("[data-tab-target]").forEach(button => button.classList.toggle("active", button.dataset.tabTarget === name));
-  document.querySelectorAll("[data-tab-view]").forEach(view => view.classList.toggle("active", view.dataset.tabView === name));
-  document.getElementById("scheduleSide").classList.toggle("is-hidden", name !== "schedule");
-  document.getElementById("pageLayout").classList.toggle("editor-mode", name !== "schedule");
-  if (name === "device-config") renderDeviceTimingConfiguration();
-  if (name !== "route") closeStepDrawer();
+/** 判断当前批次是否至少存在一项已完成且可用于生成报告的测试。 */
+function canOpenAnalysisReport() {
+  return Boolean(state.batchResult?.items?.some(item => hasBatchResultMetrics(item) && item.resultUrl));
+}
+
+/** 按批量结果状态启用分析报告入口；没有可分析结果时固定留在结果预览。 */
+function updateAnalysisReportAvailability() {
+  const button = document.getElementById("analysisReportViewButton");
+  const enabled = canOpenAnalysisReport();
+  button.disabled = !enabled;
+  button.title = enabled ? "配置或查看测试组分析报告" : "至少完成一项可分析测试后才能查看分析报告";
+  if (!enabled && !document.getElementById("runAnalysisView").hidden) setRunResultView("results");
+}
+
+/** 在首页切换结果预览与分析报告，不改变运行选择，也不触发指标计算。 */
+function setRunResultView(view) {
+  const analysis = view === "analysis";
+  if (analysis && !canOpenAnalysisReport()) return;
+  document.getElementById("runResultsView").hidden = analysis;
+  document.getElementById("runAnalysisView").hidden = !analysis;
+  document.querySelectorAll("[data-result-view]").forEach(button => {
+    const selected = button.dataset.resultView === view;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+}
+
+/** 切换页面；编辑草稿解决前不离开，运行中保持配置稳定但允许查看回放。 */
+async function switchTab(name) {
+  if (navigationPending) return;
+  const requestedManagementSection = name === "route" ? "routes" : name === "device-config" ? "devices" : null;
+  if (requestedManagementSection) name = "test-management";
+  if (document.querySelector("[data-tab-view].active")?.dataset.tabView === name) {
+    if (requestedManagementSection) await switchManagementSection(requestedManagementSection);
+    return;
+  }
+  if ((runPreparationActive || state.batchRunning) && !["schedule", "playback"].includes(name)) return;
+  navigationPending = true;
+  try {
+    if (!await settleTestDraft()) return;
+    if (activeManagementSection === "routes" && name !== "test-management" && state.routeDirty) {
+      document.getElementById("testDraftTitle").textContent = "路径模板有未保存的修改";
+      try {
+        if (!await resolveTestDraft(true, chooseTestDraft, saveRoutes, async () => discardRouteChanges())) return;
+      } finally { document.getElementById("testDraftTitle").textContent = "测试有未保存的修改"; }
+    }
+    document.querySelectorAll(".primary-sidebar [data-tab-target]").forEach(button => {
+      button.classList.toggle("active", button.dataset.tabTarget === name);
+      if (button.dataset.tabTarget === name) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+    document.querySelectorAll("[data-tab-view]").forEach(view => view.classList.toggle("active", view.dataset.tabView === name));
+    const managementSubtabs = document.querySelector(".sidebar-subtabs") as HTMLElement | null;
+    if (managementSubtabs) managementSubtabs.hidden = name !== "test-management";
+    document.getElementById("scheduleSide").classList.toggle("is-hidden", name !== "schedule");
+    document.getElementById("pageLayout").classList.toggle("editor-mode", name !== "schedule");
+    if (name === "test-management" && requestedManagementSection) await switchManagementSection(requestedManagementSection);
+    if (name === "test-management" && activeManagementSection === "devices") renderDeviceTimingConfiguration();
+    closeStepDrawer(); closePJobRoutePicker(false);
+    if (name === "schedule") renderAll();
+    renderWorkspaceControls();
+  } catch (error) {
+    setWorkspaceStatus(`无法离开测试：${error.message}`, "dirty");
+  } finally { navigationPending = false; }
 }
 
 /** 同步轮数、时间和每轮 CJob/PJob 容器；缩放只裁剪尾部，已有轮次保持原位。 */
@@ -3118,7 +3249,7 @@ function renderRouteInstanceSteps(route, pjob, loadPort = "") {
   }
   return `<table class="route-table"><thead><tr><th>StepID</th><th>类型</th><th>可选腔室 / 机器手</th><th>PostStepID</th><th>NeedProcess</th></tr></thead><tbody>${(runtimeRoute.stages || []).map((stage, stageIndex) => {
     const fixed = isFixedRouteStep(runtimeRoute, stageIndex);
-    return `<tr ${fixed ? "" : "data-step-card"} data-route-index="${routeIndex}" data-stage-index="${stageIndex}">
+    return `<tr ${fixed ? "" : 'data-step-card tabindex="0" role="button"'} data-route-index="${routeIndex}" data-stage-index="${stageIndex}">
       <td><span class="step-id-badge">${Number(stage.stepId)}</span></td>
       <td>${fixed ? `<span class="route-step-source-note">由 CJob LoadPort 决定</span>` : `<span class="step-type ${stage.needProcess ? "process" : ""}">${stepKind(route, stageIndex)}</span>`}</td>
       <td>${fixed ? `<span class="route-step-readonly">—</span>` : renderReadonlyCandidates(stage)}</td>
@@ -3201,7 +3332,7 @@ function openPJobRoutePicker(button) {
     roundIndex, cjobIndex, pjobIndex, trigger: button, groups,
     processKey: selectedProcess?.key || "",
     structureKey: selectedStructure?.key || "",
-    mode: "select",
+    mode: selectedRoute ? "edit" : "select",
   };
   document.getElementById("pjobRouteDialogTitle").textContent = `选择 ${pjob.jobName} 的路径`;
   const processSelect = document.getElementById("pjobRouteProcess");
@@ -3239,8 +3370,7 @@ function selectPJobRoute(routeIndex) {
   );
   normalizeRounds();
   markTestDirty();
-  context.mode = "edit";
-  renderPJobRouteDialogGroup(context.processKey, context.structureKey);
+  closePJobRoutePicker(false);
 }
 
 /** 外部展示当前工序和具体路径；具体模板与测试参数统一在弹窗内选择和编辑。 */
@@ -3259,6 +3389,7 @@ function renderPJobRoutePicker(pjob, roundIndex, cjobIndex, pjobIndex) {
 function renderRounds() {
   normalizeRounds();
   const host = document.getElementById("roundList");
+  if (!state.testCaseId) { host.innerHTML = '<p class="hint">选择或新建测试后开始编辑。</p>'; return; }
   host.innerHTML = state.rounds.map((round, roundIndex) => {
     const roundTitle = roundIndex ? `第 ${roundIndex + 1} 轮重算` : "首次排程";
     const serialMode = round.cjobs.some(cjob => ["Pipeline", "Sequential"].includes(cjob.taskMode));
@@ -3371,10 +3502,10 @@ function renderStepDrawer() {
 }
 
 /** 从路径引用面板打开 Step 抽屉；所有改动写入当前 PJob 的独立 Route 配置。 */
-function openPJobStepDrawer(routeIndex, stageIndex) {
+function openPJobStepDrawer(routeIndex, stageIndex, inlineContext = null) {
   const route = state.routes[routeIndex];
   if (!route || isFixedRouteStep(route, stageIndex)) return;
-  const context = pjobRoutePickerContext;
+  const context = inlineContext || pjobRoutePickerContext;
   if (!context) return;
   state.drawer = {
     scope: "test", routeIndex, stageIndex,
@@ -3476,7 +3607,7 @@ async function setRobotArmCount(robotName, armCount) {
     });
     state.workspaceDevice.robotSlots = structuredClone(result.robotSlots);
     applyDeviceTopology(state.baseDevice, state.deviceName, result.robotSlots);
-    resetRunResult();
+
     setWorkspaceStatus(`已保存 ${robotName} 的${boundedCount >= DUAL_ARM_SLOT_COUNT ? "双臂" : "单臂"}配置`, "saved");
   } catch (error) {
     applyDeviceTopology(state.baseDevice, state.deviceName, previousSelections);
@@ -3557,7 +3688,6 @@ function saveHeuristicSettings() {
     state.options.heuristicConfig = weights;
   } else state.options.heuristicConfig = null;
   retainSessionSchedulingConfiguration();
-  markTestDirty();
   document.getElementById("heuristicSettingsDialog").close();
 }
 
@@ -3586,7 +3716,6 @@ async function saveSearchTreeOptions() {
     state.options.searchTreeModelPath = modelPath;
     pendingSearchTreeCheckpointFile = null;
     retainSessionSchedulingConfiguration();
-    markTestDirty();
     renderAll();
     document.getElementById("searchTreeOptionsDialog").close();
   } finally {
@@ -3600,7 +3729,7 @@ function updateStateFromControl(control) {
   const key = control.dataset.key;
   const scope = control.dataset.scope;
   const routeControl = ["stage-candidates", "stage-candidate-toggle"].includes(scope);
-  if (routeControl) markRoutesDirty(); else markTestDirty();
+  if (routeControl) markRoutesDirty(); else if (!control.dataset.option) markTestDirty();
   if (control.dataset.timeIndex !== undefined) { state.times[Number(control.dataset.timeIndex)] = value; return; }
   if (control.dataset.roundTimeIndex !== undefined) {
     const roundIndex = Number(control.dataset.roundTimeIndex);
@@ -4134,7 +4263,6 @@ function renderOtherAlgorithmOptions(algorithms) {
     </label>
   `).join("");
   updateStrategyOptionVisibility();
-  renderAlgorithmMetadata();
 }
 
 /** 按算法清单声明的能力控制通用参数区，不在前端维护算法名称白名单。 */
@@ -4146,36 +4274,11 @@ function updateStrategyOptionVisibility() {
   document.getElementById("searchTreeOptions").classList.toggle("is-hidden", !optionGroups.has("search-tree"));
 }
 
-/** 在策略列表下方显示指定算法的介绍。 */
-function showAlgorithmDetails(strategy) {
-  const metadata = state.algorithmMetadata[strategy] || {};
-  const cardName = document.querySelector(`[data-strategy-card="${CSS.escape(strategy)}"] b`)?.textContent;
-  document.getElementById("algorithmHoverInfo").innerHTML = `
-    <span class="algorithm-hover-info-name">${escapeHtml(metadata.name || cardName || strategy)}<small>算法简介</small></span>
-    <span class="algorithm-hover-info-description">${escapeHtml(metadata.introduction || "暂无算法简介")}</span>
-  `;
-}
-
 /** 返回策略在批量结果中的可读名称，兼容动态发现的 other_alg 策略。 */
 function displayStrategyName(strategy) {
   const normalized = String(strategy || "heuristic");
   const cardName = document.querySelector(`[data-strategy-card="${CSS.escape(normalized)}"] b`)?.textContent;
   return state.algorithmMetadata[normalized]?.name || cardName || normalized;
-}
-
-/** 为算法卡片绑定悬浮和键盘详情。 */
-function renderAlgorithmMetadata() {
-  document.querySelectorAll("[data-strategy-card]").forEach(card => {
-    const strategy = card.dataset.strategyCard;
-    card.onmouseenter = () => showAlgorithmDetails(strategy);
-    card.onfocusin = () => showAlgorithmDetails(strategy);
-  });
-  const strategyOptions = document.querySelector(".strategy-options");
-  strategyOptions.onmouseleave = () => showAlgorithmDetails(state.strategy);
-  strategyOptions.onfocusout = event => {
-    if (!strategyOptions.contains(event.relatedTarget)) showAlgorithmDetails(state.strategy);
-  };
-  showAlgorithmDetails(state.strategy);
 }
 
 /** 用测试名称生成便于用户识别且适合本地文件系统的复现日志名称。 */
@@ -4184,29 +4287,14 @@ function readableLogFileName(testName) {
   return `复现日志-${readableTestName}.json`;
 }
 
-/** 让本次运行生成的 input_data 日志可按需下载。 */
-function prepareLogDownload(result) {
-  if (!result?.logUrl) return false;
-  const link = document.getElementById("logButton");
-  link.href = result.logUrl; link.download = readableLogFileName(state.testCaseName); link.removeAttribute("aria-disabled");
-  return true;
-}
-
-/** 为成功结果或带失败 MoveList 的诊断结果启用甘特图入口。 */
-function prepareGanttView(result) {
-  if (!result?.ganttUrl) return false;
-  const link = document.getElementById("ganttButton");
-  link.href = result.ganttUrl;
-  link.removeAttribute("aria-disabled");
-  return true;
-}
-
 /** 把本次结果加载进内嵌工作台，并启用直接查看入口。 */
 async function prepareWorkspaceView(result) {
   if (!result?.resultId) return null;
-  visualizationWorkspace.setAnalysisConfiguration(state.routes, state.rounds);
-  visualizationWorkspace.setReplayPlan(buildPayload());
-  await visualizationWorkspace.loadResult(result.resultId, state.testCaseName || "当前运行结果");
+  const context = activeRunContext;
+  visualizationWorkspace.setDevice(context.payload.device);
+  visualizationWorkspace.setAnalysisConfiguration(context.payload.routes, context.payload.rounds);
+  visualizationWorkspace.setReplayPlan(context.payload);
+  await visualizationWorkspace.loadResult(result.resultId, context.name);
   const replayDeadlock = visualizationWorkspace.getTerminalDeadlock();
   if (result.deadlock) {
     const serverCode = String(result.deadlock.Code || "").toUpperCase();
@@ -4259,21 +4347,6 @@ function renderRunStatusEvents(events) {
   }));
 }
 
-/** 合并服务端状态快照；事件来自实际算法调用边界。 */
-function renderSingleRunStatus(snapshot) {
-  if (!snapshot) return;
-  runStatusElapsedMs = Math.max(runStatusElapsedMs, Number(snapshot.elapsedMs || 0));
-  document.getElementById("runStatusElapsed").textContent = formatRunElapsed(runStatusElapsedMs);
-  const terminal = ["completed", "failed", "cancelled"].includes(snapshot.status);
-  const title = snapshot.status === "completed" ? "当前测试运行完成"
-    : snapshot.status === "failed" ? "当前测试运行失败"
-    : snapshot.status === "cancelled" ? "当前测试已停止"
-    : `正在运行 · ${snapshot.testName || state.testCaseName || "当前测试"}`;
-  document.getElementById("runStatusTitle").textContent = title;
-  renderRunStatusEvents(snapshot.events || []);
-  if (terminal) finishRunStatus(snapshot.status, title);
-}
-
 /** 批测共用同一张小卡，只展示汇总而不复制下面的大结果列表。 */
 function renderBatchRunStatus(result) {
   if (!result) return;
@@ -4302,139 +4375,6 @@ function finishRunStatus(status, title) {
   if (title) document.getElementById("runStatusTitle").textContent = title;
 }
 
-/** 与同步结果请求并行轮询单测阶段；POST 尚未登记时允许短暂 404。 */
-async function pollSingleRunStatus(runId) {
-  while (singleRunActive && activeSingleRunId === runId) {
-    try {
-      const response = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
-      if (response.ok) {
-        const snapshot = await response.json();
-        renderSingleRunStatus(snapshot);
-        if (["completed", "failed", "cancelled"].includes(snapshot.status)) return;
-      }
-    } catch { /* 主结果请求负责展示连接错误。 */ }
-    await new Promise(resolve => window.setTimeout(resolve, 180));
-  }
-}
-
-/** 停止普通单测；迟到的算法输出由服务端丢弃。 */
-async function requestSingleRunCancellation() {
-  if (!singleRunActive || singleRunCancelling || !activeSingleRunId) return;
-  singleRunCancelling = true;
-  const button = document.getElementById("runButton");
-  button.disabled = true; button.classList.add("running", "cancel"); button.textContent = "正在停止…";
-  document.getElementById("runStatusTitle").textContent = "正在停止当前测试";
-  try {
-    const response = await fetch(`/api/runs/${encodeURIComponent(activeSingleRunId)}`, { method: "DELETE" });
-    const snapshot = await response.json();
-    if (!response.ok) throw new Error(snapshot.error || `服务返回 ${response.status}`);
-    renderSingleRunStatus(snapshot);
-    if (state.strategy === "search-tree") {
-      try { await requestSearchControl("cancel"); } catch { /* 单测停止状态已经生效。 */ }
-    }
-    singleRunAbortController?.abort();
-  } catch (error) {
-    singleRunCancelling = false;
-    button.disabled = false; button.classList.remove("running"); button.classList.add("cancel"); button.textContent = "■ 停止当前测试";
-    throw error;
-  }
-}
-
-/** 调用本地服务运行排程。 */
-async function runPlan() {
-  const button = document.getElementById("runButton");
-  const batchButton = document.getElementById("batchRunButton");
-  if (singleRunActive) {
-    try { await requestSingleRunCancellation(); }
-    catch (error) { writeTerminal(`$ 停止失败：${error.message || "未知错误"}\n  可再次点击“■ 停止当前测试”重试。`, true); }
-    return;
-  }
-  let logReady = false, ganttReady = false, runResult = null, bottleneckSummary = null;
-  // 健康检查和必要的自动保存也可能涉及磁盘；点击后先立即反馈，避免用户误以为按钮失效。
-  button.disabled = true;
-  batchButton.disabled = true;
-  button.classList.add("running");
-  button.classList.remove("cancel");
-  button.textContent = "正在准备…";
-  startRunStatus(`准备运行 · ${state.testCaseName || "当前测试"}`, "检查服务与测试配置");
-  try {
-    const healthResponse = await fetch("/api/health", { cache: "no-store" }), health = await healthResponse.json();
-    if (!healthResponse.ok || health.schemaVersion !== EXPECTED_API_SCHEMA) throw new Error("本地服务版本过旧，请重启 realtime_scheduler.backend.main");
-    if (state.strategy.startsWith("other_alg:")) {
-      const algorithm = (health.otherAlgorithms || []).find(item => item.strategy === state.strategy);
-      if (!algorithm?.available) throw new Error(`${state.strategy} 算法包不存在或入口不完整`);
-    } else if (health.strategies?.[state.strategy] === false) {
-      throw new Error(health.strategyErrors?.[state.strategy] || `${state.strategy} 策略当前不可用`);
-    }
-    if (state.dirty) await saveCurrentTest(true);
-    const payload = buildPayload();
-    const runId = (crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^A-Za-z0-9_-]/g, "");
-    payload.clientRunId = runId;
-    payload.testCaseName = state.testCaseName || "当前测试";
-    singleRunActive = true; singleRunCancelling = false; activeSingleRunId = runId;
-    singleRunAbortController = new AbortController();
-    button.disabled = false; batchButton.disabled = true;
-    button.classList.remove("running"); button.classList.add("cancel"); button.textContent = "■ 停止当前测试";
-    startRunStatus(`正在运行 · ${payload.testCaseName}`, "提交运行请求");
-    void pollSingleRunStatus(runId);
-    resetRunResult();
-    visualizationWorkspace.setAnalysisConfiguration(state.routes, state.rounds);
-    writeTerminal(`$ 开始运行 ${state.strategy}\n  总轮数: ${state.roundCount}\n  重算时间: ${state.rounds.map(round => round.currentTime).join(", ")} s`);
-    const response = await fetch("/api/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: singleRunAbortController.signal,
-    });
-    const responseText = await response.text();
-    try { runResult = JSON.parse(responseText); }
-    catch { throw new Error(responseText.trim().slice(0, 240) || `服务返回 ${response.status}`); }
-    logReady = prepareLogDownload(runResult);
-    ganttReady = prepareGanttView(runResult);
-    if (runResult?.resultId) {
-      try {
-        bottleneckSummary = await prepareWorkspaceView(runResult);
-        runResult.bottleneckUtilization = bottleneckSummary;
-      }
-      catch (workspaceError) { writeTerminal(`$ 工作台加载失败\n  ${workspaceError.message || "未知错误"}`, true); }
-    }
-    if (!response.ok || !runResult.ok) {
-      if (runResult?.metricsAvailable) showFailedResultMetrics(runResult);
-      throw new Error(runResult.error || `服务返回 ${response.status}`);
-    }
-    showResult(runResult);
-    finishRunStatus("completed", "当前测试运行完成");
-  } catch (error) {
-    const cancelled = singleRunCancelling || runResult?.cancelled === true || error?.name === "AbortError";
-    const baselineError = runResult?.baseline?.status === "failed" ? `\n  Baseline 失败：${runResult.baseline.error || "未知原因"}` : "";
-    const validationIssues = Array.isArray(runResult?.validationIssues)
-      ? runResult.validationIssues.map(issue => `  ${issue}`)
-      : [];
-    const deadlock = deadlockDisplay(runResult?.deadlock);
-    if (!runResult?.metricsAvailable && ganttReady) {
-      setBottleneckMetric(bottleneckSummary, "没有足够的资源活动");
-      document.getElementById("metricMakespan").textContent = Number.isFinite(Number(runResult.makespan))
-        ? `${Number(runResult.makespan).toFixed(2)} s`
-        : "—";
-    }
-    renderRunFailureCard({
-      cancelled,
-      errorMessage: error.message || "未知错误",
-      deadlock,
-      validationIssues,
-      baselineError: baselineError.trim(),
-    });
-    document.getElementById("metricValidation").textContent = runResult?.metricsAvailable
-      ? (runResult.validation === "failed" ? "未通过" : validationDisplay(runResult.validation) || "失败")
-      : "失败";
-    finishRunStatus(cancelled ? "cancelled" : "failed", cancelled ? "当前测试已停止" : "当前测试运行失败");
-  }
-  finally {
-    singleRunActive = false; singleRunCancelling = false; activeSingleRunId = ""; singleRunAbortController = null;
-    button.disabled = false; button.classList.remove("running", "cancel"); button.textContent = "▶ 运行当前测试"; renderWorkspaceControls();
-  }
-}
-
 /** 返回当前测试组按名称数字自然顺序排列的测试。 */
 function currentBatchGroupTests() {
   return (state.workspaceDevice?.tests || [])
@@ -4446,6 +4386,36 @@ function currentBatchGroupTests() {
       return TEST_ORDER_COLLATOR.compare(leftLabel, rightLabel) || left.workspaceIndex - right.workspaceIndex;
     })
     .map(({ test }) => test);
+}
+
+/** 更新结果区测试筛选按钮的数量摘要。 */
+function updateBatchResultFilterButton() {
+  const button = document.getElementById("batchResultFilterButton");
+  const tests = currentBatchGroupTests();
+  const selectedCount = resultTestFilterIds instanceof Set
+    ? tests.filter(test => resultTestFilterIds.has(String(test.id || ""))).length
+    : tests.length;
+  button.disabled = tests.length === 0;
+  button.textContent = "选择测试";
+  button.title = tests.length ? `当前显示 ${selectedCount}/${tests.length} 个测试` : "当前测试组没有测试";
+  button.setAttribute("aria-label", button.title);
+}
+
+/** 以未运行占位状态展示当前测试组；切换组时默认恢复为显示全部。 */
+function showCurrentGroupTestCards(resetSelection = true) {
+  const tests = currentBatchGroupTests();
+  if (resetSelection) resultTestFilterIds = new Set(tests.map(test => String(test.id || "")));
+  batchResultItemHistory.clear();
+  resetRunResult();
+  activeRunContext = null;
+  updateBatchLogDownload({ items: [] });
+  renderBatchItems(tests.map((test, index) => ({
+    index,
+    testId: String(test.id || ""),
+    testName: String(test.name || `测试 ${index + 1}`),
+    status: "not-run",
+  })));
+  updateBatchResultFilterButton();
 }
 
 /** 更新选择计数和“运行已选”按钮状态。 */
@@ -4464,8 +4434,8 @@ function setBatchTestSelection(predicate) {
   updateBatchSelectionCount();
 }
 
-/** 打开批量测试选择弹窗，默认全选并保持名称自然顺序。 */
-function openBatchTestSelectionDialog() {
+/** 打开测试选择弹窗；运行模式执行用户勾选项，筛选模式只更新结果卡片。 */
+function openBatchTestSelectionDialog(mode: "run" | "filter" = "run") {
   if (!state.workspaceDeviceId) {
     writeTerminal("$ 请先选择设备和测试组", true);
     return;
@@ -4475,11 +4445,14 @@ function openBatchTestSelectionDialog() {
     writeTerminal("$ 当前测试组没有可运行测试", true);
     return;
   }
-  document.getElementById("batchTestSelectionDialogContext").textContent =
-    `${state.activeTestGroup || "未分组"} · 共 ${tests.length} 项 · 将按下列顺序执行并展示`;
+  batchSelectionMode = mode;
+  document.getElementById("batchTestSelectionDialogTitle").textContent = mode === "filter" ? "选择显示的测试" : "选择要运行的测试";
+  document.getElementById("batchTestSelectionDialogContext").textContent = mode === "filter"
+    ? `${state.activeTestGroup || "未分组"} · 共 ${tests.length} 项 · 仅更新结果区显示，不会开始运行`
+    : `${state.activeTestGroup || "未分组"} · 共 ${tests.length} 项 · 将按下列顺序执行并展示`;
   document.getElementById("batchSelectionList").innerHTML = tests.map((test, index) => `
     <label class="batch-selection-item" title="${escapeHtml(`${test.id || ""} · ${test.name || ""}`)}">
-      <input type="checkbox" value="${escapeHtml(test.id || "")}" data-batch-test-selection checked>
+      <input type="checkbox" value="${escapeHtml(test.id || "")}" data-batch-test-selection ${mode === "run" || resultTestFilterIds?.has(String(test.id || "")) ? "checked" : ""}>
       <span class="batch-selection-index">t${index + 1}</span>
       <span class="batch-selection-name">${escapeHtml(test.name || `测试 ${index + 1}`)}</span>
     </label>
@@ -4488,13 +4461,15 @@ function openBatchTestSelectionDialog() {
   const rangeEnd = document.getElementById("batchSelectionRangeEnd");
   rangeStart.max = String(tests.length); rangeStart.value = "1";
   rangeEnd.max = String(tests.length); rangeEnd.value = String(tests.length);
+  document.getElementById("batchSelectionRunAll").textContent = mode === "filter" ? "显示全部" : "全量运行";
+  document.getElementById("batchSelectionRunSelected").textContent = mode === "filter" ? "完成" : "运行已选";
   updateBatchSelectionCount();
   const dialog = document.getElementById("batchTestSelectionDialog") as HTMLDialogElement;
   dialog.showModal();
   window.requestAnimationFrame(() => rangeStart.focus());
 }
 
-/** 读取当前选择，关闭弹窗后按名称自然顺序启动批量任务。 */
+/** 读取当前选择；筛选模式只重绘卡片，运行模式按名称自然顺序启动任务。 */
 function runBatchSelection(runAll = false) {
   const tests = currentBatchGroupTests();
   const selectedIds = runAll
@@ -4502,14 +4477,28 @@ function runBatchSelection(runAll = false) {
     : [...document.querySelectorAll("[data-batch-test-selection]:checked")].map(checkbox => String(checkbox.value));
   if (!selectedIds.length) return;
   (document.getElementById("batchTestSelectionDialog") as HTMLDialogElement).close();
+  if (batchSelectionMode === "filter") {
+    resultTestFilterIds = new Set(selectedIds);
+    if (state.batchResult) renderBatchItems(state.batchResult.items || []);
+    else showCurrentGroupTestCards(false);
+    updateBatchResultFilterButton();
+    return;
+  }
   void runCurrentTestGroup(selectedIds);
 }
 
-/** 使用当前所选策略并行运行用户选中的测试；未传选择时先打开选择弹窗。 */
-async function runCurrentTestGroup(selectedTestIds = null) {
+/**
+ * 使用当前所选策略运行用户勾选的测试。
+ *
+ * 卡片队列模式一次只提交一项，并保留前面项的结果；普通批量模式
+ * 仍按运行设置中的并发数执行。
+ */
+async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
+  const fromResultCardQueue = runOptions.fromResultCardQueue === true;
+  if (runPreparationActive) return;
   const button = document.getElementById("batchRunButton");
-  const runButton = document.getElementById("runButton");
   if (state.batchRunning) {
+    if (fromResultCardQueue) return;
     try {
       await requestBatchCancellation();
     } catch (error) {
@@ -4520,38 +4509,65 @@ async function runCurrentTestGroup(selectedTestIds = null) {
     return;
   }
   if (!Array.isArray(selectedTestIds)) {
-    openBatchTestSelectionDialog();
-    return;
+    const selectedIds = resultTestFilterIds instanceof Set
+      ? [...resultTestFilterIds]
+      : currentBatchGroupTests().map(test => String(test.id || ""));
+    return runCurrentTestGroup(selectedIds, runOptions);
   }
   try {
     if (!state.workspaceDeviceId) throw new Error("请先选择设备和测试组");
-    if (state.dirty) await saveCurrentTest(true);
+    if (!await settleTestDraft()) return;
     const selectedIdSet = new Set(selectedTestIds.map(String));
     const tests = currentBatchGroupTests().filter(test => selectedIdSet.has(String(test.id || "")));
     if (!tests.length) throw new Error("请至少选择一个可运行测试");
-    state.batchRunning = true; state.activeBatchId = ""; state.batchCancelRequested = false; state.batchCancelSent = false; state.batchResult = null; state.selectedBatchTestId = "";
+    if (fromResultCardQueue) {
+      resultTestFilterIds = new Set(currentBatchGroupTests().map(test => String(test.id || "")));
+    } else {
+      batchResultItemHistory.clear();
+      resultTestFilterIds = new Set(tests.map(test => String(test.id || "")));
+    }
+    updateBatchResultFilterButton();
+    runPreparationActive = true; renderWorkspaceControls();
+    // 只读取本次勾选测试，冻结批量分析上下文，不依赖之后的目录选择或测试编辑。
+    const savedTests = [];
+    const readConcurrency = 4;
+    for (let offset = 0; offset < tests.length; offset += readConcurrency) {
+      const selected = tests.slice(offset, offset + readConcurrency);
+      const responses = await Promise.all(selected.map(test => requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${test.id}`)));
+      savedTests.push(...responses.map(response => response.test));
+    }
+    if (!fromResultCardQueue) resetRunResult();
+    activeRunContext = null;
+    const knownTests = fromResultCardQueue ? (activeBatchContext?.tests || []) : [];
+    const testsById = new Map([...knownTests, ...savedTests].map(test => [String(test.id || ""), test]));
+    activeBatchContext = { device: structuredClone(state.device), routes: structuredClone(state.routes), tests: structuredClone([...testsById.values()]) };
+    runPreparationActive = false;
+    state.batchRunning = true; state.activeBatchId = ""; state.batchCancelRequested = false; state.batchCancelSent = false; state.batchResult = null;
+    renderWorkspaceControls();
     startRunStatus(`批量测试 · ${state.activeTestGroup || "未分组"}`, `等待 ${tests.length} 个测试`);
-    batchPerformanceAnalyses.clear();
-    batchBottleneckSummaries.clear();
-    batchBottleneckRequests.clear();
-    batchBottleneckErrors.clear();
     batchCardAnalyses.clear();
     batchCardAnalysisRequests.clear();
     lastBatchItemsRenderSignature = "";
-    document.getElementById("testGroupAnalysisButton").hidden = true;
     document.getElementById("testGroupAnalysisPanel").hidden = true;
     document.getElementById("testGroupAnalysisPanel").innerHTML = "";
-    document.getElementById("batchOverviewButton").hidden = true;
-    button.disabled = false; runButton.disabled = true; button.classList.add("cancel"); button.textContent = "■ 终止调度";
-    document.getElementById("batchResults").innerHTML = "";
+    updateAnalysisReportAvailability();
+    button.disabled = false; button.classList.add("cancel"); button.textContent = "■ 终止调度";
+    const queuedItems = tests.map((test, index) => ({
+      index,
+      testId: String(test.id || ""),
+      testName: String(test.name || `测试 ${index + 1}`),
+      status: "queued",
+    }));
+    renderBatchItems(queuedItems);
+    lastBatchItemsRenderSignature = batchItemsRenderSignature(queuedItems);
     const validationSummary = hongYeCheckEnabled()
       ? ` · HongYe 校验并行 ${validationParallelism()} 路`
       : "";
-    writeTerminal(`$ 批量运行当前测试组\n  组别: ${state.activeTestGroup || "未分组"}\n  策略: ${displayStrategyName(state.strategy)}\n  测试数: ${tests.length}\n  算法并行 ${batchParallelism()} 项${validationSummary}…`);
+    writeTerminal(`$ 运行所选测试\n  组别: ${state.activeTestGroup || "未分组"}\n  策略: ${displayStrategyName(state.strategy)}\n  测试数: ${tests.length}\n  算法并行 ${batchParallelism()} 项${validationSummary}…`);
     const response = await fetch("/api/run-batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deviceId: state.workspaceDeviceId, group: state.activeTestGroup, testIds: tests.map(test => test.id), strategy: state.strategy, options: schedulingRequestOptions(), hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() }),
+      body: JSON.stringify({ deviceId: state.workspaceDeviceId, group: state.activeTestGroup, testIds: tests.map(test => test.id), strategy: state.strategy, options: schedulingRequestOptions(), hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: fromResultCardQueue ? 1 : batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() }),
     });
     let result = await response.json();
     if (!response.ok || !result.batchId || !Array.isArray(result.items)) throw new Error(result.error || `服务返回 ${response.status}`);
@@ -4574,23 +4590,93 @@ async function runCurrentTestGroup(selectedTestIds = null) {
       return;
     }
     if (result.status === "failed" && !Array.isArray(result.items)) throw new Error(result.error || "批量任务失败");
+    if (fromResultCardQueue) {
+      for (const item of result.items || []) batchResultItemHistory.set(String(item.testId || ""), item);
+      result = {
+        ...result,
+        items: currentBatchGroupTests()
+          .map(test => batchResultItemHistory.get(String(test.id || "")))
+          .filter(item => item && item.status !== "not-run"),
+      };
+      result.testCount = result.items.length;
+      result.completed = result.items.filter(item => ["succeeded", "failed", "cancelled"].includes(item.status)).length;
+      result.succeeded = result.items.filter(item => item.status === "succeeded").length;
+      result.failed = result.items.filter(item => item.status === "failed").length;
+      result.cancelled = result.items.filter(item => item.status === "cancelled").length;
+    }
     showBatchResult(result);
-    finishRunStatus(Number(result.failed || 0) ? "failed" : "completed", Number(result.failed || 0) ? "批量测试完成（有失败）" : "批量测试运行完成");
+    if (!fromResultCardQueue || resultCardRunQueue.size <= 1) {
+      finishRunStatus(Number(result.failed || 0) ? "failed" : "completed", Number(result.failed || 0) ? "批量测试完成（有失败）" : "批量测试运行完成");
+    }
   } catch (error) {
+    if (fromResultCardQueue && Array.isArray(selectedTestIds)) {
+      for (const testId of selectedTestIds.map(String)) {
+        const previous = batchResultItemHistory.get(testId);
+        if (previous) batchResultItemHistory.set(testId, { ...previous, ok: false, status: "failed", error: error.message || "未知错误" });
+      }
+      renderBatchItems([]);
+    }
     writeTerminal(`$ 批量运行失败：${error.message || "未知错误"}`, true);
-    document.getElementById("metricValidation").textContent = "失败";
     finishRunStatus("failed", "批量测试运行失败");
   } finally {
-    state.batchRunning = false; state.activeBatchId = ""; state.batchCancelRequested = false; state.batchCancelSent = false;
-    button.disabled = !state.serviceCompatible; runButton.disabled = !state.serviceCompatible;
-    button.classList.remove("running", "cancel"); button.textContent = "▦ 运行当前测试组";
+    runPreparationActive = false; state.batchRunning = false; state.activeBatchId = ""; state.batchCancelRequested = false; state.batchCancelSent = false;
+    button.disabled = !state.serviceCompatible;
+    button.classList.remove("running", "cancel"); button.textContent = "▶ 运行所选测试";
     renderWorkspaceControls();
+  }
+}
+
+/** 把卡片双击的测试立即标记为等待，并展示完整测试组。 */
+function markResultCardTestQueued(testId) {
+  const tests = currentBatchGroupTests();
+  const index = tests.findIndex(test => String(test.id || "") === testId);
+  if (index < 0) return;
+  const test = tests[index];
+  batchResultItemHistory.set(testId, {
+    index,
+    testId,
+    testName: String(test.name || `测试 ${index + 1}`),
+    status: "queued",
+  });
+  resultTestFilterIds = new Set(tests.map(item => String(item.id || "")));
+  renderBatchItems([]);
+  updateBatchResultFilterButton();
+}
+
+const resultCardRunQueue = createResultCardRunQueue({
+  runTest: testId => runCurrentTestGroup([testId], { fromResultCardQueue: true }),
+  onStateChange(testId, event) {
+    if (event === "queued") {
+      markResultCardTestQueued(testId);
+      return;
+    }
+    if (event === "settled" && batchResultItemHistory.get(testId)?.status === "queued") {
+      batchResultItemHistory.set(testId, { ...batchResultItemHistory.get(testId), status: "not-run" });
+      renderBatchItems([]);
+    }
+  },
+});
+
+/** 校验卡片对应的测试并入队；重复双击同一等待项不会重复执行。 */
+function enqueueResultCardTest(testId) {
+  if (!state.serviceCompatible) {
+    writeTerminal("$ 调度服务尚未就绪，暂时无法运行测试", true);
+    return;
+  }
+  if ((runPreparationActive || state.batchRunning) && resultCardRunQueue.size === 0) {
+    writeTerminal("$ 当前批量任务正在运行，请在结束后使用卡片双击队列", true);
+    return;
+  }
+  if (!currentBatchGroupTests().some(test => String(test.id || "") === String(testId || ""))) return;
+  if (!resultCardRunQueue.enqueue(String(testId))) {
+    writeTerminal("$ 该测试已在运行队列中");
   }
 }
 
 /** 请求终止当前批量任务；任务 ID 返回前点击也会在创建后立即补发。 */
 async function requestBatchCancellation() {
   if (!state.batchRunning || state.batchCancelRequested) return;
+  resultCardRunQueue.clearPending();
   state.batchCancelRequested = true;
   const button = document.getElementById("batchRunButton");
   button.disabled = true; button.classList.add("running"); button.textContent = "正在终止…";
@@ -4608,157 +4694,9 @@ async function sendBatchCancellation() {
   showBatchProgress(result);
 }
 
-/** 更新一个顶部总览卡片，并统一处理可选的补充说明。 */
-function setResultMetric(key, label, value, detail = "") {
-  document.getElementById(`metric${key}Label`).textContent = label;
-  document.getElementById(`metric${key}`).textContent = value;
-  document.getElementById(`metric${key}Detail`).textContent = detail;
-}
-
 /** 校验未通过的外部算法原始输出也可保留为只读指标与诊断数据。 */
 function hasBatchResultMetrics(item) {
   return item?.status === "succeeded" || item?.metricsAvailable === true;
-}
-
-/** 将结果分析中的同一瓶颈口径写入顶部摘要卡片。 */
-function setBottleneckMetric(summary, emptyDetail = "") {
-  const utilization = Number(summary?.utilization);
-  const available = summary && Number.isFinite(utilization);
-  const resourceName = String(summary?.resourceName || "未知资源").replace(/^工序容量组\s*[·:：-]?\s*/, "").trim() || "未知资源";
-  setResultMetric(
-    "Moves",
-    "Bottleneck Utilization",
-    available ? `${resourceName} ${(utilization * 100).toFixed(1)}%` : "—",
-    available ? "" : emptyDetail,
-  );
-}
-
-/** 绘制批量任务的组级汇总指标。 */
-function showBatchOverviewMetrics(result) {
-  const measured = (result.items || []).filter(hasBatchResultMetrics);
-  const averageMakespan = measured.length ? measured.reduce((sum, item) => sum + Number(item.makespan), 0) / measured.length : 0;
-  const comparable = measured.filter(item => item.baseline?.status === "succeeded");
-  const totalMakespan = comparable.reduce((sum, item) => sum + Number(item.makespan), 0);
-  const totalBaseline = comparable.reduce((sum, item) => sum + Number(item.baseline.makespan), 0);
-  const aggregateImprovement = totalBaseline > 0 ? (totalBaseline - totalMakespan) / totalBaseline * 100 : NaN;
-  const moveCount = measured.reduce((sum, item) => sum + Number(item.moveCount || 0), 0);
-  const timeText = result.status === "completed" ? `${(Number(result.totalElapsedMs) / 1000).toFixed(2)} s` : result.status === "cancelled" ? "已终止" : "运行中";
-  const makespanText = comparable.length
-    ? `${totalMakespan.toFixed(2)} / ${totalBaseline.toFixed(2)} s`
-    : measured.length ? `${averageMakespan.toFixed(2)} s` : "—";
-  const improvementText = comparable.length && Number.isFinite(aggregateImprovement)
-    ? `${aggregateImprovement >= 0 ? "提升" : "退化"} ${Math.abs(aggregateImprovement).toFixed(2)}%`
-    : "";
-  document.getElementById("metricContext").textContent = `批量总览 · ${result.group || "未分组"}`;
-  document.getElementById("batchOverviewButton").hidden = true;
-  setResultMetric("Time", "Total Time", timeText);
-  setResultMetric("Makespan", comparable.length ? "总 Makespan / Baseline" : "平均 Makespan", makespanText, improvementText);
-  setResultMetric("Moves", "总 Move 数", moveCount || "—");
-  setResultMetric("Validation", result.cancelled ? "成功 / 失败 / 终止" : "成功 / 失败", result.cancelled ? `${result.succeeded || 0} / ${result.failed || 0} / ${result.cancelled}` : `${result.succeeded || 0} / ${result.failed || 0}`);
-}
-
-/** 把所选测试的耗时、基线、瓶颈和校验结果展示在顶部。 */
-function showBatchItemOverview(item, index) {
-  const hasMetrics = hasBatchResultMetrics(item);
-  const baseline = item.baseline || {};
-  const baselineReady = baseline.status === "succeeded";
-  const cpuTime = Number(item.cpuTimeMs ?? item.totalElapsedMs);
-  const elapsedTime = Number(item.totalElapsedMs);
-  const makespan = Number(item.makespan);
-  const improvement = Number(item.improvementPercent);
-  const validationText = item.validation === "passed" ? "通过" : item.validation === "skipped" ? "跳过" : item.validation ? String(item.validation) : item.status === "failed" ? "运行失败" : item.status === "cancelled" ? "已终止" : "等待完成";
-  const comparisonDetail = baselineReady && Number.isFinite(improvement)
-    ? `${improvement >= 0 ? "提升" : "退化"} ${Math.abs(improvement).toFixed(2)}%`
-    : baseline.status && baseline.status !== "succeeded" && baseline.status !== "skipped" ? `Baseline ${baseline.status === "failed" ? "失败" : "失效"}` : "";
-  const resultUrl = String(item.resultUrl || "");
-  const bottleneckReady = resultUrl && batchBottleneckSummaries.has(resultUrl);
-  const bottleneckSummary = bottleneckReady ? batchBottleneckSummaries.get(resultUrl) : null;
-  const bottleneckError = resultUrl ? batchBottleneckErrors.get(resultUrl) : "";
-
-  document.getElementById("metricContext").textContent = `t${index + 1} · ${item.testName || `测试 ${index + 1}`} · ${displayStrategyName(state.batchResult?.strategy)}`;
-  document.getElementById("batchOverviewButton").hidden = false;
-  setResultMetric("Time", "CPU Time / 耗时", Number.isFinite(cpuTime) ? `${cpuTime.toFixed(1)} ms` : "—", Number.isFinite(elapsedTime) ? `端到端耗时 ${elapsedTime.toFixed(1)} ms` : "");
-  setResultMetric("Makespan", "Makespan / Baseline", Number.isFinite(makespan) ? `${makespan.toFixed(2)} / ${baselineReady ? Number(baseline.makespan).toFixed(2) : "—"} s` : "—", comparisonDetail);
-  setBottleneckMetric(
-    bottleneckSummary,
-    hasMetrics && resultUrl
-      ? bottleneckError
-        ? `瓶颈计算失败：${bottleneckError}`
-        : bottleneckReady ? "没有足够的资源活动" : "正在计算稳态瓶颈…"
-      : "没有可分析的 MoveList",
-  );
-  setResultMetric("Validation", "Validation", validationText, item.error || "");
-}
-
-/** 请求后端分析批量单项，并缓存结构化结果供页面复用。 */
-async function loadBatchItemPerformance(item, index) {
-  const resultUrl = String(item?.resultUrl || "");
-  if (!resultUrl || !hasBatchResultMetrics(item)) return null;
-  if (batchPerformanceAnalyses.has(resultUrl)) {
-    return batchPerformanceAnalyses.get(resultUrl);
-  }
-  if (batchBottleneckErrors.has(resultUrl)) return null;
-  let request = batchBottleneckRequests.get(resultUrl);
-  if (!request) {
-    request = (async () => {
-      const testCase = (state.workspaceDevice?.tests || []).find(
-        test => String(test.id) === String(item.testId),
-      );
-      const resultId = resultUrl.startsWith("/api/results/")
-        ? decodeURIComponent(resultUrl.slice("/api/results/".length))
-        : "";
-      if (!resultId) throw new Error("结果地址不符合服务端分析契约");
-      const response = await requestScheduleAnalysis({
-        resultId,
-        device: state.device,
-        windowMode: "steady",
-        routes: state.workspaceDevice?.routes || state.routes,
-        rounds: testCase?.rounds || state.rounds,
-      });
-      batchPerformanceAnalyses.set(resultUrl, response.analysis);
-      batchBottleneckSummaries.set(resultUrl, response.bottleneck);
-      return response.analysis;
-    })();
-    batchBottleneckRequests.set(resultUrl, request);
-  }
-  try {
-    return await request;
-  } catch (error) {
-    batchBottleneckErrors.set(resultUrl, error.message || "未知错误");
-    if (state.selectedBatchTestId === String(item.testId || `index-${index}`)) {
-      setBottleneckMetric(null, `瓶颈计算失败：${error.message || "未知错误"}`);
-    }
-    return null;
-  } finally {
-    batchBottleneckRequests.delete(resultUrl);
-  }
-}
-
-/** 为所选测试异步补齐瓶颈数据，然后刷新顶部预览。 */
-async function loadBatchItemBottleneck(item, index) {
-  await loadBatchItemPerformance(item, index);
-  const currentIndex = (state.batchResult?.items || []).findIndex(
-    (candidate, candidateIndex) => String(candidate.testId || `index-${candidateIndex}`) === state.selectedBatchTestId,
-  );
-  if (currentIndex >= 0) showBatchItemOverview(state.batchResult.items[currentIndex], currentIndex);
-}
-
-/** 选择批量结果卡片，并在后续轮询中按测试 ID 保持选择。 */
-function selectBatchItem(index) {
-  const item = state.batchResult?.items?.[index];
-  if (!item) return;
-  state.selectedBatchTestId = String(item.testId || `index-${index}`);
-  renderBatchItems(state.batchResult.items || []);
-  showBatchItemOverview(item, index);
-  void loadBatchItemBottleneck(item, index);
-}
-
-/** 清除单项选择并恢复当前批量任务的组级总览。 */
-function showCurrentBatchOverview() {
-  if (!state.batchResult) return;
-  state.selectedBatchTestId = "";
-  renderBatchItems(state.batchResult.items || []);
-  showBatchOverviewMetrics(state.batchResult);
 }
 
 /** 使用测试任务配置生成严格可比性键；名称不同但运行配置相同时仍可直接比较。 */
@@ -4796,7 +4734,7 @@ function showAnalysisWizardStep(step) {
 function openGroupAnalysisOptions() {
   const result = state.batchResult;
   if (!result?.items?.length) return;
-  const testsById = new Map((state.workspaceDevice?.tests || []).map(test => [String(test.id), test]));
+  const testsById = new Map((activeBatchContext?.tests || []).map(test => [String(test.id), test]));
   const analyzable = result.items.filter(item => hasBatchResultMetrics(item) && item.resultUrl);
   const options = document.getElementById("analysisTestOptions");
   options.innerHTML = analyzable.map((item, index) => `
@@ -4840,7 +4778,7 @@ async function showTestGroupAnalysis() {
   if (!selectedIds.size) throw new Error("请至少选择一个测试");
   const metricIds = [...document.querySelectorAll("[data-analysis-metric]:checked")].map(input => String(input.value));
   if (!metricIds.length) throw new Error("请至少选择一个计算指标");
-  const testsById = new Map((state.workspaceDevice?.tests || []).map(test => [String(test.id), test]));
+  const testsById = new Map((activeBatchContext?.tests || []).map(test => [String(test.id), test]));
   const cases = result.items
     .map((item, index) => ({ item, index }))
     .filter(({ item, index }) => selectedIds.has(String(item.testId || `index-${index}`)))
@@ -4872,8 +4810,8 @@ async function showTestGroupAnalysis() {
   await saveAnalysisSettingsPreferences();
   const job = await createTestGroupAnalysisJob({
     cases,
-    device: state.device,
-    routes: state.workspaceDevice?.routes || state.routes,
+    device: activeBatchContext?.device,
+    routes: activeBatchContext?.routes || [],
     metricIds,
     referenceCaseId,
     windowMode: document.getElementById("analysisWindowMode").value,
@@ -4898,9 +4836,11 @@ async function showTestGroupAnalysis() {
   document.getElementById("analysisOptionsCancel").disabled = false;
   document.getElementById("analysisOptionsClose").disabled = false;
   (document.getElementById("analysisOptionsDialog") as HTMLDialogElement).close();
-  switchTab("workspace");
+  await switchTab("schedule");
+  setRunResultView("analysis");
   const panel = document.getElementById("testGroupAnalysisPanel");
   bindTestGroupExport(panel, summary, result.group || state.activeTestGroup || "当前测试组");
+  panel.querySelector("[data-return-run-results]")?.addEventListener("click", () => setRunResultView("results"));
   panel.querySelector("[data-reconfigure-analysis]")?.addEventListener("click", openGroupAnalysisOptions);
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -4949,33 +4889,26 @@ function orderedBatchItems(items) {
 /** 实时绘制总体进度；仅在测试状态变化时重绘逐项卡片。 */
 function showBatchProgress(result) {
   result.items = orderedBatchItems(result.items || []);
+  for (const item of result.items) {
+    const testId = String(item.testId || "");
+    if (testId) batchResultItemHistory.set(testId, item);
+  }
   const completed = Number(result.completed || 0), total = Number(result.testCount || result.items?.length || 0);
   const percent = total ? Math.round(completed / total * 100) : 0;
-  const progress = document.getElementById("batchProgress");
-  document.getElementById("testGroupAnalysisButton").hidden = !["completed", "cancelled"].includes(result.status);
-  progress.classList.add("visible");
-  progress.setAttribute("aria-valuenow", String(percent));
-  document.getElementById("batchProgressCount").textContent = `${percent}%`;
-  document.getElementById("batchProgressBar").style.width = `${percent}%`;
   state.batchResult = result;
+  updateAnalysisReportAvailability();
   updateBatchLogDownload(result);
-  if (!state.selectedBatchTestId) showBatchOverviewMetrics(result);
   const items = result.items || [];
   const renderSignature = batchItemsRenderSignature(items);
   if (renderSignature !== lastBatchItemsRenderSignature) {
     renderBatchItems(items);
     lastBatchItemsRenderSignature = renderSignature;
   }
-  const selectedIndex = (result.items || []).findIndex((item, index) => String(item.testId || `index-${index}`) === state.selectedBatchTestId);
-  if (selectedIndex >= 0) {
-    showBatchItemOverview(result.items[selectedIndex], selectedIndex);
-    void loadBatchItemBottleneck(result.items[selectedIndex], selectedIndex);
-  }
   if (["completed", "cancelled"].includes(String(result.status))) {
     void hydrateBatchCardAnalyses(items);
   }
   writeTerminal([
-    "$ 批量运行当前测试组",
+    "$ 运行所选测试",
     `  组别: ${result.group || "未分组"} · 策略: ${displayStrategyName(result.strategy)}`,
     `  进度: ${completed}/${total} (${percent}%) · 算法并行: ${result.workerCount}${result.validationWorkers > 0 ? ` · HongYe 校验并行: ${result.validationWorkers}` : ""}`,
     `  等待: ${(result.items || []).filter(item => item.status === "queued").length} · 运行中: ${(result.items || []).filter(item => item.status === "running").length} · 成功: ${result.succeeded || 0} · 失败: ${result.failed || 0} · 终止: ${result.cancelled || 0}`,
@@ -5002,7 +4935,7 @@ async function loadBatchCardAnalysis(item) {
   if (batchCardAnalyses.has(resultUrl)) return batchCardAnalyses.get(resultUrl);
   if (batchCardAnalysisRequests.has(resultUrl)) return batchCardAnalysisRequests.get(resultUrl);
   const request = (async () => {
-    const testCase = (state.workspaceDevice?.tests || []).find(
+    const testCase = (activeBatchContext?.tests || []).find(
       test => String(test.id) === String(item.testId),
     );
     const resultId = resultUrl.startsWith("/api/results/")
@@ -5012,9 +4945,9 @@ async function loadBatchCardAnalysis(item) {
     try {
       const response = await requestScheduleAnalysis({
         resultId,
-        device: state.device,
+        device: activeBatchContext?.device,
         windowMode: "steady",
-        routes: state.workspaceDevice?.routes || state.routes,
+        routes: activeBatchContext?.routes || [],
         rounds: testCase?.rounds || [],
         metricGroups: ["basic", "throughput"],
       });
@@ -5049,9 +4982,23 @@ async function hydrateBatchCardAnalyses(items) {
 }
 
 function renderBatchItems(items) {
-  items = orderedBatchItems(items);
-  const statusLabels = { queued: "等待中", running: "运行中", succeeded: "成功", failed: "失败", cancelled: "已终止" };
-  document.getElementById("batchResults").innerHTML = items.map((item, index) => {
+  for (const item of orderedBatchItems(items)) {
+    const testId = String(item.testId || "");
+    if (testId) batchResultItemHistory.set(testId, item);
+  }
+  const entries = currentBatchGroupTests()
+    .map((test, index) => ({
+      item: batchResultItemHistory.get(String(test.id || "")) || {
+        index,
+        testId: String(test.id || ""),
+        testName: String(test.name || `测试 ${index + 1}`),
+        status: "not-run",
+      },
+      index,
+    }))
+    .filter(({ item }) => !(resultTestFilterIds instanceof Set) || resultTestFilterIds.has(String(item.testId || "")));
+  const statusLabels = { "not-run": "未运行", queued: "等待中", running: "运行中", succeeded: "成功", failed: "失败", cancelled: "已终止" };
+  document.getElementById("batchResults").innerHTML = entries.map(({ item, index }) => {
     const hasMetrics = hasBatchResultMetrics(item);
     const resultUrl = String(item.resultUrl || "");
     const cardAnalysis = batchCardAnalyses.get(resultUrl);
@@ -5064,20 +5011,20 @@ function renderBatchItems(items) {
       && Number.isFinite(averageRecomputeTime);
     const summaryError = batchItemErrorText(item);
     const failed = Boolean(summaryError);
-    const summaryNote = item.status === "cancelled" ? "调度已终止" : failed ? "" : summaryError;
+    // 已终止状态已由卡片顶部标签表达，避免在指标下方重复显示相同信息。
+    const summaryNote = failed ? "" : summaryError;
     const displayId = `t${index + 1}`;
-    const itemSelectionId = String(item.testId || `index-${index}`);
-    const selected = itemSelectionId === state.selectedBatchTestId;
+    const testId = String(item.testId || "");
     return `
-      <div class="batch-result ${escapeHtml(item.status || "queued")}${selected ? " selected" : ""}" data-batch-item-index="${index}">
+      <div class="batch-result ${escapeHtml(item.status || "queued")} ${testId === expandedBatchTestId ? "details-open" : ""}" data-batch-test-card="${escapeHtml(testId)}" role="button" tabindex="0" aria-expanded="${testId === expandedBatchTestId}" aria-label="${escapeHtml(item.testName || `测试 ${index + 1}`)}：单击查看详情，双击加入运行队列" title="单击查看只读配置；双击加入运行队列">
         <div class="batch-result-head">
-          <button class="batch-result-title" type="button" aria-pressed="${selected}" aria-label="查看 ${escapeHtml(item.testName || `测试 ${index + 1}`)} 的详细指标"><strong title="${escapeHtml(item.testName || `测试 ${index + 1}`)}">${escapeHtml(item.testName || `测试 ${index + 1}`)}</strong></button>
+          <span class="batch-result-title"><strong title="${escapeHtml(item.testName || `测试 ${index + 1}`)}">${escapeHtml(item.testName || `测试 ${index + 1}`)}</strong></span>
           <div class="batch-result-meta">
             <span class="batch-status">${statusLabels[item.status] || "等待中"}</span>
             ${item.logUrl ? `<a class="btn" href="${escapeHtml(item.logUrl)}" download="${escapeHtml(readableLogFileName(item.testName || `测试-${index + 1}`))}">日志</a>` : `<span class="btn" aria-disabled="true">日志</span>`}
             ${item.resultUrl ? `<button class="btn primary" type="button" data-playback-result="${escapeHtml(item.resultUrl)}" data-playback-name="${escapeHtml(item.testName || `测试 ${index + 1}`)}">回放</button>` : `<span class="btn" aria-disabled="true">回放</span>`}
             ${item.ganttUrl ? `<a class="btn" href="${escapeHtml(item.ganttUrl)}" target="_blank">甘特图</a>` : `<span class="btn" aria-disabled="true">甘特图</span>`}
-            ${failed ? `<button class="btn danger" type="button" data-batch-error="${index}" aria-label="查看 ${escapeHtml(displayId)} 的报错信息">报错</button>` : ""}
+            ${failed ? `<button class="btn danger" type="button" data-batch-error="${escapeHtml(testId)}" aria-label="查看 ${escapeHtml(displayId)} 的报错信息">报错</button>` : ""}
           </div>
         </div>
         <div class="batch-result-summary">
@@ -5091,12 +5038,104 @@ function renderBatchItems(items) {
   }).join("");
 }
 
+/** 关闭结果区上方的测试只读详情，并让失效请求不能覆盖当前状态。 */
+function closeBatchTestDetails() {
+  expandedBatchTestId = "";
+  batchTestDetailsRequestVersion += 1;
+  const panel = document.getElementById("batchTestDetails");
+  panel.hidden = true;
+  panel.innerHTML = "";
+}
+
+/** 同步结果卡片的展开视觉状态，不重置当前批量结果。 */
+function updateBatchTestCardDetailState() {
+  document.querySelectorAll("[data-batch-test-card]").forEach(card => {
+    const expanded = card.dataset.batchTestCard === expandedBatchTestId;
+    card.classList.toggle("details-open", expanded);
+    card.setAttribute("aria-expanded", String(expanded));
+  });
+}
+
+/** 将测试配置字段绘制为只读的紧凑字段，不提供表单控件。 */
+function renderBatchTestDetailField(label, value) {
+  const text = readonlyText(value);
+  return `<div class="batch-test-detail-field"><span>${escapeHtml(label)}</span><strong title="${escapeHtml(text)}">${escapeHtml(text)}</strong></div>`;
+}
+
+/** 生成结果详情内单个 PJob 的只读路径摘要。 */
+function batchTestDetailRouteSummary(testCase, pjob) {
+  const routeName = String(pjob?.routeRef || "");
+  const template = (state.workspaceDevice?.routes || state.routes || []).find(route => String(route?.name || "") === routeName);
+  if (!template) return routeName || "未配置路径";
+  const routeConfig = pjob?.routeConfig || testCase?.routeConfigs?.[routeName] || defaultRouteConfigForRoute(template);
+  return routePickerCompactPath(runtimeRouteForTemplate(template, routeConfig), true, pjob?.loadPort || "");
+}
+
+/** 生成结果区上方的测试只读详情，结构与测试管理的轮次、CJob、PJob 一致。 */
+function renderBatchTestDetails(testCase) {
+  const rounds = Array.isArray(testCase?.rounds) ? testCase.rounds : [];
+  const details = rounds.map((round, roundIndex) => {
+    const cjobs = Array.isArray(round?.cjobs) ? round.cjobs : [];
+    const cjobMarkup = cjobs.map((cjob, cjobIndex) => {
+      const pjobs = Array.isArray(cjob?.pjobs) ? cjob.pjobs : [];
+      const pjobMarkup = pjobs.map((pjob, pjobIndex) => `<div class="batch-test-detail-pjob">
+        <div class="batch-test-detail-pjob-name"><span>PJob</span><strong>${escapeHtml(pjob?.jobName || `P${pjobIndex + 1}`)}</strong></div>
+        <div class="batch-test-detail-pjob-fields">
+          ${renderBatchTestDetailField("Material", pjob?.waferCount)}
+          ${renderBatchTestDetailField("Priority", pjob?.priority)}
+          ${renderBatchTestDetailField("OriginRoute", batchTestDetailRouteSummary(testCase, pjob))}
+        </div>
+      </div>`).join("") || '<span class="hint">此 CJob 没有 PJob。</span>';
+      return `<section class="batch-test-detail-cjob">
+        <header class="batch-test-detail-cjob-head"><strong>CJob ${cjobIndex + 1}</strong><span>TaskID ${escapeHtml(cjob?.taskId)}</span></header>
+        <div class="batch-test-detail-fields">
+          ${renderBatchTestDetailField("JobType", cjob?.jobType)}
+          ${renderBatchTestDetailField("LoadPort", cjob?.loadPort)}
+          ${renderBatchTestDetailField("Priority", cjob?.priority)}
+          ${renderBatchTestDetailField("TaskMode", cjob?.taskMode)}
+          ${renderBatchTestDetailField("CJobCycle", cjob?.cjobCycle)}
+        </div>
+        <div class="batch-test-detail-pjobs">${pjobMarkup}</div>
+      </section>`;
+    }).join("") || '<span class="hint">此轮没有 CJob。</span>';
+    return `<section class="batch-test-detail-round">
+      <header class="batch-test-detail-round-head"><span class="batch-test-detail-round-number">${roundIndex + 1}</span><strong>${roundIndex ? `第 ${roundIndex + 1} 轮重算` : "首次排程"}</strong><span>${roundIndex ? "重算时间" : "排程时间"} ${escapeHtml(formatCleanSeconds(round?.currentTime ?? 0))}</span></header>
+      <div class="batch-test-detail-cjobs">${cjobMarkup}</div>
+    </section>`;
+  }).join("") || '<p class="hint">该测试没有可显示的任务配置。</p>';
+  return `<div class="batch-test-details-body">${details}</div>`;
+}
+
+/** 点击结果卡片时按需读取保存的测试配置；再次点击同一卡片则收起。 */
+async function toggleBatchTestDetails(testId) {
+  if (!testId || !state.workspaceDeviceId) return;
+  if (expandedBatchTestId === testId) {
+    closeBatchTestDetails();
+    updateBatchTestCardDetailState();
+    return;
+  }
+  expandedBatchTestId = testId;
+  const requestVersion = ++batchTestDetailsRequestVersion;
+  const panel = document.getElementById("batchTestDetails");
+  panel.hidden = false;
+  panel.innerHTML = '<div class="batch-test-details-body"><p class="hint">正在读取测试详情…</p></div>';
+  updateBatchTestCardDetailState();
+  try {
+    const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${encodeURIComponent(testId)}`);
+    if (requestVersion !== batchTestDetailsRequestVersion || expandedBatchTestId !== testId) return;
+    panel.innerHTML = renderBatchTestDetails(result.test);
+  } catch (error) {
+    if (requestVersion !== batchTestDetailsRequestVersion || expandedBatchTestId !== testId) return;
+    panel.innerHTML = `<div class="batch-test-details-body"><p class="hint">读取测试详情失败：${escapeHtml(error?.message || "未知错误")}</p></div>`;
+  }
+}
+
 /** 打开批量测试报错信息弹窗，展示完整失败原因（不直接铺在卡片上）。 */
-function openBatchErrorDialog(index) {
-  const item = state.batchResult?.items?.[index];
+function openBatchErrorDialog(testId) {
+  const item = batchResultItemHistory.get(String(testId || ""));
   if (!item) return;
   const errorText = batchItemErrorText(item) || "未知错误";
-  document.getElementById("batchErrorDialogContext").textContent = `${item.testName || `测试 ${index + 1}`} · ${item.status === "failed" ? "运行失败" : "基线异常"}`;
+  document.getElementById("batchErrorDialogContext").textContent = `${item.testName || "当前测试"} · ${item.status === "failed" ? "运行失败" : "基线异常"}`;
   document.getElementById("batchErrorDialogContent").textContent = errorText;
   (document.getElementById("batchErrorDialog") as HTMLDialogElement).showModal();
 }
@@ -5111,29 +5150,39 @@ function batchGanttUrl(items) {
   return params.size ? `/movelist_gantt_viewer.html?${params.toString()}` : "";
 }
 
+/** 清空底部“全部甘特图”入口，防止它沿用上一批测试结果。 */
+function resetBatchGanttLink() {
+  const link = document.getElementById("batchGanttButton");
+  link.href = "#";
+  link.setAttribute("aria-disabled", "true");
+}
+
 /** 更新当前批量任务的 ZIP 日志下载入口；执行中可下载已完成测试的日志。 */
 function updateBatchLogDownload(result) {
-  const button = document.getElementById("batchLogButton");
+  const buttons = document.querySelectorAll(".batch-log-download");
   const hasLogs = (result.items || []).some(item => item.logUrl);
   if (!result.batchId || !hasLogs) {
-    button.href = "#";
-    button.setAttribute("aria-disabled", "true");
+    buttons.forEach(button => {
+      button.href = "#";
+      button.setAttribute("aria-disabled", "true");
+    });
     return;
   }
-  button.href = `/api/run-batches/${encodeURIComponent(result.batchId)}/logs`;
   const deviceName = String(result.deviceName || "当前设备").replace(/\.json$/i, "");
   const readableDeviceName = deviceName.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_") || "当前设备";
   const readableGroupName = String(result.group || "当前测试组").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_") || "当前测试组";
-  button.download = `批量复现日志-${readableDeviceName}-${readableGroupName}.zip`;
-  button.removeAttribute("aria-disabled");
+  buttons.forEach(button => {
+    button.href = `/api/run-batches/${encodeURIComponent(result.batchId)}/logs`;
+    button.download = `批量复现日志-${readableDeviceName}-${readableGroupName}.zip`;
+    button.removeAttribute("aria-disabled");
+  });
 }
 
 /** 汇总批量运行指标，并为每个测试保留甘特图和复现日志入口。 */
 function showBatchResult(result) {
   state.batchResult = result;
   updateBatchLogDownload(result);
-  document.getElementById("testGroupAnalysisButton").hidden = false;
-  if (!state.selectedBatchTestId) showBatchOverviewMetrics(result);
+  updateAnalysisReportAvailability();
   const resultErrors = result.items.flatMap((item, index) => {
     if (item.status === "failed") {
       return [`t${index + 1} ${item.testName || ""}：${item.error || "运行失败"}`];
@@ -5145,20 +5194,6 @@ function showBatchResult(result) {
   });
   writeTerminal(resultErrors.join("\n"), resultErrors.length > 0);
   renderBatchItems(result.items);
-  const selectedIndex = result.items.findIndex((item, index) => String(item.testId || `index-${index}`) === state.selectedBatchTestId);
-  if (selectedIndex >= 0) {
-    showBatchItemOverview(result.items[selectedIndex], selectedIndex);
-    void loadBatchItemBottleneck(result.items[selectedIndex], selectedIndex);
-  }
-  const first = result.items.find(item => item.ganttUrl || item.logUrl);
-  if (first) {
-    if (first.ganttUrl) {
-      const gantt = document.getElementById("ganttButton"); gantt.href = first.ganttUrl; gantt.removeAttribute("aria-disabled");
-    }
-    if (first.logUrl) {
-      const log = document.getElementById("logButton"); log.href = first.logUrl; log.download = readableLogFileName(first.testName); log.removeAttribute("aria-disabled");
-    }
-  }
   const allGanttUrl = batchGanttUrl(result.items);
   const allGantt = document.getElementById("batchGanttButton");
   if (allGanttUrl) { allGantt.href = allGanttUrl; allGantt.removeAttribute("aria-disabled"); }
@@ -5166,48 +5201,12 @@ function showBatchResult(result) {
 
 /** 显示运行指标和逐轮日志。 */
 function showResult(result) {
-  state.batchResult = null; state.selectedBatchTestId = "";
-  document.getElementById("testGroupAnalysisButton").hidden = true;
+  state.batchResult = null;
   document.getElementById("testGroupAnalysisPanel").hidden = true;
-  document.getElementById("batchProgress").classList.remove("visible");
   document.getElementById("batchResults").innerHTML = "";
-  const allGantt = document.getElementById("batchGanttButton"); allGantt.href = "#"; allGantt.setAttribute("aria-disabled", "true");
+  updateAnalysisReportAvailability();
   updateBatchLogDownload({});
-  const baseline = result.baseline || {}, baselineReady = baseline.status === "succeeded";
-  const cpuTime = Number(result.cpuTimeMs ?? result.totalElapsedMs);
-  document.getElementById("metricContext").textContent = "当前测试";
-  document.getElementById("batchOverviewButton").hidden = true;
-  ["metricTimeDetail", "metricMakespanDetail", "metricMovesDetail", "metricValidationDetail"].forEach(id => { document.getElementById(id).textContent = ""; });
-  document.getElementById("metricTimeLabel").textContent = "CPU Time";
-  document.getElementById("metricMakespanLabel").textContent = "Makespan / Baseline";
-  setBottleneckMetric(result.bottleneckUtilization, "没有足够的资源活动");
-  document.getElementById("metricValidationLabel").textContent = "Validation";
-  document.getElementById("metricTime").textContent = `${cpuTime.toFixed(1)} ms`;
-  document.getElementById("metricMakespan").textContent = `${result.makespan.toFixed(2)} / ${baselineReady ? Number(baseline.makespan).toFixed(2) : "—"} s`;
-  const validationValue = validationDisplay(result.validation);
-  document.getElementById("metricValidation").textContent = validationValue;
-  document.getElementById("metricValidation").closest(".metric").classList.toggle("is-success", result.validation === "passed");
-  document.getElementById("metricValidation").closest(".metric").classList.toggle("is-error", result.validation !== "passed" && result.validation !== "skipped");
-  const objectiveDiagnostics = [...(result.rounds || [])].reverse().map(round => round.strategyDiagnostics).find(diagnostics => diagnostics?.metrics);
-  if (objectiveDiagnostics) {
-    const metrics = objectiveDiagnostics.metrics;
-    document.getElementById("metricValidationLabel").textContent = "Validation / Multi-metric";
-    document.getElementById("metricValidationDetail").textContent = `驻留超限 ${Number(metrics.residencyViolationCount) || 0} 次 · 最大持片 ${Number(metrics.maximumRobotHoldingSeconds || 0).toFixed(2)} s · 系统停留 CV ${Number(metrics.systemResidenceCv || 0).toFixed(3)}`;
-  }
-  const dualActorDiagnostics = (result.rounds || [])
-    .map(round => round.strategyDiagnostics)
-    .filter(diagnostics => diagnostics?.selectedSource === "dual-actor-e2e");
-  if (dualActorDiagnostics.length) {
-    const totals = dualActorDiagnostics.reduce((summary, diagnostics) => ({
-      atmosphere: summary.atmosphere + (Number(diagnostics.actorDecisionCounts?.atmosphere) || 0),
-      vacuum: summary.vacuum + (Number(diagnostics.actorDecisionCounts?.vacuum) || 0),
-      pick: summary.pick + (Number(diagnostics.primitiveActionCounts?.pick) || 0),
-      place: summary.place + (Number(diagnostics.primitiveActionCounts?.place) || 0),
-      swap: summary.swap + (Number(diagnostics.primitiveActionCounts?.swap) || 0),
-    }), { atmosphere: 0, vacuum: 0, pick: 0, place: 0, swap: 0 });
-    document.getElementById("metricValidationLabel").textContent = "Validation / Dual Actor";
-    document.getElementById("metricValidationDetail").textContent = `决策：大气 ${totals.atmosphere} · 真空 ${totals.vacuum}；原子动作：Pick ${totals.pick} · Place ${totals.place} · Swap ${totals.swap}`;
-  }
+  resetBatchGanttLink();
   writeTerminal(["$ 调度完成", ...(result.rounds || []).map(round => {
     if (round.kind === "initial") return `  #${round.index} 首次 | ${round.elapsedMs.toFixed(1)} ms`;
     const request = Number(round.requestedTime);
@@ -5218,40 +5217,6 @@ function showResult(result) {
       : `@${request}s ${triggerLabel}`;
     return `  #${round.index} ${timing} | ${round.elapsedMs.toFixed(1)} ms`;
   }), "", ...(result.logs || [])].join("\n"));
-  const gantt = document.getElementById("ganttButton"); gantt.href = result.ganttUrl; gantt.removeAttribute("aria-disabled");
-}
-
-/** 外部算法失败时展示仍然客观可用的耗时、原始 Makespan 与 Baseline。 */
-function showFailedResultMetrics(result) {
-  state.batchResult = null;
-  state.selectedBatchTestId = "";
-  document.getElementById("testGroupAnalysisButton").hidden = true;
-  document.getElementById("testGroupAnalysisPanel").hidden = true;
-  document.getElementById("batchProgress").classList.remove("visible");
-  document.getElementById("batchResults").innerHTML = "";
-
-  const baseline = result?.baseline || {};
-  const baselineMakespan = baseline.status === "succeeded" ? Number(baseline.makespan) : NaN;
-  const makespan = Number(result?.makespan);
-  const elapsedTime = Number(result?.totalElapsedMs ?? result?.cpuTimeMs);
-  const improvement = Number(result?.improvementPercent);
-  const makespanText = `${Number.isFinite(makespan) ? makespan.toFixed(2) : "—"} / ${Number.isFinite(baselineMakespan) ? baselineMakespan.toFixed(2) : "—"} s`;
-  const comparisonDetail = Number.isFinite(improvement)
-    ? `${improvement >= 0 ? "提升" : "退化"} ${Math.abs(improvement).toFixed(2)}% · 结果校验未通过`
-    : baseline.status === "skipped"
-      ? ""
-      : baseline.status && baseline.status !== "succeeded"
-        ? `Baseline ${baseline.status === "failed" ? "失败" : "失效"}`
-        : "外部算法未返回可比较的完整 Makespan";
-
-  document.getElementById("metricContext").textContent = "当前测试 · 外部算法失败结果";
-  document.getElementById("batchOverviewButton").hidden = true;
-  setResultMetric("Time", "失败前耗时", Number.isFinite(elapsedTime) ? `${elapsedTime.toFixed(1)} ms` : "—", "从提交到返回失败结果");
-  setResultMetric("Makespan", "Makespan / Baseline", makespanText, comparisonDetail);
-  setBottleneckMetric(result?.bottleneckUtilization, result?.resultId ? "失败结果没有足够的资源活动" : "未生成可分析的 MoveList");
-  setResultMetric("Validation", "Validation", result?.validation === "failed" ? "未通过" : String(result?.validation || "失败"), result?.error || "");
-  document.getElementById("metricValidation").closest(".metric").classList.remove("is-success");
-  document.getElementById("metricValidation").closest(".metric").classList.add("is-error");
 }
 
 /** 正常过程保持界面安静；只有错误才显示可复制的详细信息。 */
@@ -5336,7 +5301,6 @@ function renderRunFailureCard({
 /** 检查本地服务以及内置策略模型可用性。 */
 async function checkService() {
   const pill = document.getElementById("serviceState");
-  const runButton = document.getElementById("runButton");
   const batchRunButton = document.getElementById("batchRunButton");
   try {
     const response = await fetch("/api/health", { cache: "no-store" });
@@ -5345,8 +5309,7 @@ async function checkService() {
     state.serviceCompatible = compatible;
     state.algorithmMetadata = status.algorithmMetadata || {};
     renderOtherAlgorithmOptions(status.algorithms || status.otherAlgorithms || []);
-    runButton.disabled = !compatible || singleRunCancelling || state.batchRunning;
-    batchRunButton.disabled = !compatible || singleRunActive || (state.batchRunning && state.batchCancelRequested);
+    batchRunButton.disabled = !compatible || (state.batchRunning && state.batchCancelRequested);
     renderWorkspaceControls();
     pill.textContent = compatible ? "本地服务已连接" : "服务版本过旧";
     if (!compatible) {
@@ -5356,7 +5319,6 @@ async function checkService() {
   }
   catch {
     state.serviceCompatible = false;
-    runButton.disabled = true;
     batchRunButton.disabled = true;
     renderWorkspaceControls();
     pill.textContent = "本地服务未连接";
@@ -5525,8 +5487,49 @@ document.getElementById("testExchangeFile").addEventListener("change", event => 
     writeTerminal(`$ 测试集导入失败\n  ${error.message}`, true);
   });
 });
+document.getElementById("resultPreviewViewButton").addEventListener("click", () => setRunResultView("results"));
+document.getElementById("analysisReportViewButton").addEventListener("click", () => {
+  if (!canOpenAnalysisReport()) return;
+  if (document.getElementById("testGroupAnalysisPanel").hidden) openGroupAnalysisOptions();
+  else setRunResultView("analysis");
+});
+document.getElementById("batchResultFilterButton").addEventListener("click", () => openBatchTestSelectionDialog("filter"));
+for (const [sourceId, targetId] of [["runDeviceSelect", "deviceSelect"], ["runGroupSelect", "testGroupSelect"]]) {
+  document.getElementById(sourceId).addEventListener("change", event => {
+    const target = document.getElementById(targetId) as HTMLSelectElement;
+    target.value = event.target.value; target.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+document.getElementById("discardTestButton").addEventListener("click", () => discardTestDraft().catch(error => setWorkspaceStatus(`撤销失败：${error.message}`, "dirty")));
+document.getElementById("saveAndRunPageButton").addEventListener("click", async () => {
+  try { await saveCurrentTest(false); showTestCatalog(); }
+  catch (error) { setWorkspaceStatus(`保存失败：${error.message}`, "dirty"); }
+});
+document.getElementById("cancelTestEditButton").addEventListener("click", async () => {
+  try { if (await settleTestDraft()) showTestCatalog(); }
+  catch (error) { setWorkspaceStatus(`无法返回列表：${error.message}`, "dirty"); }
+});
+document.querySelectorAll("[data-management-target]").forEach(button => button.addEventListener("click", () => {
+  (async () => {
+    await switchTab("test-management");
+    await switchManagementSection(button.dataset.managementTarget);
+  })().catch(error => setWorkspaceStatus(`切换失败：${error.message}`, "dirty"));
+}));
+document.getElementById("testCatalogBody").addEventListener("click", event => {
+  const button = event.target.closest("[data-test-action]");
+  if (!button || button.disabled) return;
+  (async () => {
+    if (button.dataset.testId !== state.testCaseId) await selectWorkspaceTest(button.dataset.testId);
+    if (button.dataset.testAction === "edit") showTestEditor();
+    if (button.dataset.testAction === "copy") { await createTestCase(true); showTestCatalog(); }
+    if (button.dataset.testAction === "delete") { await deleteCurrentTest(); showTestCatalog(); }
+  })().catch(error => setWorkspaceStatus(`测试操作失败：${error.message}`, "dirty"));
+});
+document.getElementById("deviceImportButton").addEventListener("click", () => document.getElementById("workspaceImportButton").click());
+document.getElementById("deviceExportButton").addEventListener("click", () => document.getElementById("workspaceExportButton").click());
+window.addEventListener("beforeunload", event => { if (state.dirty) { event.preventDefault(); event.returnValue = ""; } });
 document.getElementById("deviceSelect").addEventListener("change", event => (async () => {
-  if (state.dirty) await saveCurrentTest(true);
+  if (!await settleTestDraft()) return;
   if (state.deviceTimingDirty) await saveDeviceTiming();
   await selectWorkspaceDevice(event.target.value);
 })().catch(error => writeTerminal(`$ 设备切换失败\n  ${error.message}`, true)));
@@ -5551,13 +5554,12 @@ document.getElementById("testCaseName").addEventListener("input", event => { sta
 document.getElementById("newGroupButton").addEventListener("click", () => createTestGroup().catch(error => writeTerminal(`$ 新建测试组别失败\n  ${error.message}`, true)));
 document.getElementById("renameGroupButton").addEventListener("click", () => renameCurrentTestGroup().catch(error => { setWorkspaceStatus(`重命名测试组别失败：${error.message}`, "dirty"); writeTerminal(`$ 重命名测试组别失败\n  ${error.message}`, true); }));
 document.getElementById("deleteGroupButton").addEventListener("click", () => deleteCurrentTestGroup().catch(error => { setWorkspaceStatus(`删除测试组别失败：${error.message}`, "dirty"); writeTerminal(`$ 删除测试组别失败\n  ${error.message}`, true); }));
-document.getElementById("newTestButton").addEventListener("click", () => createTestCase(false).catch(error => writeTerminal(`$ 新建测试集失败\n  ${error.message}`, true)));
-document.getElementById("emptyGroupNewTestButton").addEventListener("click", () => createTestCase(false).catch(error => writeTerminal(`$ 新建测试集失败\n  ${error.message}`, true)));
+document.getElementById("newTestButton").addEventListener("click", () => createTestCase(false).then(showTestEditor).catch(error => writeTerminal(`$ 新建测试集失败\n  ${error.message}`, true)));
+document.getElementById("emptyGroupNewTestButton").addEventListener("click", () => createTestCase(false).then(showTestEditor).catch(error => writeTerminal(`$ 新建测试集失败\n  ${error.message}`, true)));
 document.getElementById("copyTestButton").addEventListener("click", () => createTestCase(true).catch(error => writeTerminal(`$ 复制测试集失败\n  ${error.message}`, true)));
 document.getElementById("saveTestButton").addEventListener("click", () => saveCurrentTest(false).catch(error => writeTerminal(`$ 保存测试集失败\n  ${error.message}`, true)));
 document.getElementById("deleteTestButton").addEventListener("click", () => deleteCurrentTest().catch(error => writeTerminal(`$ 删除测试集失败\n  ${error.message}`, true)));
 document.getElementById("roundCount").addEventListener("input", event => { resizeRounds(event.target.value); markTestDirty(); });
-document.getElementById("runButton").addEventListener("click", runPlan);
 document.getElementById("batchRunButton").addEventListener("click", runCurrentTestGroup);
 document.getElementById("openRunSettingsButton").addEventListener("click", openRunSettingsDialog);
 document.getElementById("runSettingsDialogClose").addEventListener("click", closeRunSettingsDialog);
@@ -5616,8 +5618,6 @@ document.getElementById("searchTreeOptionsForm").addEventListener("submit", even
     document.getElementById("searchTreeCheckpointHint").textContent = error.message || "参数保存失败";
   });
 });
-document.getElementById("batchOverviewButton").addEventListener("click", showCurrentBatchOverview);
-document.getElementById("testGroupAnalysisButton").addEventListener("click", openGroupAnalysisOptions);
 const cancelOrCloseAnalysisWizard = async () => {
   if (activeGroupAnalysisJobId) {
     document.getElementById("analysisOptionsCancel").disabled = true;
@@ -5676,18 +5676,45 @@ document.getElementById("analysisOptionsForm").addEventListener("submit", event 
       document.getElementById("analysisOptionsCancel").textContent = "取消";
     } else {
       visualizationWorkspace.showGroupAnalysis(`<section class="group-analysis-warning"><strong>结果分析失败</strong><br>${escapeHtml(error.message || "未知错误")}</section>`);
+      setRunResultView("analysis");
     }
     writeTerminal(`$ 测试组结果分析失败\n  ${error.message || "未知错误"}`, true);
   });
 });
-document.getElementById("logButton").addEventListener("click", event => { if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault(); });
-document.getElementById("ganttButton").addEventListener("click", event => { if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault(); });
-document.getElementById("batchLogButton").addEventListener("click", event => { if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault(); });
+document.querySelectorAll(".batch-log-download").forEach(button => {
+  button.addEventListener("click", event => { if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault(); });
+});
 document.getElementById("batchGanttButton").addEventListener("click", event => { if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault(); });
 document.getElementById("closeDrawer").addEventListener("click", closeStepDrawer);
 document.getElementById("drawerLayer").addEventListener("click", event => { if (event.target.id === "drawerLayer") closeStepDrawer(); });
 document.addEventListener("keydown", event => { if (event.key === "Escape") closeStepDrawer(); });
-document.addEventListener("keydown", event => { const card = event.target.closest?.("[data-step-card]"); if (card && event.key === "Enter") openPJobStepDrawer(Number(card.dataset.routeIndex), Number(card.dataset.stageIndex)); });
+document.addEventListener("keydown", event => {
+  const card = event.target.closest?.("[data-step-card]");
+  if (!card || event.key !== "Enter") return;
+  const inlineContext = card.dataset.roundIndex === undefined ? null : {
+    roundIndex: Number(card.dataset.roundIndex), cjobIndex: Number(card.dataset.cjobIndex), pjobIndex: Number(card.dataset.pjobIndex),
+  };
+  openPJobStepDrawer(Number(card.dataset.routeIndex), Number(card.dataset.stageIndex), inlineContext);
+});
+document.addEventListener("keydown", event => {
+  const card = event.target.closest?.("[data-batch-test-card]");
+  if (!card || !["Enter", " "].includes(event.key)) return;
+  if (event.target.closest("a, button, input, select, textarea, label")) return;
+  event.preventDefault();
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    enqueueResultCardTest(card.dataset.batchTestCard);
+    return;
+  }
+  toggleBatchTestDetails(card.dataset.batchTestCard).catch(error => writeTerminal(`$ 测试详情读取失败\n  ${error.message || "未知错误"}`, true));
+});
+document.addEventListener("dblclick", event => {
+  const card = event.target.closest?.("[data-batch-test-card]");
+  if (!card || event.target.closest("a, button, input, select, textarea, label")) return;
+  event.preventDefault();
+  window.clearTimeout(batchCardClickTimer);
+  batchCardClickTimer = 0;
+  enqueueResultCardTest(card.dataset.batchTestCard);
+});
 document.addEventListener("input", event => {
   if (event.target.matches("[data-device-timing-target], [data-device-execution-target]")) updateDeviceTimingFromControl(event.target);
   const execution = state.deviceTimingDraft?.execution;
@@ -5757,8 +5784,7 @@ document.addEventListener("change", event => {
     retainSessionSchedulingConfiguration();
     document.getElementById("roundCount").disabled = false;
     updateStrategyOptionVisibility();
-    showAlgorithmDetails(state.strategy);
-    markTestDirty(); renderAll();
+    renderAll();
   }
 });
 document.addEventListener("click", event => {
@@ -5787,11 +5813,9 @@ document.addEventListener("click", event => {
   }
   const batchErrorButton = event.target.closest("[data-batch-error]");
   if (batchErrorButton) {
-    openBatchErrorDialog(Number(batchErrorButton.dataset.batchError));
+    openBatchErrorDialog(batchErrorButton.dataset.batchError);
     return;
   }
-  const batchResultCard = event.target.closest("[data-batch-item-index]");
-  if (batchResultCard && !event.target.closest(".batch-result-meta")) selectBatchItem(Number(batchResultCard.dataset.batchItemIndex));
   const playbackResult = event.target.closest("[data-playback-result]");
   if (playbackResult) {
     visualizationWorkspace.loadResult(playbackResult.dataset.playbackResult, playbackResult.dataset.playbackName)
@@ -5806,8 +5830,24 @@ document.addEventListener("click", event => {
       .catch(error => writeTerminal(`$ 工作台加载失败\n  ${error.message || "未知错误"}`, true));
     return;
   }
+  const batchTestCard = event.target.closest("[data-batch-test-card]");
+  if (batchTestCard) {
+    if (event.target.closest("a, button, input, select, textarea, label")) return;
+    window.clearTimeout(batchCardClickTimer);
+    batchCardClickTimer = window.setTimeout(() => {
+      batchCardClickTimer = 0;
+      toggleBatchTestDetails(batchTestCard.dataset.batchTestCard).catch(error => writeTerminal(`$ 测试详情读取失败\n  ${error.message || "未知错误"}`, true));
+    }, BATCH_CARD_SINGLE_CLICK_DELAY_MILLISECONDS);
+    return;
+  }
   const button = event.target.closest("[data-action]"); if (button && !button.disabled) { handleAction(button); return; }
-  const card = event.target.closest("[data-step-card]"); if (card) openPJobStepDrawer(Number(card.dataset.routeIndex), Number(card.dataset.stageIndex));
+  const card = event.target.closest("[data-step-card]");
+  if (card) {
+    const inlineContext = card.dataset.roundIndex === undefined ? null : {
+      roundIndex: Number(card.dataset.roundIndex), cjobIndex: Number(card.dataset.cjobIndex), pjobIndex: Number(card.dataset.pjobIndex),
+    };
+    openPJobStepDrawer(Number(card.dataset.routeIndex), Number(card.dataset.stageIndex), inlineContext);
+  }
 });
 window.addEventListener("pagehide", () => {
   if (runSettingsPreferencesDirty) {
@@ -5828,14 +5868,11 @@ window.addEventListener("pagehide", () => {
       body: JSON.stringify({ timing: state.deviceTimingDraft }), keepalive: true,
     }).catch(() => {});
   }
-  if (state.dirty && state.workspaceDeviceId && state.testCaseId) {
-    fetch(`/api/workspaces/${state.workspaceDeviceId}/tests/${state.testCaseId}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(currentTestSnapshot()), keepalive: true,
-    }).catch(() => {});
-  }
+
 });
 
+const managementSections = document.getElementById("testManagementSections");
+for (const id of ["routeManagementSection", "deviceManagementSection"]) managementSections.append(document.getElementById(id));
 initializeCompactSelects();
 renderAll(); renderWorkspaceControls(); renderDeviceTimingConfiguration(); checkService();
 loadRunSettingsPreferences().catch(error => writeTerminal(`$ 运行设置读取失败\n  ${error.message || "未知错误"}`, true));

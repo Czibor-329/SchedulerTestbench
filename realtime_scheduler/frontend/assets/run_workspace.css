@@ -1,0 +1,80 @@
+/** 运行首页与测试管理布局；策略和运行入口合并，设置通过齿轮弹窗打开。 */
+.run-selection-panel { container-type: inline-size; }
+.run-selection-panel-head { align-items: end; }
+.run-selection-head-controls { display: grid; width: 100%; min-width: 0; align-items: end; gap: 10px; }
+.run-device-control { display: grid; min-width: 0; grid-template-columns: minmax(190px, 300px) auto auto minmax(240px, 1fr); align-items: end; gap: 8px; }
+.run-device-control .workspace-device-summary { align-self: end; }
+.run-workspace-transfer-actions { display: flex; align-items: center; gap: 8px; }
+.run-workspace-transfer-actions .workspace-transfer-button { white-space: nowrap; }
+.run-selection-head-controls .field label { margin-bottom: 5px; font-size: 11px; }
+.run-selection-head-controls select { min-width: 0; min-height: 38px; padding: 7px 30px 7px 10px; }
+@container (max-width: 650px) {
+  .run-device-control { grid-template-columns: minmax(0, 1fr) auto; }
+  .run-workspace-transfer-actions { grid-column: 1; }
+  .run-group-control { grid-column: 2; min-width: 220px; }
+}
+#runStrategyFields { border: 0; margin: 0; min-width: 0; }
+.sidebar-subtabs { display: grid; gap: 4px; margin: -2px 0 8px 30px; }
+.sidebar-subtab { display: flex; min-height: 44px; align-items: center; gap: 13px; padding: 10px 16px; border: 0; border-radius: 12px; color: #526177; background: transparent; font-size: 15px; font-weight: 700; text-align: left; cursor: pointer; }
+.sidebar-subtab svg { width: 20px; height: 20px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+.sidebar-subtab:hover { color: var(--brand); background: #f1f5fd; }
+.sidebar-subtab.active { color: var(--brand); background: #edf2ff; }
+.management-section { display: grid; gap: 18px; min-width: 0; }
+.management-section[hidden] { display: none; }
+[data-tab-view="test-management"] { width: min(100%, 1024px); margin-inline: auto; }
+#testCatalogView { display: grid; width: 100%; max-width: 100%; gap: 14px; }
+#testCatalogView[hidden], #testEditorPanel[hidden] { display: none; }
+.test-catalog-controls-panel, .test-catalog-list-panel { overflow: hidden; }
+.catalog-toolbar { display: grid; grid-template-columns: minmax(145px, .8fr) minmax(240px, 1.5fr) auto; align-items: center; gap: 10px; padding: 14px 16px; }
+.catalog-toolbar .workspace-device-controls { grid-template-columns: minmax(145px, 1fr) auto; }
+.catalog-group-control > .compact-select { min-width: 180px; flex: 1; }
+.catalog-new-test { white-space: nowrap; }
+.catalog-toolbar .workspace-status { max-width: 180px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-group-hint { margin: -8px 16px 0; padding: 0 0 2px; }
+.catalog-group-hint:empty { display: none; }
+.test-list { display: grid; }
+.test-list-row { display: flex; min-height: 78px; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; border-bottom: 1px solid var(--line); transition: background .15s ease; }
+.test-list-row:last-child { border-bottom: 0; }
+.test-list-row:hover { background: #f8faff; }
+.test-list-name { min-width: 0; overflow-wrap: anywhere; }
+.test-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.text-back-button { padding: 0; border: 0; color: var(--brand); background: transparent; font-weight: 800; cursor: pointer; }
+#testEditorPanel { width: 100%; max-width: 100%; overflow: hidden; }
+.test-editor-actions { display: grid; min-height: 72px; grid-template-columns: auto minmax(300px, 1fr) auto; align-items: end; gap: 18px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.test-editor-actions .text-back-button { align-self: center; white-space: nowrap; }
+.test-editor-inline-metadata { display: flex; align-items: end; gap: 14px; min-width: 0; }
+.test-editor-inline-metadata > .field:first-child { width: min(320px, 100%); }
+.test-editor-inline-metadata .field > label { min-height: 15px; margin-bottom: 6px; color: #42526b; font-size: 12px; font-weight: 700; line-height: 1.25; white-space: nowrap; }
+.test-editor-inline-metadata .round-count-field { display: block; width: 72px; }
+.test-editor-inline-metadata .round-count-field input { width: 72px; }
+.test-editor-save-actions { display: flex; gap: 10px; align-self: center; white-space: nowrap; }
+#testEditorPanel .panel-body, #testEditorPanel .card-list, #testEditorPanel .round-card { width: 100%; max-width: 100%; }
+#testContentFields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.result-view-switch { display: flex; gap: 8px; }
+#testDraftDialog { width: min(480px, 90vw); border: 1px solid var(--line); border-radius: 16px; padding: 24px; color: var(--ink); }
+#testDraftDialog::backdrop { background: rgb(20 33 61 / 35%); }
+@media (max-width: 1150px) {
+  .catalog-toolbar { grid-template-columns: minmax(150px, .8fr) minmax(220px, 1.5fr) auto; }
+}
+@media (max-width: 850px) {
+  .run-device-control { grid-template-columns: minmax(0, 1fr) auto; }
+  .run-workspace-transfer-actions { grid-column: 1; }
+  .run-group-control { grid-column: 2; min-width: 220px; }
+  .catalog-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .catalog-toolbar .workspace-status { max-width: none; }
+  .test-list-row { align-items: flex-start; flex-direction: column; }
+  .test-editor-actions { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+  .test-editor-inline-metadata { align-items: stretch; flex-direction: column; }
+  .test-editor-inline-metadata > .field:first-child { width: 100%; }
+  .test-editor-save-actions { justify-content: flex-end; }
+}
+
+@media (max-width: 1280px) {
+  .run-selection-panel-head { align-items: stretch; flex-direction: column; }
+}
+
+@media (max-width: 560px) {
+  .run-device-control { grid-template-columns: minmax(0, 1fr) auto; }
+  .run-workspace-transfer-actions { grid-column: 1 / -1; }
+  .run-group-control { grid-column: 1 / -1; min-width: 0; }
+}

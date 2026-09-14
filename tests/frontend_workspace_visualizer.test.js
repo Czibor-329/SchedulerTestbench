@@ -499,7 +499,8 @@ test("结果分析与拓扑回放使用独立界面并共享当前 MoveList", as
     },
   });
   assert.equal(root.elements.get("visualToolbar").hidden, false);
-  assert.equal(root.elements.get("testGroupAnalysisPanel").hidden, true);
+  assert.equal(root.elements.get("testGroupAnalysisPanel").hidden, false);
+  assert.equal(root.elements.get("testGroupAnalysisPanel").innerHTML, "<h2>组级统计</h2>");
   assert.equal(root.elements.get("visualContent").hidden, true);
   assert.equal(topology.hidden, false);
   assert.equal(root.elements.get("visualPlaybackEmpty").hidden, true);

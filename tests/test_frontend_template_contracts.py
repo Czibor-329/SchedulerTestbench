@@ -218,13 +218,13 @@ class FrontendTemplateTests(unittest.TestCase):
         self.assertIsNone(config_server._classify_deadlock_diagnostic(diagnostic))
 
     def test_single_run_responds_before_preflight_and_reuses_pending_save(self) -> None:
-        """单测点击应立即显示准备状态，且运行前只保存确有修改的测试。"""
+        """单测点击应立即显示准备状态，首页不隐式保存测试；显式保存复用在途请求。"""
         script = EDITOR_SCRIPT_PATH.read_text(encoding="utf-8")
 
         preparing = script.index('button.textContent = "正在准备…"')
         health_check = script.index('fetch("/api/health"', preparing)
         self.assertLess(preparing, health_check)
-        self.assertIn("if (state.dirty) await saveCurrentTest(true);", script)
+        self.assertNotIn("if (state.dirty) await saveCurrentTest(true);", script)
         self.assertIn("if (testSaveInFlight)", script)
         self.assertIn("revision === testEditRevision", script)
 

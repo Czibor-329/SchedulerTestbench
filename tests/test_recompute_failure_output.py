@@ -138,17 +138,23 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         # 校验失败时不再渲染“MoveList 校验问题”重复分区。
         self.assertIn("const validationSection = validationFailure ? \"\" : (issueRows ?", source)
 
-    def test_run_options_live_in_compact_settings_dialog(self) -> None:
-        """运行选项应收纳到设置弹窗，齿轮按钮与状态灯保持紧凑。"""
+    def test_run_actions_merge_with_strategy_and_settings_return_to_dialog(self) -> None:
+        """运行按钮应并入策略卡片，运行设置恢复为齿轮触发的弹窗。"""
         template = EDITOR_PATH.read_text(encoding="utf-8")
-        style = EDITOR_STYLE_PATH.read_text(encoding="utf-8")
+        sidebar = template.split('<aside class="side" id="scheduleSide">', 1)[1].split("</aside>", 1)[0]
 
+        self.assertNotIn('id="runSettingsFields"', template)
+        self.assertNotIn('class="panel run-launch-panel"', template)
+        self.assertNotIn("开始运行", sidebar)
+        self.assertLess(sidebar.index("运行策略"), sidebar.index("运行所选测试"))
+        self.assertNotIn('id="algorithmHoverInfo"', sidebar)
         self.assertIn('id="openRunSettingsButton"', template)
         self.assertIn('id="runSettingsDialog"', template)
         self.assertNotIn('id="compatibilityModeInput"', template)
         self.assertIn('id="hongYeCheckInput" type="checkbox" checked', template)
         self.assertIn('id="skipBaselineInput" type="checkbox" checked', template)
         self.assertNotIn('id="skipValidationInput"', template)
+        style = (ROOT / "realtime_scheduler" / "frontend" / "assets" / "config_editor.css").read_text(encoding="utf-8")
         self.assertIn("width: 34px; min-width: 34px; height: 34px", style)
         self.assertIn("top: 3px; right: 3px; width: 5px; height: 5px", style)
 
@@ -170,13 +176,14 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         self.assertNotIn("window.setTimeout(resolve, 450)", source)
 
     def test_batch_selection_dialog_and_scrollable_ordered_cards_exist(self) -> None:
-        """批量入口应支持范围、勾选和全量运行，结果卡片保持顺序并限制高度。"""
+        """批量弹窗应支持范围、勾选和全量运行，结果卡片保持顺序并限制高度。"""
         template = EDITOR_PATH.read_text(encoding="utf-8")
         source = EDITOR_SCRIPT_PATH.read_text(encoding="utf-8")
         style = EDITOR_STYLE_PATH.read_text(encoding="utf-8")
 
         for element_id in (
             "batchTestSelectionDialog",
+            "batchResultFilterButton",
             "batchSelectionRangeStart",
             "batchSelectionRangeEnd",
             "batchSelectionList",
@@ -185,6 +192,9 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         ):
             self.assertIn(f'id="{element_id}"', template)
         self.assertIn("testIds: tests.map(test => test.id)", source)
+        self.assertIn('openBatchTestSelectionDialog("filter")', source)
+        self.assertIn('status: "not-run"', source)
+        self.assertIn('batchSelectionMode === "filter"', source)
         self.assertIn("function orderedBatchItems(items)", source)
         self.assertIn("result.items = orderedBatchItems", source)
         self.assertRegex(style, r"\.batch-results\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto")

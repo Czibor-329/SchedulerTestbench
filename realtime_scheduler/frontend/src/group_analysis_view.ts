@@ -1,3 +1,7 @@
+/**
+ * 测试组分析报告视图：负责逐测试指标表、报告操作区和 CSV 导出内容。
+ * 本模块只生成展示标记，不持有结果页与分析页之间的导航状态。
+ */
 import type { TestGroupPerformanceSummary } from "./analysis_contracts";
 
 type TestGroupCasePerformance = TestGroupPerformanceSummary["cases"][number];
@@ -69,7 +73,7 @@ export function testGroupSummaryCsv(summary: TestGroupPerformanceSummary): strin
   return [headers.map(csvEscape).join(","), ...rows.map(row => row.join(","))].join("\r\n");
 }
 
-function resultTable(summary: TestGroupPerformanceSummary, selected: Set<string>): string {
+function resultTable(summary: TestGroupPerformanceSummary, selected: Set<string>, compact = false): string {
   return summary.cases.map((item, index) => {
     const cells = [`<th scope="row">${escapeHtml(caseLabel(item, index))}</th>`];
     if (selected.has("makespan")) {
@@ -106,7 +110,11 @@ function resultTable(summary: TestGroupPerformanceSummary, selected: Set<string>
       item.id === summary.referenceCaseId ? "is-reference" : "",
       item.analysisStatus && item.analysisStatus !== "completed" ? "is-incomplete" : "",
     ].filter(Boolean).join(" ");
-    return `<tr${rowClasses ? ` class="${rowClasses}"` : ""}>${cells.join("")}</tr>`;
+    const compactValues = cells.slice(1)
+      .map(cell => cell.replace(/^<td(?:\s[^>]*)?>|<\/td>$/g, ""))
+      .join('<span aria-hidden="true"> · </span>');
+    const rowCells = compact ? [cells[0], `<td><div class="group-analysis-compact-values">${compactValues}</div></td>`] : cells;
+    return `<tr${rowClasses ? ` class="${rowClasses}"` : ""}>${rowCells.join("")}</tr>`;
   }).join("");
 }
 
@@ -120,7 +128,6 @@ export function renderTestGroupAnalysis(
     "departure_interval_cv", "process_chamber_dwell", "robot_wafer_dwell",
     "system_residence", "system_residence_cv", "resource_utilization", "bottleneck_candidates",
   ]);
-  const reference = summary.cases.find(item => item.id === summary.referenceCaseId);
   const selectedLabels: Record<string, string> = {
     validation: "校验结果", makespan: "Makespan", baseline_improvement: "Baseline 改善",
     cpu_time: "CPU Time", average_recompute_time: "平均重算时间", throughput: "产能",
@@ -130,14 +137,15 @@ export function renderTestGroupAnalysis(
     bottleneck_candidates: "瓶颈候选", loadlock_wafers_per_cycle: "LoadLock 每周期晶圆",
     loadlock_full_cycle_ratio: "LoadLock 满载周期率", loadlock_empty_cycle_ratio: "LoadLock 空载周期率",
   };
-  const tableHeaders = ["<th>测试</th>"];
-  if (selected.has("makespan")) tableHeaders.push("<th>Makespan</th>", "<th>相对参考</th>");
-  if (selected.has("baseline_improvement")) tableHeaders.push("<th>Baseline</th>", "<th>改善</th>");
-  if (selected.has("bottleneck_candidates")) tableHeaders.push("<th>瓶颈</th>");
-  if (selected.has("resource_utilization")) tableHeaders.push("<th>利用率</th>");
-  if (selected.has("cpu_time")) tableHeaders.push("<th>CPU Time</th>");
-  if (selected.has("average_recompute_time")) tableHeaders.push("<th>平均重算时间</th>");
-  if (selected.has("throughput")) tableHeaders.push("<th>产能</th>");
+  const compactTable = selected.size <= 2;
+  const tableHeaders = compactTable ? ["<th>测试</th>", "<th>指标结果</th>"] : ["<th>测试</th>"];
+  if (!compactTable && selected.has("makespan")) tableHeaders.push("<th>Makespan</th>", "<th>相对参考</th>");
+  if (!compactTable && selected.has("baseline_improvement")) tableHeaders.push("<th>Baseline</th>", "<th>改善</th>");
+  if (!compactTable && selected.has("bottleneck_candidates")) tableHeaders.push("<th>瓶颈</th>");
+  if (!compactTable && selected.has("resource_utilization")) tableHeaders.push("<th>利用率</th>");
+  if (!compactTable && selected.has("cpu_time")) tableHeaders.push("<th>CPU Time</th>");
+  if (!compactTable && selected.has("average_recompute_time")) tableHeaders.push("<th>平均重算时间</th>");
+  if (!compactTable && selected.has("throughput")) tableHeaders.push("<th>产能</th>");
   if (selected.has("departure_interval_cv")) tableHeaders.push("<th>出站 CV</th>");
   if (selected.has("process_chamber_dwell")) tableHeaders.push("<th>加工腔驻留均值</th>");
   if (selected.has("robot_wafer_dwell")) tableHeaders.push("<th>机器手驻留均值</th>");
@@ -149,18 +157,20 @@ export function renderTestGroupAnalysis(
   if (selected.has("validation")) tableHeaders.push("<th>校验</th>");
   return `
     <div class="group-analysis-head">
-      <div><h2>${escapeHtml(groupName || "当前测试组")}</h2><p>参考测试：${escapeHtml(reference?.name || "首个测试")} · ${summary.cacheHitCount ?? 0} 项命中缓存</p></div>
-      <button class="btn small" type="button" data-reconfigure-analysis>重新选择指标与测试</button>
+      <div class="group-analysis-selection">${[...selected].map(metric => `<span>${escapeHtml(selectedLabels[metric] || metric)}</span>`).join("")}</div>
+      <div class="group-analysis-actions">
+        <button class="btn small group-analysis-back" type="button" data-return-run-results><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7-5 5 5 5M5 12h14"/></svg><span>返回运行结果</span></button>
+        <button class="btn small" type="button" data-reconfigure-analysis>重新选择指标与测试</button>
+        <button type="button" class="btn small group-analysis-export" data-group-export-csv>导出 CSV</button>
+      </div>
     </div>
-    <div class="group-analysis-selection">${[...selected].map(metric => `<span>${escapeHtml(selectedLabels[metric] || metric)}</span>`).join("")}</div>
     ${summary.timedOut ? '<div class="group-analysis-warning">已达到时间预算，以下报告保留完成部分；可减少指标或提高时间预算后继续。</div>' : ""}
     <section class="group-analysis-table-wrap">
-      <div class="group-analysis-table-head"><div><strong>逐测试指标对比</strong><small>${summary.cases.length} 个测试 · ${selected.size} 项指标 · 参考项已高亮</small></div><button type="button" class="btn small group-analysis-export" data-group-export-csv>导出 CSV</button></div>
       <div class="group-analysis-table-scroll">
         <table class="group-analysis-table">
           <caption class="sr-only">${escapeHtml(groupName || "当前测试组")}逐测试指标对比</caption>
           <thead><tr>${tableHeaders.join("")}</tr></thead>
-          <tbody>${resultTable(summary, selected)}</tbody>
+          <tbody>${resultTable(summary, selected, compactTable)}</tbody>
         </table>
       </div>
     </section>`;

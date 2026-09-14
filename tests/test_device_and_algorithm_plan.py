@@ -189,8 +189,8 @@ class ConfigEditorDeviceTests(unittest.TestCase):
         """设备配置页应提供站点时间、机器手时间和独立槽位配置。"""
         source = _editor_source()
         for marker in (
-            'data-tab-target="device-config"',
-            'data-tab-view="device-config"',
+            'data-management-target="devices"',
+            'data-management-view="devices"',
             "设备配置分类",
             "设备时间",
             "机器手时间",
