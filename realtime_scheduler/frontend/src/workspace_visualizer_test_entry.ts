@@ -34,5 +34,6 @@ export { configuredRobotArms, robotArmAnimation, robotSlotWafers, robotTransferR
 export { atmosphereRailMotion } from "./topology_atmosphere_rail";
 export { completedThroughputCount, updateReplayThroughput } from "./replay_throughput";
 export { isAnalysisViewVisible, mountAnalysisWorkspace } from "./analysis_workspace";
+export { mountReplayInspectorDock, setReplayDockExpanded, setReplayInspectorExpanded } from "./replay_inspector_dock";
 export { projectTopologyTransfers } from "./topology_transfer_projection";
 export { waferDispatchProgress, renderWaferDispatchProgress, updateWaferProgressPanel } from "./wafer_dispatch_progress";

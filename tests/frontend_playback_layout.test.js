@@ -18,11 +18,33 @@ test("固定比例回放移除画布缩放入口但保留时间轴与播放速�
   }
 });
 
-test("回放画布不显示网格或机器框架内部装饰，空动作区不占用分割线", () => {
+test("时间轴与四项指标位于顶层紧凑状态条，观察窗口默认折叠并停靠右侧", () => {
+  const html = fs.readFileSync(
+    path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"), "utf8",
+  );
+  const statusBar = html.split('<header class="replay-status-bar"', 2)[1].split("</header>", 1)[0];
+  assert.match(statusBar, /id="visualTimeline"/);
+  assert.match(statusBar, /id="visualReplayKpis"/);
+  assert.doesNotMatch(html, /<aside class="petri-control-panel"/);
+  assert.match(html, /<aside class="replay-inspector-dock" aria-label="回放观察窗口">/);
+  for (const bodyId of ["visualWaferProgressDockBody", "visualActionsDockBody"]) {
+    assert.match(html, new RegExp(`id="${bodyId}" hidden`));
+  }
+  assert.equal((html.match(/data-replay-dock-window data-expanded="false"/g) || []).length, 2);
+  const css = fs.readFileSync(
+    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"), "utf8",
+  );
+  assert.match(css, /\.replay-status-bar \{[^}]*position: absolute;/);
+  assert.match(css, /\.replay-status-bar \.petri-top-playback-controls \{[^}]*height: 34px;/);
+  assert.match(css, /\.replay-inspector-dock \{[^}]*position: absolute;[^}]*right: 0;/);
+});
+
+test("回放底层保留大网格，机器内部无重复网格和装饰", () => {
   const css = fs.readFileSync(
     path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"), "utf8",
   );
   assert.match(css, /\.reference-grid-canvas \{[^}]*background-image:\s*none;/);
+  assert.match(css, /\.topology-canvas-area \{[^}]*background-size: 75px 75px;/);
   assert.match(css, /\.topology-machine-frame::before, \.topology-machine-frame > span \{ display: none; \}/);
   assert.match(css, /\.equipment-external-name-port \{ top:\s*108px; \}/);
   assert.match(css, /\.petri-control-panel \.decision-lens-panel:empty \{ display: none; \}/);

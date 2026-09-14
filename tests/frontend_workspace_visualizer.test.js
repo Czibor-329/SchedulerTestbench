@@ -442,7 +442,8 @@ test("合法动作空间面板保持两列卡片与默认全状态视觉契约",
     "utf8",
   );
 
-  assert.match(html, /<h2 class="petri-panel-title">合法动作空间<\/h2>/);
+  assert.match(html, /<h3>合法动作空间<\/h3>/);
+  assert.match(html, /class="replay-dock-window model-evaluation-section" data-replay-dock-window data-expanded="false"/);
   assert.match(html, /data-action-status-filter value="enabled" checked/);
   assert.match(html, /data-action-status-filter value="physical-blocked" checked/);
   assert.match(html, /data-action-status-filter value="deadlock-blocked" checked/);

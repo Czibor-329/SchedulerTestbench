@@ -942,12 +942,15 @@ def validate_move_list(
     check_residency: bool = True,
     external_predecessors: "Optional[Mapping[int, Mapping[str, Any]]]" = None,
     skipped_clean_validation_types: "Optional[Iterable[str]]" = None,
+    initial_state: "Optional[MachineState]" = None,
 ) -> List[str]:
     """按时间线校验 MoveList；覆盖依赖 DAG、Route 时限与物理状态。
 
     ``external_predecessors`` 提供上一代已提交或正在执行的 Move（按 MoveID
     索引），供重算增量输出引用：其 MoveID 不属于本代 ``moves``，但可被本代
     ``PreMoveID`` 合法引用为已完成的前驱；首排校验不传该参数。
+    ``initial_state`` 可提供重算现场（含门、持片和占用窗口）；静态时长校验
+    仍读取 ``init_data`` 的设备配置，现场快照只用于物理回放且不会被修改。
     """
     for index, move in enumerate(moves):
         if not isinstance(move, Mapping):
@@ -971,7 +974,9 @@ def validate_move_list(
         if route_time_error:
             return [route_time_error]
     try:
-        state = MachineState.from_sources(task, init_data)
+        state = MachineState.from_sources(
+            task, initial_state if initial_state is not None else init_data,
+        )
     except ValueError as error:
         return [str(error)]
     state.skipped_clean_validation_types = {

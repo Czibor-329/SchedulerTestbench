@@ -598,6 +598,67 @@ var AnalysisWorkspaceController = class {
   }
 };
 
+// src/replay_inspector_dock.ts
+var mountedDocks = /* @__PURE__ */ new WeakSet();
+function setReplayInspectorExpanded(dock, expanded) {
+  dock.querySelectorAll("[data-replay-dock-window]").forEach((window2) => setReplayDockExpanded(window2, expanded));
+}
+function observeAnalysisBoundary(dock) {
+  const workspace = dock.closest(".topology-playback");
+  const panel = workspace?.querySelector(".replay-analysis-panel");
+  if (!workspace || !panel) return;
+  let pending = false;
+  const update = () => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      const bounds = workspace.getBoundingClientRect();
+      if (!bounds.height) return;
+      const expanded = panel.querySelector('.analysis-window[data-expanded="true"]:not([hidden])');
+      const boundary = (expanded || panel).getBoundingClientRect().top;
+      dock.style.bottom = `${Math.max(0, bounds.bottom - boundary)}px`;
+    });
+  };
+  new MutationObserver(update).observe(panel, { subtree: true, childList: true, attributes: true });
+  const resizeObserver = new ResizeObserver(update);
+  resizeObserver.observe(workspace);
+  resizeObserver.observe(panel);
+  window.addEventListener("resize", update);
+  update();
+}
+function setReplayDockExpanded(window2, expanded) {
+  const body = window2.querySelector(".replay-dock-window-body");
+  const toggle = window2.querySelector("[data-replay-dock-toggle]");
+  if (!body || !toggle) return;
+  window2.dataset.expanded = String(expanded);
+  body.hidden = !expanded;
+  const title = window2.querySelector("h3")?.textContent || "\u5C55\u5F00";
+  toggle.textContent = expanded ? "\u6700\u5C0F\u5316" : title;
+  toggle.setAttribute("aria-expanded", String(expanded));
+}
+function mountReplayInspectorDock(dock) {
+  dock.querySelectorAll("[data-replay-dock-window]").forEach((window2) => setReplayDockExpanded(window2, false));
+  if (mountedDocks.has(dock)) return;
+  mountedDocks.add(dock);
+  observeAnalysisBoundary(dock);
+  dock.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-replay-dock-toggle]");
+    const window2 = toggle?.closest("[data-replay-dock-window]");
+    if (!toggle || !window2) return;
+    setReplayInspectorExpanded(dock, window2.dataset.expanded !== "true");
+    toggle.focus({ preventScroll: true });
+  });
+  dock.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const window2 = event.target.closest("[data-replay-dock-window]");
+    if (!window2 || window2.dataset.expanded !== "true") return;
+    setReplayInspectorExpanded(dock, false);
+    window2.querySelector("[data-replay-dock-toggle]")?.focus({ preventScroll: true });
+    event.preventDefault();
+  });
+}
+
 // src/topology_robot_mechanism.ts
 var REST_REACH = 58;
 var ATR_RETRACTED_REACH = 42;
@@ -3709,6 +3770,8 @@ var VisualizationWorkspace = class {
     const selectedFilters = this.elements.actionStatusFilters.filter((item) => item.checked).map((item) => item.value);
     if (selectedFilters.length) this.actionStatusFilters = selectedFilters;
     this.bindEvents();
+    const inspectorDock = root.querySelector(".replay-inspector-dock");
+    if (inspectorDock) mountReplayInspectorDock(inspectorDock);
     this.updatePlayButton();
     this.setTopologyVisible(false);
   }

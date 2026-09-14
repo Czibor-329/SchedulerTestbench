@@ -147,65 +147,69 @@
 
             <section class="topology-playback" id="visualTopologyPlayback" hidden aria-label="回放诊断">
               <div class="petri-console-layout">
+              <header class="replay-status-bar" aria-label="回放状态条">
+                <section class="timeline-console petri-top-playback-controls" aria-label="MoveList 时间轴控制">
+                  <div class="timeline-primary-zone">
+                    <button class="btn primary timeline-play" id="visualPlayButton" type="button" aria-label="播放回放"></button>
+                    <div class="timeline-movelist" aria-label="当前测试">
+                      <strong id="visualSource" title="—">—</strong>
+                    </div>
+                  </div>
+                  <div class="timeline-range">
+                    <input id="visualTimeline" type="range" min="0" max="0" step="0.1" value="0" aria-label="回放时间进度">
+                    <div class="timeline-scale">
+                      <time class="timeline-bound timeline-current"><b id="visualCurrentTime">0.0</b><span>s</span></time>
+                      <div class="petri-route-metrics">
+                        <span><small>进度</small><b id="visualProgressText">0%</b></span>
+                        <span><small>MOVE</small><b id="visualMoveText">0 / 0</b></span>
+                        <span><small>晶圆</small><b id="visualWaferText">0</b><i>片</i></span>
+                      </div>
+                      <time class="timeline-bound timeline-total"><b id="visualTotalTime">0.0</b><span>s</span></time>
+                    </div>
+                  </div>
+                  <div class="timeline-tools-zone">
+                    <label class="timeline-speed"><span>速度</span>
+                      <select id="visualSpeed" aria-label="回放速度">
+                        <option value="1">1×</option>
+                        <option value="2">2×</option>
+                        <option value="4" selected>4×</option>
+                        <option value="8">8×</option>
+                        <option value="16">16×</option>
+                        <option value="32">32×</option>
+                      </select>
+                    </label>
+                    <div class="topology-toolbar-actions" aria-label="回放工具">
+                      <button class="btn toolbar-import" id="visualImportButton" type="button" aria-label="导入 MoveList">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v5h14v-5"/></svg>
+                        <span class="toolbar-label-full">导入 MoveList</span><span class="toolbar-label-compact">导入</span>
+                      </button>
+                      <a class="btn toolbar-gantt" id="visualOpenGantt" href="#" target="_blank" aria-label="打开甘特图" aria-disabled="true">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v14h16M8 15v-3m4 3V8m4 7v-5"/></svg>
+                        <span class="toolbar-label-full">打开甘特图</span><span class="toolbar-label-compact">甘特图</span>
+                      </a>
+                    </div>
+                  </div>
+                </section>
+                <section class="replay-kpi-section" aria-label="回放核心指标"><div id="visualReplayKpis"></div></section>
+              </header>
                 <div class="topology-canvas-area">
                 <main class="petri-center-column topology-unified-canvas" aria-label="设备拓扑与槽位画布">
                   <aside class="topology-front-slot-card" id="visualFrontSlotOverview" aria-label="设备正视槽位"></aside>
                   <section class="device-stage" id="visualDeviceStage" aria-label="设备拓扑状态"></section>
                 </main>
                 </div>
-
-                <aside class="petri-control-panel" aria-label="回放诊断控制面板">
-              <section class="timeline-console petri-top-playback-controls" aria-label="MoveList 时间轴控制">
-                <div class="timeline-primary-zone">
-                  <button class="btn primary timeline-play" id="visualPlayButton" type="button" aria-label="播放回放"></button>
-                  <div class="timeline-movelist" aria-label="当前测试">
-                    <strong id="visualSource" title="—">—</strong>
-                  </div>
-                </div>
-                <div class="timeline-range">
-                  <input id="visualTimeline" type="range" min="0" max="0" step="0.1" value="0" aria-label="回放时间进度">
-                  <div class="timeline-scale">
-                    <time class="timeline-bound timeline-current"><b id="visualCurrentTime">0.0</b><span>s</span></time>
-                    <div class="petri-route-metrics">
-                      <span><small>进度</small><b id="visualProgressText">0%</b></span>
-                      <span><small>MOVE</small><b id="visualMoveText">0 / 0</b></span>
-                      <span><small>晶圆</small><b id="visualWaferText">0</b><i>片</i></span>
-                    </div>
-                    <time class="timeline-bound timeline-total"><b id="visualTotalTime">0.0</b><span>s</span></time>
-                  </div>
-                </div>
-                <div class="timeline-tools-zone">
-                  <label class="timeline-speed"><span>速度</span>
-                    <select id="visualSpeed" aria-label="回放速度">
-                      <option value="1">1×</option>
-                      <option value="2">2×</option>
-                      <option value="4" selected>4×</option>
-                      <option value="8">8×</option>
-                      <option value="16">16×</option>
-                      <option value="32">32×</option>
-                    </select>
-                  </label>
-                  <div class="topology-toolbar-actions" aria-label="回放工具">
-                    <button class="btn toolbar-import" id="visualImportButton" type="button" aria-label="导入 MoveList">
-                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v5h14v-5"/></svg>
-                      <span class="toolbar-label-full">导入 MoveList</span><span class="toolbar-label-compact">导入</span>
-                    </button>
-                    <a class="btn toolbar-gantt" id="visualOpenGantt" href="#" target="_blank" aria-label="打开甘特图" aria-disabled="true">
-                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v14h16M8 15v-3m4 3V8m4 7v-5"/></svg>
-                      <span class="toolbar-label-full">打开甘特图</span><span class="toolbar-label-compact">甘特图</span>
-                    </a>
-                  </div>
-                </div>
-              </section>
-
-
-                  <section class="petri-control-section replay-kpi-section" aria-label="回放核心指标"><div id="visualReplayKpis"></div></section>
-                  <section class="petri-control-section wafer-progress-section">
-                    <div class="action-panel-heading"><h2 class="petri-panel-title">晶圆进度</h2><label class="playback-switch"><input id="visualWaferProgressEnabled" type="checkbox" role="switch"> 显示</label></div>
+              <aside class="replay-inspector-dock" aria-label="回放观察窗口">
+                <section class="replay-dock-window wafer-progress-section" data-replay-dock-window data-expanded="false">
+                  <header class="analysis-window-titlebar"><h3>晶圆进度</h3><button class="analysis-window-toggle" type="button" data-replay-dock-toggle aria-controls="visualWaferProgressDockBody" aria-expanded="false">展开</button></header>
+                  <div class="replay-dock-window-body petri-control-panel" id="visualWaferProgressDockBody" hidden>
+                    <div class="action-panel-heading"><label class="playback-switch"><input id="visualWaferProgressEnabled" type="checkbox" role="switch"> 显示晶圆进度</label></div>
                     <div id="visualWaferProgress"></div>
-                  </section>
-                  <section class="petri-control-section model-evaluation-section">
-                    <div class="action-panel-heading"><h2 class="petri-panel-title">合法动作空间</h2><div class="action-panel-controls"><button class="btn small diagnostic-export" id="visualExportDeadlockDiagnostic" type="button" aria-label="导出死锁诊断包" disabled>
+                  </div>
+                </section>
+                <section class="replay-dock-window model-evaluation-section" data-replay-dock-window data-expanded="false">
+                  <header class="analysis-window-titlebar"><h3>合法动作空间</h3><button class="analysis-window-toggle" type="button" data-replay-dock-toggle aria-controls="visualActionsDockBody" aria-expanded="false">展开</button></header>
+                  <div class="replay-dock-window-body petri-control-panel" id="visualActionsDockBody" hidden>
+                    <div class="action-panel-heading"><div class="action-panel-controls"><button class="btn small diagnostic-export" id="visualExportDeadlockDiagnostic" type="button" aria-label="导出死锁诊断包" disabled>
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 19h14"/></svg>导出诊断包
                     </button><label><input id="visualActionsEnabled" type="checkbox" role="switch"> 启用查询</label></div></div>
                     <div class="action-filter-controls" aria-label="动作筛选">
@@ -216,8 +220,9 @@
                     </div>
                     <div class="decision-lens-panel" id="visualDecisionLens" aria-live="polite"></div>
                     <ul id="visualActiveMoves" hidden></ul>
-                  </section>
-                </aside>
+                  </div>
+                </section>
+              </aside>
               </div>
               <section class="performance-panel replay-analysis-panel" aria-label="回放结果分析">
                 <div id="visualPerformance"></div>

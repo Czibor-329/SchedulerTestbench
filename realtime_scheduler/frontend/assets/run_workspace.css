@@ -33,7 +33,7 @@
 .catalog-group-hint { margin: -8px 16px 0; padding: 0 0 2px; }
 .catalog-group-hint:empty { display: none; }
 .test-list { display: grid; }
-.test-list-row { display: flex; min-height: 78px; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; border-bottom: 1px solid var(--line); transition: background .15s ease; }
+.test-list-row { display: flex; min-height: 62.4px; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; border-bottom: 1px solid var(--line); transition: background .15s ease; }
 .test-list-row:last-child { border-bottom: 0; }
 .test-list-row:hover { background: #f8faff; }
 .test-list-name { min-width: 0; overflow-wrap: anywhere; }

@@ -2404,3 +2404,83 @@
   #visualPerformance.analysis-fixed-workspace { grid-template-columns: minmax(0, 1fr); }
   .analysis-window[data-analysis-window="throughput"], .analysis-window[data-analysis-window="bottleneck"], .analysis-window[data-analysis-window="residence"] { grid-column: 1; grid-row: auto; border-right: 0; }
 }
+
+/* 回放顶层状态条：时间进度与四项核心指标共享一条横向状态带。 */
+.replay-status-bar {
+  position: absolute; z-index: 40; top: 0; left: 0; right: 0; display: grid;
+  grid-template-columns: minmax(330px, 1fr) minmax(760px, 1.2fr); width: 100%; min-width: 0;
+  box-sizing: border-box; overflow: visible; border: 1px solid #cbd6e4;
+  border-radius: 4px; background: #fff; box-shadow: 0 2px 7px rgba(35, 58, 91, .08);
+}
+.replay-status-bar .petri-top-playback-controls {
+  display: flex; min-width: 0; height: 34px; min-height: 0; margin: 0; box-sizing: border-box; align-items: center; gap: 7px; padding: 3px 8px;
+  border: 0; border-right: 1px solid #e1e7f0; border-radius: 0; background: transparent;
+}
+.replay-status-bar .timeline-primary-zone,
+.replay-status-bar .timeline-range,
+.replay-status-bar .timeline-scale,
+.replay-status-bar .timeline-tools-zone { display: contents; }
+.replay-status-bar .timeline-play { order: 0; width: 28px; min-width: 28px; min-height: 28px; height: 28px; padding: 0; border-radius: 3px; }
+.replay-status-bar .timeline-play span,
+.replay-status-bar .timeline-movelist,
+.replay-status-bar .petri-route-metrics,
+.replay-status-bar .timeline-tools-zone .topology-toolbar-actions,
+.replay-status-bar .timeline-speed > span { display: none; }
+.replay-status-bar .timeline-range input { order: 1; min-width: 140px; flex: 1 1 auto; width: auto; height: 18px; margin: 0; }
+.replay-status-bar .timeline-current { order: 2; font-size: 10px; white-space: nowrap; }
+.replay-status-bar .timeline-total { order: 3; margin-left: -5px; font-size: 10px; white-space: nowrap; }
+.replay-status-bar .timeline-total::before { content: '/ '; }
+.replay-status-bar .timeline-speed { order: 4; }
+.replay-status-bar .timeline-speed select { width: 50px; min-width: 50px; min-height: 28px; height: 28px; padding: 0 4px; border-radius: 3px; font-size: 10px; }
+.replay-status-bar .replay-kpi-section { min-width: 0; height: 34px; box-sizing: border-box; padding: 3px 5px; }
+.replay-status-bar .replay-kpi-section .overview-card { margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.replay-status-bar .replay-kpi-section .performance-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 0; background: transparent; }
+.replay-status-bar .replay-kpi-section .performance-kpi-card { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; min-height: 28px; box-sizing: border-box; padding: 2px 6px; border: 0; border-left: 1px solid #e1e7f0; border-radius: 0; background: transparent; box-shadow: none; }
+.replay-status-bar .replay-kpi-section .performance-kpi-card:first-child { border-left: 0; }
+.replay-status-bar .replay-kpi-section .performance-kpi-label { min-width: 0; gap: 3px; font-size: 9px; line-height: 1.15; white-space: nowrap; }
+.replay-status-bar .replay-kpi-section .performance-kpi-label > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+.replay-status-bar .replay-kpi-section .performance-kpi-value { flex-shrink: 0; margin-top: 0; gap: 2px; white-space: nowrap; }
+.replay-status-bar .replay-kpi-section .performance-kpi-value strong { margin: 0; font-size: 12px; line-height: 1.15; }
+.replay-status-bar .replay-kpi-section .performance-kpi-value small { margin: 0; font-size: 8px; }
+
+/* 画布独占底层，固定观察窗口不参与画布排版，开合不会改变机器坐标。 */
+.petri-console-layout {
+  position: relative; display: block; width: 100%; height: 100%; min-width: 0; margin: 0;
+}
+.topology-canvas-area { position: absolute; inset: 0; overflow: auto; box-sizing: border-box; background: #f6f8fb; background-image: linear-gradient(rgba(112,132,156,.09) 1px, transparent 1px), linear-gradient(90deg, rgba(112,132,156,.09) 1px, transparent 1px); background-size: 75px 75px; padding: 44px 420px 80px 0; }
+.topology-canvas-area .topology-unified-canvas { margin: 0 auto; border: 0; background: transparent; }
+.replay-inspector-dock {
+  position: absolute; z-index: 50; top: 44px; right: 0; bottom: 36px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  width: 0; min-width: 0; background: transparent;
+}
+.replay-dock-window { flex: 0 1 auto; width: 32px; min-height: 0; overflow: hidden; border: 1px solid #d6dfeb; border-radius: 4px 0 0 4px; background: #fff; }
+.replay-dock-window[data-expanded="true"] { display: flex; flex-direction: column; flex: 1 1 0; box-sizing: border-box; width: min(420px, calc(100vw - 40px)); box-shadow: -6px 4px 20px #20324a22; }
+.replay-dock-window[data-expanded="true"] .analysis-window-titlebar { flex-shrink: 0; }
+.replay-dock-window[data-expanded="false"] .analysis-window-titlebar { padding: 0; }
+.replay-dock-window[data-expanded="false"] h3 { display: none; }
+.replay-dock-window[data-expanded="false"] .analysis-window-toggle { width: 30px; margin: 0; padding: 12px 7px; border: 0; writing-mode: vertical-rl; letter-spacing: 2px; }
+.replay-dock-window .analysis-window-titlebar { border-bottom: 0; }
+.replay-dock-window[data-expanded="true"] .analysis-window-titlebar { border-bottom: 1px solid #e1e7f0; }
+.replay-dock-window-body[hidden] { display: none !important; }
+.replay-dock-window-body.petri-control-panel {
+  position: static; display: grid; align-content: start; flex: 1; min-height: 0; width: auto; max-height: none;
+  box-sizing: border-box; gap: 8px; padding: 10px; overflow: auto; border: 0;
+  border-radius: 0; background: #fff;
+}
+.replay-dock-window-body .action-panel-heading { justify-content: flex-end; }
+.replay-dock-window-body .decision-candidate-section ul { max-height: none; }
+
+@media (max-width: 1200px) {
+  .replay-status-bar { grid-template-columns: minmax(260px, 1fr) minmax(600px, 1.8fr); overflow-x: auto; }
+}
+@media (max-width: 900px) {
+  .petri-console-layout { min-width: 0; }
+}
+/* 保留应用导航；回放画布覆盖其余整个视口，状态栏与分析窗浮在画布上。 */
+body:has([data-tab-view="playback"].active) { overflow: hidden; }
+[data-tab-view="playback"].active #visualTopologyPlayback:not([hidden]) { position: fixed; inset: 0 0 0 252px; display: block; }
+.topology-playback .replay-analysis-panel { position: absolute; z-index: 60; left: 0; right: 0; bottom: 0; margin: 0; }
+@media (max-width: 1040px) {
+  [data-tab-view="playback"].active #visualTopologyPlayback:not([hidden]) { left: 0; }
+}

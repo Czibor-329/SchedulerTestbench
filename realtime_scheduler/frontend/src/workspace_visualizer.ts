@@ -14,6 +14,7 @@ import {
 import { renderWaferDispatchProgress, updateWaferProgressPanel } from "./wafer_dispatch_progress";
 import { updateReplayThroughput } from "./replay_throughput";
 import { mountAnalysisWorkspace } from "./analysis_workspace";
+import { mountReplayInspectorDock } from "./replay_inspector_dock";
 import { configuredRobotArms, renderParallelRobotArms, robotSlotWafers, type RobotArmDefinition } from "./topology_robot_mechanism";
 import { projectTopologyTransfers } from "./topology_transfer_projection";
 import { projectLoadLockDoors, type LoadLockDoors } from "./topology_loadlock_doors";
@@ -4113,6 +4114,8 @@ export class VisualizationWorkspace {
       .map(item => item.value as ActionDiagnosticStatus);
     if (selectedFilters.length) this.actionStatusFilters = selectedFilters;
     this.bindEvents();
+    const inspectorDock = root.querySelector<HTMLElement>(".replay-inspector-dock");
+    if (inspectorDock) mountReplayInspectorDock(inspectorDock);
     this.updatePlayButton();
     this.setTopologyVisible(false);
   }

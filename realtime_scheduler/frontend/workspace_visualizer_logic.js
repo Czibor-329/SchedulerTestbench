@@ -34,6 +34,7 @@ __export(workspace_visualizer_test_entry_exports, {
   groupedBottleneckResources: () => groupedBottleneckResources,
   isAnalysisViewVisible: () => isAnalysisViewVisible,
   mountAnalysisWorkspace: () => mountAnalysisWorkspace,
+  mountReplayInspectorDock: () => mountReplayInspectorDock,
   normalizeDecisionTrace: () => normalizeDecisionTrace,
   normalizeLoadPortReplenishments: () => normalizeLoadPortReplenishments,
   normalizeMovePayload: () => normalizeMovePayload,
@@ -51,6 +52,8 @@ __export(workspace_visualizer_test_entry_exports, {
   robotArmGeometry: () => robotArmGeometry,
   robotSlotWafers: () => robotSlotWafers,
   robotTransferReach: () => robotTransferReach,
+  setReplayDockExpanded: () => setReplayDockExpanded,
+  setReplayInspectorExpanded: () => setReplayInspectorExpanded,
   simplifyThroughputPoints: () => simplifyThroughputPoints,
   snapshotWithFullDeviceModules: () => snapshotWithFullDeviceModules,
   updateReplayThroughput: () => updateReplayThroughput,
@@ -332,8 +335,8 @@ var AnalysisWorkspaceController = class {
     });
     panel.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
-        const window = event.target.closest("[data-analysis-window]");
-        if (window?.dataset.expanded === "true") {
+        const window2 = event.target.closest("[data-analysis-window]");
+        if (window2?.dataset.expanded === "true") {
           this.expanded = false;
           this.select(this.selected, false);
           this.panel.querySelector(`[data-analysis-window="${this.selected}"] [data-analysis-toggle]`)?.focus();
@@ -357,19 +360,19 @@ var AnalysisWorkspaceController = class {
   mount() {
     this.resizeObserver.disconnect();
     this.panel.classList.add("analysis-fixed-workspace");
-    this.panel.querySelectorAll("[data-analysis-window]").forEach((window) => {
-      const name = window.dataset.analysisWindow;
-      if (window.querySelector(".analysis-window-titlebar")) {
-        this.resizeObserver.observe(window);
+    this.panel.querySelectorAll("[data-analysis-window]").forEach((window2) => {
+      const name = window2.dataset.analysisWindow;
+      if (window2.querySelector(".analysis-window-titlebar")) {
+        this.resizeObserver.observe(window2);
         return;
       }
       const body = this.panel.ownerDocument.createElement("div");
       body.className = "analysis-window-body";
-      while (window.firstChild) body.append(window.firstChild);
-      window.append(body);
+      while (window2.firstChild) body.append(window2.firstChild);
+      window2.append(body);
       const tabs = name === "throughput" ? `<h3>${WINDOW_TITLES[name]}</h3>` : `<div class="analysis-view-tabs" role="tablist" aria-label="\u53F3\u4FA7\u5206\u6790\u89C6\u56FE">${["bottleneck", "residence"].map((view) => `<button type="button" role="tab" id="analysis-tab-${name}-${view}" data-analysis-tab="${view}" aria-controls="analysis-view-${view}">${WINDOW_TITLES[view]}</button>`).join("")}</div>`;
-      window.insertAdjacentHTML("afterbegin", `<header class="analysis-window-titlebar">${tabs}</header>`);
-      const titlebar = window.querySelector(".analysis-window-titlebar");
+      window2.insertAdjacentHTML("afterbegin", `<header class="analysis-window-titlebar">${tabs}</header>`);
+      const titlebar = window2.querySelector(".analysis-window-titlebar");
       const controls = body.querySelector(".analysis-section-head");
       if (controls) {
         Array.from(controls.children).forEach((control) => {
@@ -377,13 +380,13 @@ var AnalysisWorkspaceController = class {
         });
         controls.remove();
       }
-      window.id = `analysis-view-${name}`;
+      window2.id = `analysis-view-${name}`;
       body.id = `analysis-body-${name}`;
       if (name !== "throughput") titlebar.insertAdjacentHTML("beforeend", `<button type="button" class="analysis-window-toggle" data-analysis-toggle aria-controls="analysis-body-throughput analysis-body-bottleneck analysis-body-residence">\u5C55\u5F00\u5168\u90E8</button>`);
-      window.setAttribute("role", name === "throughput" ? "region" : "tabpanel");
-      if (name === "throughput") window.setAttribute("aria-label", WINDOW_TITLES[name]);
-      else window.setAttribute("aria-labelledby", `analysis-tab-${name}-${name}`);
-      this.resizeObserver.observe(window);
+      window2.setAttribute("role", name === "throughput" ? "region" : "tabpanel");
+      if (name === "throughput") window2.setAttribute("aria-label", WINDOW_TITLES[name]);
+      else window2.setAttribute("aria-labelledby", `analysis-tab-${name}-${name}`);
+      this.resizeObserver.observe(window2);
     });
     this.select(this.selected, false);
     this.resizeObserver.observe(this.panel);
@@ -391,20 +394,20 @@ var AnalysisWorkspaceController = class {
   /** 切换右侧可见视图并同步可访问状态；可选将焦点移到新视图的当前标签。 */
   select(selected, focus) {
     this.selected = selected;
-    this.panel.querySelectorAll("[data-analysis-window]").forEach((window) => {
-      const name = window.dataset.analysisWindow;
-      window.hidden = !isAnalysisViewVisible(window.dataset.analysisWindow, selected);
+    this.panel.querySelectorAll("[data-analysis-window]").forEach((window2) => {
+      const name = window2.dataset.analysisWindow;
+      window2.hidden = !isAnalysisViewVisible(window2.dataset.analysisWindow, selected);
       const expanded = this.expanded;
-      window.dataset.expanded = String(expanded);
-      window.querySelector(".analysis-window-body").hidden = !expanded;
+      window2.dataset.expanded = String(expanded);
+      window2.querySelector(".analysis-window-body").hidden = !expanded;
       this.panel.querySelectorAll("[data-analysis-toggle]").forEach((toggle) => {
         toggle.textContent = expanded ? "\u6700\u5C0F\u5316" : "\u5C55\u5F00\u5168\u90E8";
         toggle.setAttribute("aria-expanded", String(expanded));
       });
-      if (expanded && !window.hidden) {
-        window.style.zIndex = String(++this.topLayer);
-      } else window.removeAttribute("style");
-      window.querySelectorAll("[data-analysis-tab]").forEach((tab) => {
+      if (expanded && !window2.hidden) {
+        window2.style.zIndex = String(++this.topLayer);
+      } else window2.removeAttribute("style");
+      window2.querySelectorAll("[data-analysis-tab]").forEach((tab) => {
         const active = tab.dataset.analysisTab === selected;
         tab.setAttribute("aria-selected", String(active));
         tab.tabIndex = active ? 0 : -1;
@@ -419,28 +422,89 @@ var AnalysisWorkspaceController = class {
     const bounds = this.panel.getBoundingClientRect();
     if (bounds.width <= 0) return;
     const narrow = this.panel.ownerDocument.defaultView.innerWidth <= 1100;
-    this.panel.querySelectorAll("[data-analysis-window]").forEach((window) => {
-      if (window.hidden) return;
-      const name = window.dataset.analysisWindow;
+    this.panel.querySelectorAll("[data-analysis-window]").forEach((window2) => {
+      if (window2.hidden) return;
+      const name = window2.dataset.analysisWindow;
       const width = narrow ? bounds.width : bounds.width * (name === "throughput" ? 1.15 / 2.15 : 1 / 2.15);
-      window.style.setProperty("--analysis-overlay-left", `${name === "throughput" || narrow ? bounds.left : bounds.right - width}px`);
-      window.style.setProperty("--analysis-overlay-width", `${width}px`);
+      window2.style.setProperty("--analysis-overlay-left", `${name === "throughput" || narrow ? bounds.left : bounds.right - width}px`);
+      window2.style.setProperty("--analysis-overlay-width", `${width}px`);
     });
     this.updateExpandedHeight();
   }
   /** 用右侧实际内容末端确定两窗共享高度，避免正文伸展产生的空白计入高度。 */
   updateExpandedHeight() {
     if (!this.expanded) return;
-    const window = this.panel.querySelector(`[data-analysis-window="${this.selected}"]`);
-    if (!window || window.hidden) return;
-    const body = window.querySelector(".analysis-window-body");
-    const header = window.querySelector(".analysis-window-titlebar");
+    const window2 = this.panel.querySelector(`[data-analysis-window="${this.selected}"]`);
+    if (!window2 || window2.hidden) return;
+    const body = window2.querySelector(".analysis-window-body");
+    const header = window2.querySelector(".analysis-window-titlebar");
     const contentBottom = Math.max(body.getBoundingClientRect().top, ...Array.from(body.children).filter((child) => child.getClientRects().length > 0).map((child) => child.getBoundingClientRect().bottom));
     const windowBorderHeight = 2;
     const height = Math.ceil(header.getBoundingClientRect().height + contentBottom - body.getBoundingClientRect().top + body.scrollTop + windowBorderHeight);
     this.panel.style.setProperty("--analysis-overlay-height", `${height}px`);
   }
 };
+
+// src/replay_inspector_dock.ts
+var mountedDocks = /* @__PURE__ */ new WeakSet();
+function setReplayInspectorExpanded(dock, expanded) {
+  dock.querySelectorAll("[data-replay-dock-window]").forEach((window2) => setReplayDockExpanded(window2, expanded));
+}
+function observeAnalysisBoundary(dock) {
+  const workspace = dock.closest(".topology-playback");
+  const panel = workspace?.querySelector(".replay-analysis-panel");
+  if (!workspace || !panel) return;
+  let pending = false;
+  const update = () => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      const bounds = workspace.getBoundingClientRect();
+      if (!bounds.height) return;
+      const expanded = panel.querySelector('.analysis-window[data-expanded="true"]:not([hidden])');
+      const boundary = (expanded || panel).getBoundingClientRect().top;
+      dock.style.bottom = `${Math.max(0, bounds.bottom - boundary)}px`;
+    });
+  };
+  new MutationObserver(update).observe(panel, { subtree: true, childList: true, attributes: true });
+  const resizeObserver = new ResizeObserver(update);
+  resizeObserver.observe(workspace);
+  resizeObserver.observe(panel);
+  window.addEventListener("resize", update);
+  update();
+}
+function setReplayDockExpanded(window2, expanded) {
+  const body = window2.querySelector(".replay-dock-window-body");
+  const toggle = window2.querySelector("[data-replay-dock-toggle]");
+  if (!body || !toggle) return;
+  window2.dataset.expanded = String(expanded);
+  body.hidden = !expanded;
+  const title = window2.querySelector("h3")?.textContent || "\u5C55\u5F00";
+  toggle.textContent = expanded ? "\u6700\u5C0F\u5316" : title;
+  toggle.setAttribute("aria-expanded", String(expanded));
+}
+function mountReplayInspectorDock(dock) {
+  dock.querySelectorAll("[data-replay-dock-window]").forEach((window2) => setReplayDockExpanded(window2, false));
+  if (mountedDocks.has(dock)) return;
+  mountedDocks.add(dock);
+  observeAnalysisBoundary(dock);
+  dock.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-replay-dock-toggle]");
+    const window2 = toggle?.closest("[data-replay-dock-window]");
+    if (!toggle || !window2) return;
+    setReplayInspectorExpanded(dock, window2.dataset.expanded !== "true");
+    toggle.focus({ preventScroll: true });
+  });
+  dock.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const window2 = event.target.closest("[data-replay-dock-window]");
+    if (!window2 || window2.dataset.expanded !== "true") return;
+    setReplayInspectorExpanded(dock, false);
+    window2.querySelector("[data-replay-dock-toggle]")?.focus({ preventScroll: true });
+    event.preventDefault();
+  });
+}
 
 // src/topology_robot_mechanism.ts
 var REST_REACH = 58;
@@ -3283,7 +3347,7 @@ function groupedBottleneckResources(performance2) {
   }).filter((group) => group.busyTime > PERFORMANCE_DISPLAY_TOLERANCE).sort((left, right) => right.utilization - left.utilization || left.name.localeCompare(right.name, void 0, { numeric: true, sensitivity: "base" })).slice(0, 4);
 }
 function renderBottleneckAnalysis(performance2) {
-  const { window } = performance2;
+  const { window: window2 } = performance2;
   const displayedResources = groupedBottleneckResources(performance2).slice(0, 3);
   const resourceRows = (items) => items.map((resource, index) => {
     const candidate = resource.candidate;
@@ -3296,7 +3360,7 @@ function renderBottleneckAnalysis(performance2) {
             <div><strong>${escapeHtml(resource.name)}</strong></div>
           </div>
           <strong class="resource-utilization-percent">${formatPercent(resource.utilization)}</strong>
-          <div class="utilization-track" aria-label="${escapeHtml(resource.name)} \u5360\u7528\u7387 ${formatPercent(resource.utilization)}">${renderCategoryBars(resource, window.duration)}</div>
+          <div class="utilization-track" aria-label="${escapeHtml(resource.name)} \u5360\u7528\u7387 ${formatPercent(resource.utilization)}">${renderCategoryBars(resource, window2.duration)}</div>
           <div class="resource-evidence-score" aria-label="\u74F6\u9888\u8BC1\u636E\u5F97\u5206 ${evidenceScore ?? "\u65E0\u5019\u9009\u5206\u6570"}"><strong>${evidenceScore ?? "\u2014"}</strong></div>
         </div>
       </li>`;
@@ -3646,6 +3710,8 @@ var VisualizationWorkspace = class {
     const selectedFilters = this.elements.actionStatusFilters.filter((item) => item.checked).map((item) => item.value);
     if (selectedFilters.length) this.actionStatusFilters = selectedFilters;
     this.bindEvents();
+    const inspectorDock = root.querySelector(".replay-inspector-dock");
+    if (inspectorDock) mountReplayInspectorDock(inspectorDock);
     this.updatePlayButton();
     this.setTopologyVisible(false);
   }
@@ -4338,6 +4404,7 @@ function createVisualizationWorkspace(root = document) {
   groupedBottleneckResources,
   isAnalysisViewVisible,
   mountAnalysisWorkspace,
+  mountReplayInspectorDock,
   normalizeDecisionTrace,
   normalizeLoadPortReplenishments,
   normalizeMovePayload,
@@ -4355,6 +4422,8 @@ function createVisualizationWorkspace(root = document) {
   robotArmGeometry,
   robotSlotWafers,
   robotTransferReach,
+  setReplayDockExpanded,
+  setReplayInspectorExpanded,
   simplifyThroughputPoints,
   snapshotWithFullDeviceModules,
   updateReplayThroughput,
