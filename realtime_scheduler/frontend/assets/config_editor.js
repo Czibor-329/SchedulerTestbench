@@ -9109,8 +9109,8 @@ function renderBatchTestDetails(testCase) {
         </div>
       </div>`).join("") || '<span class="hint">\u6B64 CJob \u6CA1\u6709 PJob\u3002</span>';
       return `<section class="batch-test-detail-cjob">
-        <header class="batch-test-detail-cjob-head"><strong>CJob ${cjobIndex + 1}</strong><span>TaskID ${escapeHtml3(cjob?.taskId)}</span></header>
         <div class="batch-test-detail-fields">
+          <header class="batch-test-detail-cjob-head"><strong>CJob ${cjobIndex + 1}</strong><span>TaskID ${escapeHtml3(cjob?.taskId)}</span></header>
           ${renderBatchTestDetailField("JobType", cjob?.jobType)}
           ${renderBatchTestDetailField("LoadPort", cjob?.loadPort)}
           ${renderBatchTestDetailField("Priority", cjob?.priority)}

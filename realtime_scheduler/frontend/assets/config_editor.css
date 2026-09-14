@@ -680,10 +680,10 @@
     .batch-test-detail-round-head > span:last-child { margin-left: auto; padding: 4px 8px; border: 1px solid #d8e2ef; border-radius: 999px; color: #52647d; background: #fff; font-size: 10px; font-weight: 700; }
     .batch-test-detail-cjobs { display: grid; gap: 10px; padding: 12px; background: #f8fafd; }
     .batch-test-detail-cjob { overflow: hidden; border: 1px solid #dce5ef; border-radius: 10px; background: #fff; }
-    .batch-test-detail-cjob-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #e8eef5; }
+    .batch-test-detail-cjob-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
     .batch-test-detail-cjob-head strong { color: #172b48; font-size: 12px; }
-    .batch-test-detail-cjob-head span { padding: 3px 7px; border-radius: 999px; color: #5c6f89; background: #eef3f9; font-size: 9px; font-weight: 750; }
-    .batch-test-detail-fields { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; padding: 12px; }
+    .batch-test-detail-cjob-head span { max-width: 100%; overflow-wrap: anywhere; padding: 3px 7px; border-radius: 999px; color: #5c6f89; background: #eef3f9; font-size: 9px; font-weight: 750; }
+    .batch-test-detail-fields { display: grid; grid-template-columns: minmax(140px, 1.2fr) repeat(5, minmax(0, 1fr)); align-items: center; gap: 16px; padding: 12px; }
     .batch-test-detail-field { display: grid; align-content: start; gap: 4px; min-width: 0; }
     .batch-test-detail-field span { color: #718096; font-size: 9px; font-weight: 800; letter-spacing: .02em; }
     .batch-test-detail-field strong { min-width: 0; overflow: hidden; color: #172b48; font-size: 12px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
