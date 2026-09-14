@@ -21,11 +21,11 @@ from realtime_scheduler.backend.workspace.repository import (
     _read_workspace_catalog_unlocked,
     _workspace_catalog_guard,
     _write_workspace_catalog_unlocked,
+    get_workspace_batch_run_context,
 )
 from realtime_scheduler.backend.time_utils import _workspace_timestamp
 from realtime_scheduler.backend.workspace.catalog_service import (
     apply_robot_slot_selection,
-    get_workspace_device,
 )
 from realtime_scheduler.backend.artifacts.repository import (
     _persist_workspace_baseline,
@@ -38,7 +38,7 @@ def build_batch_service_dependencies() -> _batch_service.BatchServiceDependencie
     """构造批量服务所需的显式、可重建依赖集合。"""
     return _batch_service.BatchServiceDependencies(
         execute_plan=execute_plan,
-        get_workspace_device=get_workspace_device,
+        get_workspace_batch_run_context=get_workspace_batch_run_context,
         save_result=save_result,
         save_reproduction_log=save_reproduction_log,
         persist_workspace_baseline=_persist_workspace_baseline,

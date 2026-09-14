@@ -112,7 +112,7 @@ class BatchExecutionTests(unittest.TestCase):
             }
 
         with (
-            patch.object(config_server, "get_workspace_device", return_value=device),
+            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
             patch.object(config_server, "save_result", return_value="result-id"),
             patch.object(config_server, "save_reproduction_log", return_value="log-id"),
@@ -194,7 +194,7 @@ class BatchExecutionTests(unittest.TestCase):
             }
 
         with (
-            patch.object(config_server, "get_workspace_device", return_value=device),
+            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
             patch.object(config_server, "save_result", return_value="result-id"),
             patch.object(config_server, "save_reproduction_log", return_value="log-id"),
@@ -319,7 +319,7 @@ class BatchExecutionTests(unittest.TestCase):
             }
 
         with (
-            patch.object(config_server, "get_workspace_device", return_value=device),
+            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
             patch.object(config_server, "save_result", return_value="result-id"),
             patch.object(config_server, "save_reproduction_log", return_value="log-id"),
@@ -350,7 +350,7 @@ class BatchExecutionTests(unittest.TestCase):
             }
 
         with (
-            patch.object(config_server, "get_workspace_device", return_value=device),
+            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
             patch.object(config_server, "save_result", return_value="result-id"),
             patch.object(config_server, "save_reproduction_log", return_value="log-id"),
@@ -369,7 +369,7 @@ class BatchExecutionTests(unittest.TestCase):
         """后端必须独立限制算法与校验并行数，不能信任 HTTP 输入。"""
         device = self._parallel_worker_device("device-worker-clamp", count=31)
         with (
-            patch.object(config_server, "get_workspace_device", return_value=device),
+            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", return_value={
                 "ok": True, "totalElapsedMs": 10.0, "cpuTimeMs": 8.0,
                 "makespan": 20.0, "moveCount": 3, "validation": "passed",
@@ -500,7 +500,7 @@ class BatchExecutionTests(unittest.TestCase):
             }
 
         with (
-            patch.object(config_server, "get_workspace_device", return_value=device),
+            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
             patch.object(config_server, "_persist_workspace_baseline", return_value=True),
             patch.object(config_server, "save_result", return_value="result-id"),
@@ -546,7 +546,7 @@ class BatchExecutionTests(unittest.TestCase):
             )
 
         with (
-            patch.object(config_server, "get_workspace_device", return_value=device),
+            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
             patch.object(config_server, "_persist_workspace_baseline", return_value=True),
             patch.object(config_server, "save_result", return_value="result-id"),
@@ -633,7 +633,7 @@ class BatchExecutionTests(unittest.TestCase):
             }
 
         with (
-            patch.object(config_server, "get_workspace_device", return_value=device),
+            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
             patch.object(config_server, "_persist_workspace_baseline", return_value=True),
             patch.object(config_server, "save_result", return_value="result-id"),
@@ -775,7 +775,7 @@ class BatchExecutionTests(unittest.TestCase):
         }
 
         with (
-            patch.object(config_server, "get_workspace_device", return_value=device),
+            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", return_value=refreshed),
             patch.object(config_server, "_persist_workspace_baseline", return_value=True),
             patch.object(config_server, "save_result", return_value="result-id"),
@@ -816,7 +816,7 @@ class BatchExecutionTests(unittest.TestCase):
             }
 
         with (
-            patch.object(config_server, "get_workspace_device", return_value=device),
+            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
             patch.object(config_server, "_persist_workspace_baseline", return_value=True),
             patch.object(config_server, "save_result", return_value="result-id"),
@@ -888,7 +888,7 @@ class BatchExecutionTests(unittest.TestCase):
             }
 
         with (
-            patch.object(config_server, "get_workspace_device", return_value=device),
+            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
         ):
             initial = config_server.start_workspace_test_batch(

@@ -1677,5 +1677,42 @@ def get_workspace_run_context(
     return device, test_case
 
 
+def get_workspace_batch_run_context(
+    device_id: str,
+    group: str,
+    test_ids: Optional[Sequence[str]] = None,
+    path: Path = WORKSPACE_STORE_PATH,
+) -> Dict[str, Any]:
+    """按需读取批量运行所需的设备概览和目标测试。
+
+    参数 ``device_id`` 和 ``group`` 确定设备及测试组；``test_ids`` 为
+    ``None`` 时读取整组，否则只读取所选 ID。返回值保持设备对象形状，但
+    ``tests`` 只包含本次候选测试，避免单测双击路径解析同设备的全部测试文件。
+    测试选择的重复 ID、归组关系和自然排序仍由执行服务统一校验。
+    """
+    device = get_workspace_device_overview(device_id, path)
+    normalized_group = str(group or "").strip()
+    selected_ids = (
+        None
+        if test_ids is None
+        else {str(test_id or "").strip() for test_id in test_ids}
+    )
+    summaries = [
+        summary
+        for summary in device.get("tests") or []
+        if isinstance(summary, Mapping)
+        and str(summary.get("group") or "").strip() == normalized_group
+        and (
+            selected_ids is None
+            or str(summary.get("id") or "") in selected_ids
+        )
+    ]
+    device["tests"] = [
+        get_workspace_test(device_id, str(summary.get("id") or ""), path)
+        for summary in summaries
+    ]
+    return device
+
+
 
 __all__ = tuple(name for name in globals() if not name.startswith('__'))

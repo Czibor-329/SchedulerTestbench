@@ -199,6 +199,30 @@ class WorkspaceStorageComplexityTests(unittest.TestCase):
         self.assertEqual(1, len(read_test_files))
         self.assertEqual(self.test_id, read_test_files[0].parent.name)
 
+    def test_selected_batch_run_context_opens_only_target_test(self) -> None:
+        """卡片双击复用批量入口时也只能读取所选测试。"""
+        context, reads = self._record_json_reads()
+        with context, patch.object(
+            server,
+            "_read_workspace_catalog_unlocked",
+            side_effect=AssertionError("所选批量运行不得读取完整工作区目录"),
+        ), patch.object(
+            server,
+            "_workspace_data_update_required",
+            side_effect=AssertionError("所选批量运行不得扫描数据文件时间戳"),
+        ):
+            device = server.get_workspace_batch_run_context(
+                self.device_id,
+                "性能",
+                [self.test_id],
+                self.store_dir,
+            )
+
+        read_test_files = [path for path in reads if path.name == "test.json"]
+        self.assertEqual([self.test_id], [test["id"] for test in device["tests"]])
+        self.assertEqual(1, len(read_test_files))
+        self.assertEqual(self.test_id, read_test_files[0].parent.name)
+
     def test_single_run_preparation_p95_stays_within_frontend_budget(self) -> None:
         """运行准备 P95 必须满足前端点击到算法启动前的附加耗时预算。"""
         budget = json.loads(BUDGET_PATH.read_text(encoding="utf-8"))[

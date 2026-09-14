@@ -64,7 +64,7 @@ _APPLICATION_MODULES = (
 )
 _BATCH_DEPENDENCY_NAMES = frozenset({
     "execute_plan",
-    "get_workspace_device",
+    "get_workspace_batch_run_context",
     "save_result",
     "save_reproduction_log",
     "_persist_workspace_baseline",

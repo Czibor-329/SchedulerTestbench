@@ -49,7 +49,7 @@ class BatchServiceDependencies:
     """
 
     execute_plan: Callable[..., Dict[str, Any]]
-    get_workspace_device: Callable[[str], Dict[str, Any]]
+    get_workspace_batch_run_context: Callable[..., Dict[str, Any]]
     save_result: Callable[[Dict[str, Any]], str]
     save_reproduction_log: Callable[[Sequence[Mapping[str, Any]]], str]
     persist_workspace_baseline: Callable[..., bool]
@@ -108,9 +108,13 @@ def execute_plan(plan: Mapping[str, Any]) -> Dict[str, Any]:
     return _services().execute_plan(plan)
 
 
-def get_workspace_device(device_id: str) -> Dict[str, Any]:
-    """通过门面读取设备工作区。"""
-    return _services().get_workspace_device(device_id)
+def get_workspace_batch_run_context(
+    device_id: str,
+    group: str,
+    test_ids: Optional[Sequence[str]] = None,
+) -> Dict[str, Any]:
+    """只读取本批运行需要的设备概览和完整测试。"""
+    return _services().get_workspace_batch_run_context(device_id, group, test_ids)
 
 
 def save_result(output: Dict[str, Any]) -> str:
@@ -1277,7 +1281,7 @@ def run_workspace_test_batch(
     execution_timing_enabled: bool = False,
 ) -> Dict[str, Any]:
     """同步运行测试组或其指定子集，供测试、终端脚本和非 HTTP 调用方使用。"""
-    device = get_workspace_device(device_id)
+    device = get_workspace_batch_run_context(device_id, group, test_ids)
     normalized_group, tests = _workspace_group_tests(device, group, test_ids)
     result = _execute_workspace_test_batch(
         device,
@@ -1351,7 +1355,7 @@ def start_workspace_test_batch(
     clean_validation_types: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     """创建后台批量任务；可按 ID 选择子集，结果仍按名称自然顺序排列。"""
-    device = get_workspace_device(device_id)
+    device = get_workspace_batch_run_context(device_id, group, test_ids)
     normalized_group, tests = _workspace_group_tests(device, group, test_ids)
     batch_id = uuid.uuid4().hex
     worker_count = max(1, min(int(maximum_workers), MAXIMUM_BATCH_WORKERS, len(tests)))
