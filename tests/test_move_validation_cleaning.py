@@ -163,6 +163,102 @@ def test_platform_rejects_wac_clean_before_counter_threshold() -> None:
         "[MVL-CLEAN-WAC-EARLY] MoveID=1 MoveType=9：WacClean 未达到 Wac 阈值就执行 count=1 PJob=P1"
     ]
 
+
+def test_wac_recipe_is_not_validated_for_repeated_route_visit() -> None:
+    """同一 PJob 重入同一 PM 时，平台不比较 Clean Move 的配方名称。"""
+    update = {
+        "Stations": {"PM1": {
+            "Type": "ProcessChamber",
+            "Capacity": 4,
+            "StateVariables": {"ProcessCount": {"Value": {"Value": 0}}},
+        }},
+        "Robots": {},
+        "Materials": [
+            {
+                "ID": material_id,
+                "CurrentModuleName": "PM1",
+                "SlotID": material_id,
+                "StepID": step_id,
+                "PJobName": "P1",
+            }
+            for material_id, step_id in ((1, 4), (2, 4), (3, 8))
+        ],
+        "ProcessRecipes": [
+            {
+                "ModuleName": "PM1",
+                "Name": recipe_name,
+                "Weight": {"ProcessCount": 1},
+            }
+            for recipe_name in ("ProductStep4", "ProductStep8")
+        ],
+        "ProcessJobs": [{
+            "JobName": "P1",
+            "OriginRoute": {"RouteSteps": [
+                {
+                    "StepID": step_id,
+                    "Visits": [{
+                        "StationName": "PM1",
+                        "ProcessRecipe": product_recipe,
+                        "AfterOutPM": [{
+                            "CheckConditions": {"WAC": [{
+                                "TaskName": "WacClean",
+                                "CleanRecipe": clean_recipe,
+                                "UpdateStateVariables": ["ProcessCount"],
+                            }]},
+                            "ExecuteOrder": [{
+                                "Alias": "WAC",
+                                "StateVariableName": "ProcessCount",
+                                "ThresholdValueList": [3, 9999],
+                            }],
+                        }],
+                    }],
+                }
+                for step_id, product_recipe, clean_recipe in (
+                    (4, "ProductStep4", "CleanStep4"),
+                    (8, "ProductStep8", "CleanStep8"),
+                )
+            ]},
+        }],
+    }
+    state = MachineState.from_sources(None, update)
+    for slot_id in (1, 2, 3):
+        state.stations["PM1"].slots[slot_id].phase = SlotPhase.UNPROCESSED
+    product_moves = [
+        _move(
+            move_id, 9, start, start + 1,
+            ModuleName="PM1",
+            MatIDList=[material_id],
+            StepIDList=[step_id],
+            SlotList=[material_id],
+            PJobName=["P1"],
+            ProcessRecipe=product_recipe,
+        )
+        for move_id, start, material_id, step_id, product_recipe in (
+            (1, 0, 1, 4, "ProductStep4"),
+            (2, 2, 2, 4, "ProductStep4"),
+            (3, 4, 3, 8, "ProductStep8"),
+        )
+    ]
+    correct_clean = _move(
+        4, 9, 6, 7,
+        ModuleName="PM1",
+        MatIDList=[],
+        SlotList=[4],
+        PJobName=["P1"],
+        CleanTaskName="WacClean",
+        ProcessRecipe="CleanStep8",
+        IsLastCleanTaskMove=True,
+    )
+
+    assert validate_move_list(None, [*product_moves, correct_clean], state) == []
+
+    different_recipe_clean = {**correct_clean, "ProcessRecipe": "CleanStep4"}
+    assert validate_move_list(
+        None,
+        [*product_moves, different_recipe_clean],
+        state,
+    ) == []
+
 def test_single_chamber_wac_counter_isolated_by_pjob() -> None:
     """单腔 PM 的一个 PJob 到期不得阻止另一个 PJob 的产品加工。"""
     update = {
@@ -278,8 +374,8 @@ def test_dual_chamber_wac_counter_remains_global() -> None:
         "[MVL-CLEAN-WAC-MISSING] MoveID=1 MoveType=9：WacClean 到期后仍开始产品工艺 count=2 PJob=P2"
     ]
 
-def test_skipping_wac_only_ignores_counter_threshold() -> None:
-    """跳过 WAC 后只忽略次数阈值，Clean 动作仍进入完整物理校验。"""
+def test_skipping_wac_keeps_physical_checks_but_not_recipe_check() -> None:
+    """跳过 WAC 后仍校验物理状态，但不比较 Clean Move 的配方名称。"""
     update = {
         "Stations": {"PM1": {
             "Type": "ProcessChamber",
@@ -336,16 +432,15 @@ def test_skipping_wac_only_ignores_counter_threshold() -> None:
     assert issues and "加工或清洁时必须关门" in issues[0]
 
     wrong_recipe_move = {**move, "ProcessRecipe": "WrongRecipe"}
-    issues = validate_move_list(
+    assert validate_move_list(
         None,
         [wrong_recipe_move],
         update,
         skipped_clean_validation_types=["wacclean"],
-    )
-    assert issues and "MVL-CLEAN-RECIPE-INVALID" in issues[0]
+    ) == []
 
-def test_skipped_clean_still_requires_recipe_and_dummy_material() -> None:
-    """跳过触发义务不能放过错误 Recipe，也不能把 Dummy Clean 当空腔 Clean。"""
+def test_clean_recipe_is_not_validated_but_dummy_material_is() -> None:
+    """平台不比较清洗配方，但仍不能把 Dummy Clean 当空腔 Clean。"""
     pre_update = {
         "Stations": {"PM1": {"Type": "ProcessChamber", "Capacity": 1}},
         "Robots": {},
@@ -367,11 +462,12 @@ def test_skipped_clean_still_requires_recipe_and_dummy_material() -> None:
         CleanTaskName="PreClean", ProcessRecipe="WrongRecipe",
         IsLastCleanTaskMove=True,
     )
-    issues = validate_move_list(
-        None, [wrong_recipe], pre_update,
-        skipped_clean_validation_types=["preclean"],
-    )
-    assert issues and "MVL-CLEAN-RECIPE-INVALID" in issues[0]
+    assert validate_move_list(None, [wrong_recipe], pre_update) == []
+    assert validate_move_list(
+        None,
+        [{**wrong_recipe, "ProcessRecipe": ""}],
+        pre_update,
+    ) == []
 
     dummy_update = {
         "Stations": {"PM1": {"Type": "ProcessChamber", "Capacity": 1}},
@@ -432,6 +528,11 @@ def test_dummy_wac_empty_tail_follows_each_completed_dummy_stage() -> None:
     clean_key = ("P1", "PM1", "PreWacClean")
     state.completed_clean_counts[clean_key] = 1
     assert validate_move_list(None, [move], state) == []
+    assert validate_move_list(
+        None,
+        [{**move, "ProcessRecipe": "WrongRecipe"}],
+        state,
+    ) == []
 
     state.completed_dummy_wac_counts[clean_key] = 1
     issues = validate_move_list(None, [move], state)
@@ -460,6 +561,21 @@ def test_dummy_wac_blocks_next_dummy_and_product_until_tail_completed() -> None:
     }
     state = MachineState.from_sources(None, update)
     clean_key = ("P1", "PM1", "PreWacClean")
+    state.stations["PM1"].slots[1] = SlotState(
+        phase=SlotPhase.UNPROCESSED,
+        material=MaterialState(100, pjob_name="dummy_P1"),
+    )
+    assert validate_move_list(
+        None,
+        [_move(
+            0, 9, 0, 10,
+            ModuleName="PM1", MatIDList=[100], SlotList=[1], PJobName=["P1"],
+            CleanTaskName="PreWacClean", ProcessRecipe="WrongRecipe",
+            IsLastCleanTaskMove=True,
+        )],
+        state,
+    ) == []
+
     state.completed_clean_counts[clean_key] = 1
     state.stations["PM1"].slots[1] = SlotState(
         phase=SlotPhase.UNPROCESSED,

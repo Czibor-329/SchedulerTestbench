@@ -195,7 +195,7 @@ def test_recompute_refreshes_wac_rules_without_mixing_single_chamber_pjob_counte
         "WacCount": 1.0,
     }
     assert state.clean_wac_trigger_rules[("PM1", "new-recipe")] == (
-        ("new-pjob", "WacCount", 3.0, "WacClean"),
+        ("new-pjob", "WacCount", 3.0, "WacClean", None),
     )
     assert state.wac_counter_value(
         state.stations["PM1"],

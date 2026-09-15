@@ -234,11 +234,21 @@ class MachineState:
     robot_aliases: Dict[str, str] = field(default_factory=dict)
     process_recipe_weights: Dict[Tuple[str, str], Dict[str, float]] = field(default_factory=dict)
     clean_task_state_variables: Dict[str, Set[str]] = field(default_factory=dict)
-    clean_wac_trigger_rules: Dict[Tuple[str, str], Tuple[Tuple[str, str, float, str], ...]] = field(default_factory=dict)
+    # ``(PM, 产品Recipe) -> (PJob, 状态变量, 阈值, CleanTask, 来源StepID)``。
+    # 同一 PJob 可能在同一 PM 重入，必须按来源工步识别实际触发 WAC 的 Visit。
+    clean_wac_trigger_rules: Dict[
+        Tuple[str, str],
+        Tuple[Tuple[str, str, float, str, Optional[str]], ...],
+    ] = field(default_factory=dict)
     #: 单腔 PM 的 WAC 计数按 ``(PM, PJob, 状态变量)`` 隔离。双腔仍使用
     #: ``StationState.state_variables`` 的腔室全局计数，以保持双片同步加工语义。
     pjob_wac_counters: Dict[Tuple[str, str, str], float] = field(default_factory=dict)
     clean_obligations: Dict[Tuple[str, str, str], Tuple[str, int, Tuple[str, ...]]] = field(default_factory=dict)
+    #: 产品 Process 越过阈值时形成的待执行 WAC，成员为
+    #: ``(PM, PJob, 状态变量, CleanTask)``。
+    pending_wac_obligations: Set[Tuple[str, str, str, str]] = field(
+        default_factory=set
+    )
     #: 本次运行跳过的 Clean 触发/次数规则；物理状态回放与计数仍照常执行。
     skipped_clean_validation_types: Set[str] = field(default_factory=set)
     #: Dummy WAC 中已经完成尾随空腔 WAC 的片数。该计数与带片清洁数分离，
@@ -454,7 +464,7 @@ class MachineState:
             for (rule_station_name, _recipe_name), rules in self.clean_wac_trigger_rules.items():
                 if rule_station_name != station_name:
                     continue
-                for pjob_name, variable_name, _lower, _task_name in rules:
+                for pjob_name, variable_name, _lower, _task_name, _step_id in rules:
                     if pjob_name:
                         pjobs_by_variable.setdefault(variable_name, set()).add(pjob_name)
             for variable_name, pjob_names in pjobs_by_variable.items():
@@ -486,7 +496,7 @@ class MachineState:
             rule_variable_name == variable_name
             for (rule_station_name, _recipe_name), rules in self.clean_wac_trigger_rules.items()
             if rule_station_name == station_name
-            for _pjob_name, rule_variable_name, _lower, _task_name in rules
+            for _pjob_name, rule_variable_name, _lower, _task_name, _step_id in rules
         )
 
     def wac_counter_value(
@@ -2087,9 +2097,6 @@ def _start_process(state: MachineState, move: Mapping[str, Any], end_time: float
         return _issue(move, ValidationErrorCode.STATION_UNKNOWN, f"未知站点 {station_name or '<empty>'}")
     start_time = _start_time(move)
     clean_task_name = str(move.get("CleanTaskName") or "").strip()
-    recipe_name = str(
-        move.get("ProcessRecipe") or move.get("CleanRecipe") or ""
-    ).strip()
     station_clean_obligations = [
         ((pjob_name, required_station, task_name), requirement)
         for (pjob_name, required_station, task_name), requirement in state.clean_obligations.items()
@@ -2101,12 +2108,15 @@ def _start_process(state: MachineState, move: Mapping[str, Any], end_time: float
         for clean_key, requirement in station_clean_obligations
         if clean_key[2] == clean_task_name
     ]
-    # 调度器为 Dummy WAC 空腔尾段使用通用 ``WacClean`` 任务名；其所属
-    # PreWacClean 必须按 EmptyCleanRecipeAfterMaterial 反向识别。
+    # 调度器为 Dummy WAC 空腔尾段使用通用 ``WacClean`` 任务名。平台不校验
+    # 清洗配方，因此依据空腔形态和待完成的 DummyWAC 义务识别尾段。
     dummy_wac_tail_obligations = [
         (clean_key, requirement)
         for clean_key, requirement in station_clean_obligations
-        if len(requirement[2]) >= 2 and recipe_name == requirement[2][-1]
+        if requirement[0] == "pre"
+        and requirement[1] > 0
+        and len(requirement[2]) >= 2
+        and "wac" in clean_task_name.casefold()
     ]
     clean_material_count = max(
         (requirement[1] for _key, requirement in matched_clean_obligations),
@@ -2123,17 +2133,6 @@ def _start_process(state: MachineState, move: Mapping[str, Any], end_time: float
     dummy_wac_tail_key: Optional[Tuple[str, str, str]] = None
     if clean_type in {"dummy", "dummywac"}:
         if material_ids:
-            wrong_main_recipe = next((
-                requirement[2][0]
-                for _key, requirement in matched_clean_obligations
-                if requirement[2] and recipe_name != requirement[2][0]
-            ), None)
-            if wrong_main_recipe is not None:
-                return _issue(
-                    move,
-                    ValidationErrorCode.CLEAN_RECIPE_INVALID,
-                    f"{clean_task_name} 带片阶段 Recipe={recipe_name or '<empty>'}，期望 {wrong_main_recipe}",
-                )
             pending_wac_key = next((
                 clean_key
                 for clean_key, _requirement in matched_clean_obligations
@@ -2159,7 +2158,6 @@ def _start_process(state: MachineState, move: Mapping[str, Any], end_time: float
                 for clean_key, requirement in matched_clean_obligations
                 if clean_type == "dummywac"
                 and len(requirement[2]) >= 2
-                and recipe_name == requirement[2][-1]
                 and state.completed_clean_counts.get(clean_key, 0)
                 > state.completed_dummy_wac_counts.get(clean_key, 0)
             ), None)
@@ -2257,6 +2255,45 @@ def _start_process(state: MachineState, move: Mapping[str, Any], end_time: float
                     )
             else:
                 state.add_wac_counter(station, "", variable_name, increment)
+        # Process 完成后立即把“哪一个 Route Visit 触发了 WAC”固化到状态中。
+        # 后续无片 Clean Move 没有产品 StepID，不能再从整条 Route 取首个同名任务。
+        process_steps_by_pjob: Dict[str, Set[str]] = {}
+        for _slot, material, _slot_id in targets:
+            if material is None or not str(material.pjob_name or "").strip():
+                continue
+            process_steps_by_pjob.setdefault(
+                str(material.pjob_name).strip(), set()
+            ).add(str(material.step_id))
+        for (
+            rule_pjob_name,
+            variable_name,
+            lower,
+            rule_task_name,
+            source_step_id,
+        ) in state.clean_wac_trigger_rules.get((station.name, recipe_name), ()):
+            matching_pjobs = (
+                {rule_pjob_name}
+                if rule_pjob_name
+                else set(process_steps_by_pjob)
+            )
+            for matching_pjob in matching_pjobs:
+                if matching_pjob not in process_steps_by_pjob:
+                    continue
+                if (
+                    source_step_id is not None
+                    and source_step_id not in process_steps_by_pjob[matching_pjob]
+                ):
+                    continue
+                value = state.wac_counter_value(
+                    station, matching_pjob, variable_name
+                )
+                if value + TIME_TOLERANCE >= lower:
+                    state.pending_wac_obligations.add((
+                        station.name,
+                        matching_pjob,
+                        variable_name,
+                        rule_task_name,
+                    ))
         clean_task_name = str(move.get("CleanTaskName") or "")
         if clean_task_name:
             for pjob_name in _values(move, "PJobName"):
@@ -2279,6 +2316,18 @@ def _start_process(state: MachineState, move: Mapping[str, Any], end_time: float
                 state.completed_dummy_wac_counts.get(dummy_wac_tail_key, 0) + 1
             )
         if clean_task_name and move.get("IsLastCleanTaskMove") is True:
+            selected_pjobs = {
+                str(name).strip()
+                for name in _values(move, "PJobName")
+                if str(name).strip()
+            }
+            for pending_key in list(state.pending_wac_obligations):
+                if (
+                    pending_key[0] == station.name
+                    and pending_key[3] == clean_task_name
+                    and (not selected_pjobs or pending_key[1] in selected_pjobs)
+                ):
+                    state.pending_wac_obligations.discard(pending_key)
             for variable_name in state.clean_task_state_variables.get(
                 clean_task_name,
                 set(),
