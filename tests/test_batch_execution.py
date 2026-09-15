@@ -289,6 +289,35 @@ class BatchExecutionTests(unittest.TestCase):
         self.assertEqual(8, executor_options[0]["max_workers"])
         self.assertTrue(all("tests" not in device for device in submitted_process_devices))
 
+    def test_small_external_algorithm_batch_uses_process_isolation(self) -> None:
+        """小批次外部算法也必须绕开进程内全局会话锁并真正并行。"""
+        should_isolate = config_server._batch_service._should_use_process_isolation
+
+        self.assertTrue(should_isolate(
+            "other_alg:fra-09151735",
+            worker_count=6,
+            test_count=6,
+            use_process_isolation=True,
+        ))
+        self.assertFalse(should_isolate(
+            "heuristic",
+            worker_count=6,
+            test_count=6,
+            use_process_isolation=True,
+        ))
+        self.assertFalse(should_isolate(
+            "other_alg:fra-09151735",
+            worker_count=1,
+            test_count=6,
+            use_process_isolation=True,
+        ))
+        self.assertFalse(should_isolate(
+            "other_alg:fra-09151735",
+            worker_count=6,
+            test_count=6,
+            use_process_isolation=False,
+        ))
+
     def _parallel_worker_device(self, device_id: str, count: int = 3) -> dict:
         """构造并发配置测试共用的批量设备与测试组。"""
         return {

@@ -1078,6 +1078,27 @@ def _natural_test_order_key(test_case: Mapping[str, Any]) -> Tuple[Any, ...]:
     )
 
 
+def _should_use_process_isolation(
+    strategy: str,
+    *,
+    worker_count: int,
+    test_count: int,
+    use_process_isolation: bool,
+) -> bool:
+    """判断批量算法是否需要用独立进程提供真实并行。
+
+    外部算法在进程内共享模块命名空间和全局会话锁，多个线程只能串行进入
+    ``init/update``，因此只要存在两个并行槽和两个测试就必须隔离。内置策略
+    继续对小批次保留线程路径，避免短任务支付 Windows ``spawn`` 冷启动成本。
+    """
+    if not use_process_isolation or worker_count <= 1 or test_count <= 1:
+        return False
+    return (
+        _is_external_algorithm(strategy)
+        or test_count >= PROCESS_ISOLATION_MINIMUM_TESTS
+    )
+
+
 def _execute_workspace_test_batch(
     device: Mapping[str, Any],
     tests: Sequence[Mapping[str, Any]],
@@ -1112,10 +1133,11 @@ def _execute_workspace_test_batch(
         for key, value in device.items()
         if key != "tests"
     }
-    process_isolation_enabled = (
-        use_process_isolation
-        and worker_count > 1
-        and len(tests) >= PROCESS_ISOLATION_MINIMUM_TESTS
+    process_isolation_enabled = _should_use_process_isolation(
+        strategy,
+        worker_count=worker_count,
+        test_count=len(tests),
+        use_process_isolation=use_process_isolation,
     )
 
     process_executor = (
