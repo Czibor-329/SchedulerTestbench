@@ -36,6 +36,10 @@
 .test-list-row { display: flex; min-height: 62.4px; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; border-bottom: 1px solid var(--line); transition: background .15s ease; }
 .test-list-row:last-child { border-bottom: 0; }
 .test-list-row:hover { background: #f8faff; }
+.test-list-row-pending { justify-content: flex-start; color: var(--brand); background: #f5f8ff; }
+.test-creation-spinner { width: 18px; height: 18px; flex: 0 0 auto; border: 2px solid #cad8f7; border-top-color: var(--brand); border-radius: 50%; animation: test-creation-spin .75s linear infinite; }
+@keyframes test-creation-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .test-creation-spinner { animation-duration: 1.5s; } }
 .test-list-name { min-width: 0; overflow-wrap: anywhere; }
 .test-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .text-back-button { padding: 0; border: 0; color: var(--brand); background: transparent; font-weight: 800; cursor: pointer; }

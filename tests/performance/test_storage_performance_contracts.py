@@ -283,6 +283,36 @@ class WorkspaceStorageComplexityTests(unittest.TestCase):
             {path: digest for path, digest in after.items() if path != target_path},
         )
 
+    def test_single_test_create_uses_only_summary_index(self) -> None:
+        """新建或复制测试不得读取、重写同设备的其它完整测试。"""
+        source = server.get_workspace_test(
+            self.device_id,
+            self.test_id,
+            self.store_dir,
+        )
+        before = _test_file_hashes(self.store_dir)
+        context, reads = self._record_json_reads()
+        with context, patch.object(
+            server,
+            "_read_workspace_catalog_unlocked",
+            side_effect=AssertionError("单测试创建不得读取完整目录"),
+        ), patch.object(
+            server,
+            "_workspace_data_update_required",
+            side_effect=AssertionError("单测试创建不得扫描数据文件时间戳"),
+        ):
+            created = server.create_workspace_test(
+                self.device_id,
+                {**source, "name": "性能测试副本"},
+                self.store_dir,
+            )
+        after = _test_file_hashes(self.store_dir)
+
+        self.assertEqual("性能测试副本", created["name"])
+        self.assertEqual(len(before) + 1, len(after))
+        self.assertFalse(any(path.name == "test.json" for path in reads))
+        self.assertEqual(before, {path: after[path] for path in before})
+
     def test_single_test_delete_uses_only_summary_index(self) -> None:
         """删除单测试不得解析或回传同设备的其他完整测试。"""
         before = _test_file_hashes(self.store_dir)

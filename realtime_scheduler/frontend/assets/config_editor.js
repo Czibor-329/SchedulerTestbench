@@ -4,7 +4,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/test_draft_navigation.ts
+// src/test_draft_navigation.ts
 async function resolveTestDraft(dirty, choose, save, discard) {
   if (!dirty) return true;
   const choice = await choose();
@@ -29,7 +29,7 @@ function createDraftChoiceDialog(dialog) {
   };
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/route_editor_logic.ts
+// src/route_editor_logic.ts
 var route_editor_logic_exports = {};
 __export(route_editor_logic_exports, {
   VISIT_SHARED_FIELDS: () => VISIT_SHARED_FIELDS,
@@ -195,7 +195,7 @@ function normalizeStageProcessRecipes(stage, recipeName, normalizeVisit2 = (valu
   return changed;
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/api_client.ts
+// src/api_client.ts
 async function requestJson(url, options = {}) {
   const response = await fetch(url, options);
   const result = await response.json();
@@ -262,7 +262,7 @@ async function requestDeadlockDiagnostic(input) {
   };
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/wafer_dispatch_progress.ts
+// src/wafer_dispatch_progress.ts
 var PICK_TYPES = /* @__PURE__ */ new Set([0, 2]);
 var SWAP_TYPE = 4;
 var DUMMY_MATERIAL_ID_START = 1e5;
@@ -396,7 +396,7 @@ function updateWaferProgressPanel(panel, html) {
   if (scroller) scroller.scrollTop = scroller.scrollHeight;
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/replay_throughput.ts
+// src/replay_throughput.ts
 var chartSources = /* @__PURE__ */ new WeakMap();
 function completedThroughputCount(points, time) {
   let left = 0;
@@ -446,7 +446,7 @@ function updateReplayThroughput(root, time, redraw) {
   }
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/analysis_workspace.ts
+// src/analysis_workspace.ts
 var WINDOW_TITLES = { throughput: "\u4EA7\u80FD\u5206\u6790", bottleneck: "\u74F6\u9888\u5206\u6790", residence: "\u9A7B\u7559\u65F6\u95F4\u5206\u6790" };
 var controllers = /* @__PURE__ */ new WeakMap();
 function isAnalysisViewVisible(name, selected) {
@@ -598,7 +598,7 @@ var AnalysisWorkspaceController = class {
   }
 };
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/replay_inspector_dock.ts
+// src/replay_inspector_dock.ts
 var mountedDocks = /* @__PURE__ */ new WeakSet();
 function setReplayInspectorExpanded(dock, expanded) {
   dock.querySelectorAll("[data-replay-dock-window]").forEach((window2) => setReplayDockExpanded(window2, expanded));
@@ -659,7 +659,7 @@ function mountReplayInspectorDock(dock) {
   });
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/topology_robot_mechanism.ts
+// src/topology_robot_mechanism.ts
 var REST_REACH = 58;
 var ATR_RETRACTED_REACH = 42;
 var CLAW_SCALE = 0.8;
@@ -839,7 +839,7 @@ function renderParallelRobotArms(arms, distance, renderWafer, escape2, targetGeo
   return `<div class="parallel-robot-mechanism">${markup}${waferLayers.join("")}</div>`;
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/topology_transfer_projection.ts
+// src/topology_transfer_projection.ts
 function projectTopologyTransfers(snapshot, device) {
   const modules = snapshot.modules.map((module) => ({
     ...module,
@@ -895,7 +895,7 @@ function projectTopologyTransfers(snapshot, device) {
   return { modules, animations };
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/topology_loadlock_doors.ts
+// src/topology_loadlock_doors.ts
 var PREPARE = 6;
 var COMPLETE = 7;
 var TRANSFERS = /* @__PURE__ */ new Set([0, 1, 2, 3, 4]);
@@ -989,7 +989,7 @@ function projectLoadLockDoors(moves, device, time, names) {
   return result;
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/topology_atmosphere_rail.ts
+// src/topology_atmosphere_rail.ts
 var PRE_TRANS_MOVE = 5;
 var RAIL_PREPARATION_FRACTION = 0.25;
 function station(move, field) {
@@ -1017,7 +1017,7 @@ function atmosphereRailMotion(moves, robot, time) {
   return { source: previousTarget, target: previousTarget, progress: 1, preparationFraction: 0 };
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/topology_robot_slots.ts
+// src/topology_robot_slots.ts
 function renderRobotSlotRow(robot, dual, renderSlots, escape2) {
   const arms = robot.arms ?? configuredRobotArms({ Capacity: robot.capacity });
   const combined = dual && robot.environment === "vacuum";
@@ -1030,7 +1030,7 @@ function renderRobotSlotRow(robot, dual, renderSlots, escape2) {
   return `<div class="front-slot-row front-slot-row-robot" data-robot="${escape2(robot.name)}">${boards}</div>`;
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/gantt_execution_compare.ts
+// src/gantt_execution_compare.ts
 var MOVE_STATE_RUNNING = 0;
 var MOVE_STATE_DONE = 1;
 var MOVE_STATE_ABORTED = 2;
@@ -1179,7 +1179,7 @@ function reconstructExecutionLog(entries) {
   return { records, recomputePoints, warnings, unmatchedExecutions };
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/workspace_visualizer.ts
+// src/workspace_visualizer.ts
 var ALL_ACTION_DIAGNOSTIC_STATUSES = [
   "enabled",
   "physical-blocked",
@@ -4636,7 +4636,7 @@ function createVisualizationWorkspace(root = document) {
   return new VisualizationWorkspace(root);
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/group_analysis_view.ts
+// src/group_analysis_view.ts
 function escapeHtml2(value) {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
@@ -4798,7 +4798,7 @@ function renderTestGroupAnalysis(summary, groupName) {
     </section>`;
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/result_card_run_queue.ts
+// src/result_card_run_queue.ts
 function createResultCardRunQueue(options) {
   const pendingTestIds = [];
   const queuedOrRunning = /* @__PURE__ */ new Set();
@@ -4849,7 +4849,36 @@ function createResultCardRunQueue(options) {
   };
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/editor_models.ts
+// src/test_creation_coordinator.ts
+function createTestCreationCoordinator(onPendingChange = () => {
+}) {
+  let pending = null;
+  let inFlight = null;
+  return {
+    get pending() {
+      return pending;
+    },
+    get isPending() {
+      return inFlight !== null;
+    },
+    run(context, operation) {
+      if (inFlight) return inFlight;
+      pending = { ...context };
+      onPendingChange(pending);
+      const operationPromise = Promise.resolve().then(operation);
+      const completionPromise = operationPromise.finally(() => {
+        if (inFlight !== completionPromise) return;
+        inFlight = null;
+        pending = null;
+        onPendingChange(null);
+      });
+      inFlight = completionPromise;
+      return completionPromise;
+    }
+  };
+}
+
+// src/editor_models.ts
 var CJOB_TYPES = ["NormalLot", "HighestLot", "HigherLot"];
 var TASK_MODES = ["Smart", "Pipeline", "Sequential", "Concurrent"];
 function stringList(value) {
@@ -5015,7 +5044,7 @@ function normalizeRound(raw, roundIndex, fallbackTime, firstTaskId = roundIndex,
   };
 }
 
-// ../milp-log-import-commit/realtime_scheduler/frontend/src/config_editor.ts
+// src/config_editor.ts
 var { VISIT_SHARED_FIELDS: VISIT_SHARED_FIELDS2, automaticTemplateName: automaticTemplateName2 } = route_editor_logic_exports;
 var visualizationWorkspace = createVisualizationWorkspace();
 var chooseTestDraft = createDraftChoiceDialog(document.getElementById("testDraftDialog"));
@@ -5176,6 +5205,13 @@ var state = {
   routeProcessFilter: "",
   routeParallelFilter: ""
 };
+var testCreationCoordinator = createTestCreationCoordinator((context) => {
+  renderWorkspaceControls();
+  if (context) {
+    const action = context.mode === "copy" ? `\u6B63\u5728\u590D\u5236\u201C${context.sourceName}\u201D` : "\u6B63\u5728\u65B0\u5EFA\u6D4B\u8BD5";
+    setWorkspaceStatus(`${action}\uFF0C\u8BF7\u7A0D\u5019\u2026`);
+  }
+});
 var pjobRoutePickerContext = null;
 var searchTelemetryPollToken = 0;
 var latestSearchTelemetry = null;
@@ -6431,7 +6467,8 @@ function renderWorkspaceControls() {
   nameInput.disabled = !hasTest;
   nameInput.value = state.testCaseName || "";
   nameInput.title = state.testCaseName || "";
-  document.getElementById("newTestButton").disabled = !state.workspaceDeviceId;
+  const testCreationPending = testCreationCoordinator.isPending;
+  document.getElementById("newTestButton").disabled = !state.workspaceDeviceId || testCreationPending;
   document.getElementById("newGroupButton").disabled = !state.workspaceDeviceId;
   document.getElementById("deleteDeviceButton").disabled = !state.workspaceDeviceId;
   const isDefaultGroup = !selectedGroup;
@@ -6440,7 +6477,7 @@ function renderWorkspaceControls() {
   document.getElementById("deleteGroupButton").disabled = !state.workspaceDeviceId || isDefaultGroup && !hasGroupTests;
   document.getElementById("deleteGroupButton").title = isDefaultGroup ? "\u5220\u9664\u201C\u672A\u5206\u7EC4\u201D\u4E2D\u7684\u5168\u90E8\u6D4B\u8BD5" : "\u5220\u9664\u5F53\u524D\u6D4B\u8BD5\u7EC4\u522B";
   document.getElementById("groupActionHint").textContent = isDefaultGroup && state.workspaceDeviceId ? "\u201C\u672A\u5206\u7EC4\u201D\u4E0D\u53EF\u91CD\u547D\u540D\uFF1B\u6709\u6D4B\u8BD5\u65F6\u53EF\u4EE5\u5220\u9664\u5176\u4E2D\u5168\u90E8\u6D4B\u8BD5\u3002" : "";
-  document.getElementById("copyTestButton").disabled = !hasTest;
+  document.getElementById("copyTestButton").disabled = !hasTest || testCreationPending;
   document.getElementById("saveTestButton").disabled = !hasTest;
   document.getElementById("deleteTestButton").disabled = tests.length <= 1;
   const batchDisabled = runPreparationActive || state.batchRunning && state.batchCancelRequested || !state.serviceCompatible || !visibleTests.length;
@@ -6448,7 +6485,7 @@ function renderWorkspaceControls() {
   document.getElementById("batchResultFilterButton").disabled = !visibleTests.length;
   const emptyHint = document.getElementById("emptyGroupHint");
   emptyHint.classList.toggle("visible", Boolean(state.workspaceDeviceId) && !visibleTests.length);
-  document.getElementById("emptyGroupNewTestButton").disabled = !state.workspaceDeviceId;
+  document.getElementById("emptyGroupNewTestButton").disabled = !state.workspaceDeviceId || testCreationPending;
   const deviceType = {
     single: "\u5355\u8154\u975E\u7EA7\u8054",
     dual: "\u53CC\u8154\u975E\u7EA7\u8054",
@@ -6480,12 +6517,21 @@ function renderWorkspaceControls() {
 function renderTestCatalog(tests) {
   const body = document.getElementById("testCatalogBody");
   if (!body) return;
-  body.innerHTML = tests.map((test) => {
+  const pending = testCreationCoordinator.pending;
+  const disabled = pending ? "disabled" : "";
+  const rows = tests.map((test) => {
+    const copyLabel = pending?.mode === "copy" && pending.sourceTestId === test.id ? "\u590D\u5236\u4E2D\u2026" : "\u590D\u5236";
     return `<div class="test-list-row" data-test-row="${escapeHtml3(test.id)}" role="listitem">
       <strong class="test-list-name">${escapeHtml3(test.name || "\u672A\u547D\u540D\u6D4B\u8BD5")}</strong>
-      <div class="test-row-actions"><button class="btn small primary" type="button" data-test-action="edit" data-test-id="${escapeHtml3(test.id)}">\u7F16\u8F91</button><button class="btn small" type="button" data-test-action="copy" data-test-id="${escapeHtml3(test.id)}">\u590D\u5236</button><button class="btn small danger" type="button" data-test-action="delete" data-test-id="${escapeHtml3(test.id)}" ${state.workspaceDevice?.tests?.length <= 1 ? "disabled" : ""}>\u5220\u9664</button></div>
+      <div class="test-row-actions"><button class="btn small primary" type="button" data-test-action="edit" data-test-id="${escapeHtml3(test.id)}" ${disabled}>\u7F16\u8F91</button><button class="btn small" type="button" data-test-action="copy" data-test-id="${escapeHtml3(test.id)}" ${disabled}>${copyLabel}</button><button class="btn small danger" type="button" data-test-action="delete" data-test-id="${escapeHtml3(test.id)}" ${state.workspaceDevice?.tests?.length <= 1 || pending ? "disabled" : ""}>\u5220\u9664</button></div>
     </div>`;
   }).join("");
+  const pendingRow = pending ? `<div class="test-list-row test-list-row-pending" role="status">
+    <span class="test-creation-spinner" aria-hidden="true"></span>
+    <strong>${pending.mode === "copy" ? `\u6B63\u5728\u590D\u5236\u201C${escapeHtml3(pending.sourceName)}\u201D` : "\u6B63\u5728\u65B0\u5EFA\u6D4B\u8BD5"}\uFF0C\u8BF7\u7A0D\u5019\u2026</strong>
+  </div>` : "";
+  body.innerHTML = rows + pendingRow;
+  body.setAttribute("aria-busy", String(Boolean(pending)));
 }
 function showTestEditor() {
   document.getElementById("testCatalogView").hidden = true;
@@ -6833,18 +6879,27 @@ async function saveCurrentTest(silent = false) {
 }
 async function createTestCase(copyCurrent = false, targetGroup = state.activeTestGroup) {
   if (!state.workspaceDeviceId) throw new Error("\u8BF7\u5148\u9009\u62E9\u8BBE\u5907");
-  if (!await settleTestDraft()) return;
-  const source = copyCurrent ? currentTestSnapshot(`${state.testCaseName} \u526F\u672C`) : makeDefaultTestCase(`\u6D4B\u8BD5\u96C6 ${(state.workspaceDevice?.tests?.length || 0) + 1}`);
-  source.group = targetGroup;
-  const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(source)
+  const context = {
+    mode: copyCurrent ? "copy" : "new",
+    sourceTestId: copyCurrent ? state.testCaseId : "",
+    sourceName: copyCurrent ? state.testCaseName : ""
+  };
+  return testCreationCoordinator.run(context, async () => {
+    if (!await settleTestDraft()) return null;
+    const source = copyCurrent ? currentTestSnapshot(`${state.testCaseName} \u526F\u672C`) : makeDefaultTestCase(`\u6D4B\u8BD5\u96C6 ${(state.workspaceDevice?.tests?.length || 0) + 1}`);
+    source.group = targetGroup;
+    const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(source)
+    });
+    state.workspaceDevice.tests.push(result.test);
+    const summary = state.workspaceDevices.find((device) => device.id === state.workspaceDeviceId);
+    if (summary) summary.testCount = state.workspaceDevice.tests.length;
+    applyTestCase(result.test);
+    setWorkspaceStatus(copyCurrent ? `\u5DF2\u590D\u5236\u4E3A\u201C${result.test.name}\u201D` : `\u5DF2\u65B0\u5EFA\u201C${result.test.name}\u201D`, "saved");
+    return result.test;
   });
-  state.workspaceDevice.tests.push(result.test);
-  const summary = state.workspaceDevices.find((device) => device.id === state.workspaceDeviceId);
-  if (summary) summary.testCount = state.workspaceDevice.tests.length;
-  applyTestCase(result.test);
 }
 async function createTestGroup() {
   const group = await showWorkspaceDialog({ title: "\u65B0\u589E\u6D4B\u8BD5\u7EC4\u522B", message: "\u8BF7\u8F93\u5165\u7EC4\u522B\u540D\u79F0\uFF1B\u65B0\u5EFA\u540E\u4F1A\u81EA\u52A8\u5207\u6362\u5230\u8BE5\u7EC4\u3002", needsInput: true });

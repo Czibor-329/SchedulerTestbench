@@ -21,6 +21,7 @@ import {
 import { createVisualizationWorkspace, detectDeviceTopologyLayout, updateThroughputChartRange } from "./workspace_visualizer";
 import { renderTestGroupAnalysis, testGroupSummaryCsv } from "./group_analysis_view";
 import { createResultCardRunQueue } from "./result_card_run_queue";
+import { createTestCreationCoordinator } from "./test_creation_coordinator";
 import {
   CJOB_TYPES,
   TASK_MODES,
@@ -153,6 +154,13 @@ const state = {
   drawer: null, cleanDialogContext: null, expandedRouteProcessGroups: new Set(), expandedRouteGroups: new Set(), expandedRoutes: new Set(), routeNameChanges: new Map(),
   routeProcessFilter: "", routeParallelFilter: ""
 };
+const testCreationCoordinator = createTestCreationCoordinator(context => {
+  renderWorkspaceControls();
+  if (context) {
+    const action = context.mode === "copy" ? `正在复制“${context.sourceName}”` : "正在新建测试";
+    setWorkspaceStatus(`${action}，请稍候…`);
+  }
+});
 let pjobRoutePickerContext = null;
 let searchTelemetryPollToken = 0;
 let latestSearchTelemetry = null;
@@ -1619,7 +1627,8 @@ function renderWorkspaceControls() {
   testSelect.disabled = !visibleTests.length;
   const hasTest = Boolean(state.testCaseId);
   const nameInput = document.getElementById("testCaseName"); nameInput.disabled = !hasTest; nameInput.value = state.testCaseName || ""; nameInput.title = state.testCaseName || "";
-  document.getElementById("newTestButton").disabled = !state.workspaceDeviceId;
+  const testCreationPending = testCreationCoordinator.isPending;
+  document.getElementById("newTestButton").disabled = !state.workspaceDeviceId || testCreationPending;
   document.getElementById("newGroupButton").disabled = !state.workspaceDeviceId;
   document.getElementById("deleteDeviceButton").disabled = !state.workspaceDeviceId;
   const isDefaultGroup = !selectedGroup;
@@ -1628,7 +1637,7 @@ function renderWorkspaceControls() {
   document.getElementById("deleteGroupButton").disabled = !state.workspaceDeviceId || (isDefaultGroup && !hasGroupTests);
   document.getElementById("deleteGroupButton").title = isDefaultGroup ? "删除“未分组”中的全部测试" : "删除当前测试组别";
   document.getElementById("groupActionHint").textContent = isDefaultGroup && state.workspaceDeviceId ? "“未分组”不可重命名；有测试时可以删除其中全部测试。" : "";
-  document.getElementById("copyTestButton").disabled = !hasTest;
+  document.getElementById("copyTestButton").disabled = !hasTest || testCreationPending;
   document.getElementById("saveTestButton").disabled = !hasTest;
   document.getElementById("deleteTestButton").disabled = tests.length <= 1;
   const batchDisabled = runPreparationActive || (state.batchRunning && state.batchCancelRequested) || !state.serviceCompatible || !visibleTests.length;
@@ -1636,7 +1645,7 @@ function renderWorkspaceControls() {
   document.getElementById("batchResultFilterButton").disabled = !visibleTests.length;
   const emptyHint = document.getElementById("emptyGroupHint");
   emptyHint.classList.toggle("visible", Boolean(state.workspaceDeviceId) && !visibleTests.length);
-  document.getElementById("emptyGroupNewTestButton").disabled = !state.workspaceDeviceId;
+  document.getElementById("emptyGroupNewTestButton").disabled = !state.workspaceDeviceId || testCreationPending;
   const deviceType = {
     single: "单腔非级联",
     dual: "双腔非级联",
@@ -1667,12 +1676,21 @@ function renderWorkspaceControls() {
 function renderTestCatalog(tests) {
   const body = document.getElementById("testCatalogBody");
   if (!body) return;
-  body.innerHTML = tests.map(test => {
+  const pending = testCreationCoordinator.pending;
+  const disabled = pending ? "disabled" : "";
+  const rows = tests.map(test => {
+    const copyLabel = pending?.mode === "copy" && pending.sourceTestId === test.id ? "复制中…" : "复制";
     return `<div class="test-list-row" data-test-row="${escapeHtml(test.id)}" role="listitem">
       <strong class="test-list-name">${escapeHtml(test.name || "未命名测试")}</strong>
-      <div class="test-row-actions"><button class="btn small primary" type="button" data-test-action="edit" data-test-id="${escapeHtml(test.id)}">编辑</button><button class="btn small" type="button" data-test-action="copy" data-test-id="${escapeHtml(test.id)}">复制</button><button class="btn small danger" type="button" data-test-action="delete" data-test-id="${escapeHtml(test.id)}" ${state.workspaceDevice?.tests?.length <= 1 ? "disabled" : ""}>删除</button></div>
+      <div class="test-row-actions"><button class="btn small primary" type="button" data-test-action="edit" data-test-id="${escapeHtml(test.id)}" ${disabled}>编辑</button><button class="btn small" type="button" data-test-action="copy" data-test-id="${escapeHtml(test.id)}" ${disabled}>${copyLabel}</button><button class="btn small danger" type="button" data-test-action="delete" data-test-id="${escapeHtml(test.id)}" ${state.workspaceDevice?.tests?.length <= 1 || pending ? "disabled" : ""}>删除</button></div>
     </div>`;
   }).join("");
+  const pendingRow = pending ? `<div class="test-list-row test-list-row-pending" role="status">
+    <span class="test-creation-spinner" aria-hidden="true"></span>
+    <strong>${pending.mode === "copy" ? `正在复制“${escapeHtml(pending.sourceName)}”` : "正在新建测试"}，请稍候…</strong>
+  </div>` : "";
+  body.innerHTML = rows + pendingRow;
+  body.setAttribute("aria-busy", String(Boolean(pending)));
 }
 
 /** 进入用例编辑态；目录选择和表格暂时收起。 */
@@ -2402,15 +2420,24 @@ async function saveCurrentTest(silent = false) {
 /** 新建空白测试集，或复制当前测试集形成独立副本。 */
 async function createTestCase(copyCurrent = false, targetGroup = state.activeTestGroup) {
   if (!state.workspaceDeviceId) throw new Error("请先选择设备");
-  if (!await settleTestDraft()) return;
-  const source = copyCurrent ? currentTestSnapshot(`${state.testCaseName} 副本`) : makeDefaultTestCase(`测试集 ${(state.workspaceDevice?.tests?.length || 0) + 1}`);
-  source.group = targetGroup;
-  const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(source)
+  const context = {
+    mode: copyCurrent ? "copy" : "new",
+    sourceTestId: copyCurrent ? state.testCaseId : "",
+    sourceName: copyCurrent ? state.testCaseName : "",
+  };
+  return testCreationCoordinator.run(context, async () => {
+    if (!await settleTestDraft()) return null;
+    const source = copyCurrent ? currentTestSnapshot(`${state.testCaseName} 副本`) : makeDefaultTestCase(`测试集 ${(state.workspaceDevice?.tests?.length || 0) + 1}`);
+    source.group = targetGroup;
+    const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(source)
+    });
+    state.workspaceDevice.tests.push(result.test);
+    const summary = state.workspaceDevices.find(device => device.id === state.workspaceDeviceId); if (summary) summary.testCount = state.workspaceDevice.tests.length;
+    applyTestCase(result.test);
+    setWorkspaceStatus(copyCurrent ? `已复制为“${result.test.name}”` : `已新建“${result.test.name}”`, "saved");
+    return result.test;
   });
-  state.workspaceDevice.tests.push(result.test);
-  const summary = state.workspaceDevices.find(device => device.id === state.workspaceDeviceId); if (summary) summary.testCount = state.workspaceDevice.tests.length;
-  applyTestCase(result.test);
 }
 
 /** 新建一个空测试组别，并自动切换到该组。 */

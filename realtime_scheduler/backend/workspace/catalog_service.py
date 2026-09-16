@@ -812,6 +812,95 @@ def update_workspace_routes(
         return result
 
 
+def _fast_create_readable_workspace_test_unlocked(
+    device_id: str,
+    raw_test: Mapping[str, Any],
+    path: Path,
+) -> Optional[Dict[str, Any]]:
+    """在 v6 可读目录中新增单个测试，只读取设备定义和摘要索引。
+
+    携带共享 Route 或改名信息的兼容请求继续回退到全量路径，因为这类请求
+    可能需要同步其它测试。普通新建和复制仅新增测试文件及摘要，不应随设备
+    中已有完整测试的数量线性变慢。
+    """
+    if (
+        path.suffix
+        or not _uses_readable_dataset_layout(path)
+        or not re.fullmatch(r"[A-Za-z0-9_-]+", device_id)
+        or not _workspace_store_is_current(path)
+        or isinstance(raw_test.get("routes"), list)
+        or bool(_normalized_route_aliases(raw_test.get("routeNameChanges")))
+    ):
+        return None
+    device_dir = _find_dataset_device_directory(path, device_id)
+    if device_dir is None:
+        return None
+    tests_dir = device_dir / "tests"
+    index_file = _workspace_test_index_path(tests_dir)
+    try:
+        metadata = json.loads((device_dir / "metadata.json").read_text(encoding="utf-8"))
+        init_data = json.loads((device_dir / "device.json").read_text(encoding="utf-8"))
+        routes_payload = json.loads((device_dir / "routes.json").read_text(encoding="utf-8"))
+        groups_payload = json.loads((device_dir / "groups.json").read_text(encoding="utf-8"))
+        summaries = json.loads(index_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(metadata, dict)
+        or not isinstance(init_data, dict)
+        or not isinstance(routes_payload, Mapping)
+        or not isinstance(groups_payload, dict)
+        or not isinstance(summaries, list)
+        or not all(isinstance(summary, Mapping) for summary in summaries)
+    ):
+        return None
+
+    requested_name = str(raw_test.get("name") or "").strip()
+    if not requested_name:
+        raise ValueError("测试集名称不能为空")
+    device = deepcopy(metadata)
+    init_options = device.pop("initOptions", {})
+    if isinstance(init_options, Mapping):
+        init_data.update(deepcopy(dict(init_options)))
+    device.update({
+        "device": init_data,
+        "routes": deepcopy(routes_payload.get("routes") or []),
+        "cleans": deepcopy(routes_payload.get("cleans") or []),
+        "testGroups": deepcopy(groups_payload.get("testGroups") or []),
+    })
+    normalized_input = dict(raw_test)
+    normalized_input.setdefault(
+        "routeConfigs", _workspace_route_config_map(device.get("routes") or []),
+    )
+    normalized_input.pop("baseline", None)
+    test_case = _normalize_test_case(
+        normalized_input,
+        load_ports=_workspace_load_ports(device),
+    )
+    test_case["name"] = _unique_workspace_name(
+        test_case["name"],
+        (
+            str(summary.get("name") or "")
+            for summary in summaries
+            if str(summary.get("group") or "").strip() == test_case["group"]
+        ),
+    )
+    groups = groups_payload.setdefault("testGroups", [])
+    if test_case["group"] and test_case["group"] not in groups:
+        groups.append(test_case["group"])
+    timestamp = _workspace_timestamp()
+    metadata["updatedAt"] = timestamp
+    persisted_test = deepcopy(test_case)
+    persisted_test["schemaVersion"] = WORKSPACE_STORE_VERSION
+    test_file = _dataset_test_directory(tests_dir, test_case) / "test.json"
+    _write_json_atomic(test_file, persisted_test)
+    _write_json_atomic(index_file, [*summaries, _workspace_test_summary(test_case)])
+    _write_json_if_changed(device_dir / "groups.json", groups_payload)
+    _write_json_if_changed(device_dir / "metadata.json", metadata)
+    _write_workspace_store_version(path)
+    return deepcopy(test_case)
+
+
 def create_workspace_test(
     device_id: str,
     raw_test: Mapping[str, Any],
@@ -819,6 +908,11 @@ def create_workspace_test(
 ) -> Dict[str, Any]:
     """在指定设备下新增一个独立测试集，并自动消解同组重名。"""
     with _workspace_catalog_guard(path):
+        fast_result = _fast_create_readable_workspace_test_unlocked(
+            device_id, raw_test, path,
+        )
+        if fast_result is not None:
+            return fast_result
         catalog = _read_workspace_catalog_unlocked(path)
         device = next((item for item in catalog["devices"] if item.get("id") == device_id), None)
         if device is None:
