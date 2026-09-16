@@ -407,6 +407,36 @@ test("MoveList 输入同时支持数组和结果对象", () => {
   );
 });
 
+test("复现日志按多代计划和实际执行时间生成拓扑回放输入", () => {
+  const log = [
+    { Describe: "AlgInit", Info: { Stations: { LP1: { Type: "LoadPort" } }, Robots: { ATR: {} } } },
+    { Describe: "AlgSchedule", SimTime: 0, Info: { CurrentTime: 0, Materials: [] } },
+    { Describe: "AlgOutput", Info: { MoveList: [
+      { MoveID: 1, MoveType: 0, ModuleName: "ATR", StartTime: 2, EndTime: 4 },
+    ] } },
+    { Describe: "AlgUpdateMove", Info: { MoveID: 1, MoveState: 0, StartTime: 3, EndTime: -1 } },
+    { Describe: "AlgUpdateMove", Info: { MoveID: 1, MoveState: 1, StartTime: 3, EndTime: 6 } },
+  ];
+
+  const replay = logic.normalizeReplayLogPayload(log);
+  assert.equal(replay.moves.length, 1);
+  assert.equal(replay.moves[0].StartTime, 3);
+  assert.equal(replay.moves[0].EndTime, 6);
+  assert.equal(replay.moves[0].PlannedStartTime, 2);
+  assert.equal(replay.device.Stations.LP1.Type, "LoadPort");
+});
+
+test("日志导入明确拒绝普通 MoveList 文件", () => {
+  assert.throws(
+    () => logic.normalizeReplayLogPayload(moves),
+    /普通 MoveList 文件不受支持/,
+  );
+  assert.throws(
+    () => logic.normalizeReplayLogPayload({ MoveList: moves }),
+    /普通 MoveList 文件不受支持/,
+  );
+});
+
 test("回放控制保留稳定入口且动作查询默认关闭", () => {
   const html = fs.readFileSync(path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"), "utf8");
   for (const id of ["visualPlayButton", "visualSource", "visualTimeline", "visualSpeed", "visualTotalTime", "visualExportDeadlockDiagnostic", "visualWaferProgress"]) {

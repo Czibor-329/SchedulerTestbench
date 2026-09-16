@@ -18,6 +18,18 @@ test("固定比例回放移除画布缩放入口但保留时间轴与播放速�
   }
 });
 
+test("回放页常驻提供唯一的日志导入入口且不再提供 MoveList 文件导入", () => {
+  const html = fs.readFileSync(
+    path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"), "utf8",
+  );
+  const importButtonIndex = html.indexOf('id="visualImportButton"');
+  const playbackIndex = html.indexOf('id="visualTopologyPlayback"');
+  assert.ok(importButtonIndex >= 0 && importButtonIndex < playbackIndex);
+  assert.equal((html.match(/id="visualFileInput"/g) || []).length, 1);
+  assert.match(html, /aria-label="导入复现日志"/);
+  assert.doesNotMatch(html, /导入 MoveList/);
+});
+
 test("时间轴与四项指标位于顶层紧凑状态条，观察窗口默认折叠并停靠右侧", () => {
   const html = fs.readFileSync(
     path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"), "utf8",

@@ -1691,10 +1691,9 @@
     /* -------- 参考 PySide 拓扑控制台：中央画布 + 右侧控制面板 -------- */
     .playback-toolbar-placeholder { display: none !important; }
     .playback-workbench { position: relative; }
-    .visual-empty-import { position: absolute; z-index: 2; top: 340px; left: 50%; display: flex; justify-content: center; transform: translateX(-50%); }
-    #visualPlaybackEmpty[hidden] + .visual-empty-import { display: none; }
-    .visual-empty-import .btn { min-height: 44px; }
-    .visual-empty-import .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+    .playback-log-import { position: absolute; z-index: 70; top: 8px; right: 8px; }
+    .playback-log-import .btn { min-height: 36px; padding: 0 13px; border-radius: 4px; box-shadow: 0 2px 7px rgba(35, 58, 91, .12); }
+    .playback-log-import .btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
     /* 回放诊断取消页脚留白；分析面板留在正常文档流，在短页时自动靠下。 */
     body:has([data-tab-view="playback"].active) .app-content { width: 100%; max-width: none; padding-right: 0; padding-left: 0; padding-bottom: 0; }
     [data-tab-view="playback"].active .playback-workbench { display: flex; flex-direction: column; min-height: calc(100dvh - 28px); }
@@ -2409,7 +2408,7 @@
 .replay-status-bar {
   position: absolute; z-index: 40; top: 0; left: 0; right: 0; display: grid;
   grid-template-columns: minmax(330px, 1fr) minmax(760px, 1.2fr); width: 100%; min-width: 0;
-  box-sizing: border-box; overflow: visible; border: 1px solid #cbd6e4;
+  box-sizing: border-box; padding-right: 112px; overflow: visible; border: 1px solid #cbd6e4;
   border-radius: 4px; background: #fff; box-shadow: 0 2px 7px rgba(35, 58, 91, .08);
 }
 .replay-status-bar .petri-top-playback-controls {
@@ -2479,6 +2478,8 @@
 }
 /* 保留应用导航；回放画布覆盖其余整个视口，状态栏与分析窗浮在画布上。 */
 body:has([data-tab-view="playback"].active) { overflow: hidden; }
+[data-tab-view="playback"].active .playback-log-import { position: fixed; top: 3px; right: 5px; }
+[data-tab-view="playback"].active .playback-log-import .btn { height: 28px; min-height: 28px; }
 [data-tab-view="playback"].active #visualTopologyPlayback:not([hidden]) { position: fixed; inset: 0 0 0 252px; display: block; }
 .topology-playback .replay-analysis-panel { position: absolute; z-index: 60; left: 0; right: 0; bottom: 0; margin: 0; }
 @media (max-width: 1040px) {

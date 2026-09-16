@@ -38,6 +38,7 @@ __export(workspace_visualizer_test_entry_exports, {
   normalizeDecisionTrace: () => normalizeDecisionTrace,
   normalizeLoadPortReplenishments: () => normalizeLoadPortReplenishments,
   normalizeMovePayload: () => normalizeMovePayload,
+  normalizeReplayLogPayload: () => normalizeReplayLogPayload,
   primitiveDecisionBoundaryTimes: () => primitiveDecisionBoundaryTimes,
   projectTopologyTransfers: () => projectTopologyTransfers,
   renderDecisionLens: () => renderDecisionLens,
@@ -877,6 +878,155 @@ function renderRobotSlotRow(robot, dual, renderSlots, escape2) {
   return `<div class="front-slot-row front-slot-row-robot" data-robot="${escape2(robot.name)}">${boards}</div>`;
 }
 
+// src/gantt_execution_compare.ts
+var MOVE_STATE_RUNNING = 0;
+var MOVE_STATE_DONE = 1;
+var MOVE_STATE_ABORTED = 2;
+var TIME_TOLERANCE_SECONDS = 1e-6;
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function finiteNumber(value) {
+  if (value === null || value === void 0 || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+function isExecutionLog(payload) {
+  return Array.isArray(payload) && payload.some((entry) => {
+    if (!isRecord(entry)) return false;
+    return entry.Describe === "AlgOutput" || entry.Describe === "AlgUpdateMove";
+  });
+}
+function pairExecutionNotifications(notifications, warnings) {
+  const intervals = [];
+  const openByMoveId = /* @__PURE__ */ new Map();
+  for (const notification of notifications) {
+    const moveId = finiteNumber(notification.MoveID);
+    if (moveId === null) continue;
+    const moveState = finiteNumber(notification.MoveState);
+    const start = finiteNumber(notification.StartTime);
+    const end = finiteNumber(notification.EndTime);
+    const open = openByMoveId.get(moveId) ?? [];
+    if (moveState === MOVE_STATE_RUNNING) {
+      const interval = { moveId, start, end: null, aborted: false };
+      intervals.push(interval);
+      open.push(interval);
+      openByMoveId.set(moveId, open);
+      continue;
+    }
+    if (moveState === MOVE_STATE_DONE || moveState === MOVE_STATE_ABORTED) {
+      let interval = [...open].reverse().find((candidate) => candidate.end === null);
+      if (!interval) {
+        interval = { moveId, start, end: null, aborted: false };
+        intervals.push(interval);
+      }
+      if (interval.start === null) interval.start = start;
+      interval.end = end;
+      interval.aborted = moveState === MOVE_STATE_ABORTED;
+      continue;
+    }
+    const warning = `Unknown MoveState=${String(notification.MoveState)} (MoveID=${moveId})`;
+    if (warnings.length < 4 && !warnings.includes(warning)) warnings.push(warning);
+  }
+  return intervals;
+}
+function pickPlanVersion(versions, actualStart, used) {
+  const available = versions.filter((version) => !used.has(version));
+  if (!available.length) return null;
+  if (actualStart === null) return available[available.length - 1];
+  const before = available.filter((version) => version.planStart <= actualStart + TIME_TOLERANCE_SECONDS).sort((left, right) => right.planStart - left.planStart);
+  return before[0] ?? available.sort((left, right) => left.planStart - right.planStart)[0];
+}
+function reconstructExecutionLog(entries) {
+  if (!isExecutionLog(entries)) return null;
+  let scheduleTime = 0;
+  const generations = [];
+  const notifications = [];
+  const recomputePoints = [];
+  const warnings = [];
+  for (const entry of entries) {
+    if (!isRecord(entry)) continue;
+    const describe = String(entry.Describe ?? "");
+    if (describe === "AlgSchedule") {
+      scheduleTime = finiteNumber(entry.SimTime) ?? 0;
+    } else if (describe === "AlgOutput") {
+      const information = isRecord(entry.Info) ? entry.Info : {};
+      if (Array.isArray(information.MoveList)) {
+        generations.push({ scheduleTime, moves: information.MoveList.filter(isRecord) });
+      }
+    } else if (describe === "AlgUpdateMove") {
+      if (isRecord(entry.Info)) notifications.push(entry.Info);
+    } else if (describe === "RecomputeControl") {
+      const information = isRecord(entry.Info) ? entry.Info : {};
+      const recompute = isRecord(information.RecomputeInfo) ? information.RecomputeInfo : {};
+      const time = finiteNumber(recompute.CurrentTime) ?? finiteNumber(entry.SimTime);
+      if (time !== null) {
+        recomputePoints.push({
+          Time: time,
+          EffectiveTime: finiteNumber(recompute.EffectiveTime) ?? time,
+          ScheduleStartTime: finiteNumber(recompute.ScheduleStartTime) ?? time,
+          RecoveryEndTime: finiteNumber(recompute.RecoveryEndTime) ?? finiteNumber(recompute.EffectiveTime) ?? time,
+          Index: recomputePoints.length + 1,
+          Reason: String(recompute.Reason ?? "\u91CD\u7B97")
+        });
+      }
+    }
+  }
+  if (!generations.length) return null;
+  const records = [];
+  const versionsByMoveId = /* @__PURE__ */ new Map();
+  generations.forEach((generation, generationIndex) => {
+    const cutoff = generations[generationIndex + 1]?.scheduleTime ?? Number.POSITIVE_INFINITY;
+    for (const raw of generation.moves) {
+      const planStart = finiteNumber(raw.StartTime);
+      const planEnd = finiteNumber(raw.EndTime);
+      if (planStart === null || planEnd === null) continue;
+      if (Number.isFinite(cutoff) && !(planStart < cutoff - TIME_TOLERANCE_SECONDS)) continue;
+      const moveId = finiteNumber(raw.MoveID) ?? Number.NaN;
+      const record = {
+        raw,
+        rawIndex: records.length,
+        generation: generationIndex + 1,
+        moveId,
+        planStart,
+        planEnd,
+        actualStart: null,
+        actualEnd: null,
+        actualEndKnown: false,
+        executed: false,
+        aborted: false
+      };
+      records.push(record);
+      if (Number.isFinite(moveId)) {
+        const versions = versionsByMoveId.get(moveId) ?? [];
+        versions.push(record);
+        versionsByMoveId.set(moveId, versions);
+      }
+    }
+  });
+  const intervals = pairExecutionNotifications(notifications, warnings).sort((left, right) => (left.start ?? Number.POSITIVE_INFINITY) - (right.start ?? Number.POSITIVE_INFINITY));
+  const used = /* @__PURE__ */ new Set();
+  const unmatchedExecutions = [];
+  for (const interval of intervals) {
+    const target = pickPlanVersion(versionsByMoveId.get(interval.moveId) ?? [], interval.start, used);
+    if (!target) {
+      unmatchedExecutions.push(interval);
+      continue;
+    }
+    used.add(target);
+    target.actualStart = interval.start;
+    target.actualEnd = interval.end;
+    target.actualEndKnown = interval.end !== null;
+    target.executed = true;
+    target.aborted = interval.aborted;
+  }
+  records.sort((left, right) => left.planStart - right.planStart || left.moveId - right.moveId);
+  records.forEach((record, index) => {
+    record.rawIndex = index;
+  });
+  return { records, recomputePoints, warnings, unmatchedExecutions };
+}
+
 // src/workspace_visualizer.ts
 var ALL_ACTION_DIAGNOSTIC_STATUSES = [
   "enabled",
@@ -954,7 +1104,7 @@ var DOOR_LABELS = {
   closing: "\u6B63\u5728\u5173\u95E8",
   doorless: "\u65E0\u95E8\u7ED3\u6784"
 };
-function finiteNumber(value, fallback = 0) {
+function finiteNumber2(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 }
@@ -971,6 +1121,38 @@ function normalizeMovePayload(payload) {
   if (!records) throw new Error("\u6587\u4EF6\u5FC5\u987B\u662F MoveList \u6570\u7EC4\uFF0C\u6216\u5305\u542B MoveList \u5B57\u6BB5\u7684 JSON \u5BF9\u8C61");
   return records.filter((record) => Boolean(record) && typeof record === "object" && !Array.isArray(record)).map((record) => ({ ...record }));
 }
+function normalizeReplayLogPayload(payload) {
+  const logEntries = Array.isArray(payload) ? payload : null;
+  const reconstruction = logEntries ? reconstructExecutionLog(logEntries) : null;
+  if (!reconstruction) {
+    throw new Error("\u6587\u4EF6\u5FC5\u987B\u662F\u5305\u542B AlgOutput \u7684\u5E73\u53F0\u590D\u73B0\u65E5\u5FD7\uFF0C\u666E\u901A MoveList \u6587\u4EF6\u4E0D\u53D7\u652F\u6301");
+  }
+  const moves = reconstruction.records.map((record) => {
+    const actualStart = record.actualStart ?? record.planStart;
+    const actualEnd = record.actualEnd ?? (record.actualStart === null ? record.planEnd : actualStart + Math.max(0, record.planEnd - record.planStart));
+    return {
+      ...record.raw,
+      PlannedStartTime: record.planStart,
+      PlannedEndTime: record.planEnd,
+      StartTime: actualStart,
+      EndTime: actualEnd
+    };
+  });
+  const entries = logEntries.filter((entry) => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry));
+  const scheduleUpdates = entries.filter((entry) => entry.Describe === "AlgSchedule").map((entry) => entry.Info).filter((info) => Boolean(info) && typeof info === "object" && !Array.isArray(info));
+  const topologyInfo = entries.filter((entry) => entry.Describe === "AlgInit" || entry.Describe === "AlgSchedule").map((entry) => entry.Info).find((info) => Boolean(info) && typeof info === "object" && !Array.isArray(info) && Boolean(info.Stations) && Boolean(info.Robots));
+  const device = topologyInfo ? {
+    Stations: structuredClone(topologyInfo.Stations),
+    Robots: structuredClone(topologyInfo.Robots)
+  } : null;
+  return {
+    moves,
+    device,
+    loadPortReplenishments: normalizeLoadPortReplenishments({
+      ReplayContext: { updates: scheduleUpdates }
+    })
+  };
+}
 function normalizeDecisionCandidate(candidate, actor = "") {
   return {
     actionId: String(candidate.actionId ?? ""),
@@ -979,20 +1161,20 @@ function normalizeDecisionCandidate(candidate, actor = "") {
     flowKind: String(candidate.flowKind ?? candidate.kind ?? ""),
     robot: String(candidate.robot ?? ""),
     materialIds: listValue(candidate.materialIds).map(String),
-    waferId: finiteNumber(candidate.waferId),
-    stageIndex: finiteNumber(candidate.stageIndex),
+    waferId: finiteNumber2(candidate.waferId),
+    stageIndex: finiteNumber2(candidate.stageIndex),
     source: String(candidate.source ?? ""),
-    sourceSlot: finiteNumber(candidate.sourceSlot),
+    sourceSlot: finiteNumber2(candidate.sourceSlot),
     destination: String(candidate.destination ?? ""),
-    destinationSlot: finiteNumber(candidate.destinationSlot),
-    earliestStart: finiteNumber(candidate.earliestStart),
-    finishTime: finiteNumber(candidate.finishTime),
-    rank: finiteNumber(candidate.rank),
+    destinationSlot: finiteNumber2(candidate.destinationSlot),
+    earliestStart: finiteNumber2(candidate.earliestStart),
+    finishTime: finiteNumber2(candidate.finishTime),
+    rank: finiteNumber2(candidate.rank),
     selected: Boolean(candidate.selected),
     executed: Boolean(candidate.executed),
     priorityDeferred: Boolean(candidate.priorityDeferred),
-    policyScore: finiteNumber(candidate.policyScore),
-    policyPreference: Math.max(0, Math.min(1, finiteNumber(candidate.policyPreference))),
+    policyScore: finiteNumber2(candidate.policyScore),
+    policyPreference: Math.max(0, Math.min(1, finiteNumber2(candidate.policyPreference))),
     expectedRemainingMakespan: nullableFiniteNumber(candidate.expectedRemainingMakespan),
     expectedRemainingCost: nullableFiniteNumber(candidate.expectedRemainingCost),
     medianRemainingMakespan: nullableFiniteNumber(candidate.medianRemainingMakespan),
@@ -1015,12 +1197,12 @@ function normalizeReplayActionDiagnostic(value) {
     robot: String(value.robot ?? ""),
     materialIds: listValue(value.materialIds).map(String),
     source: String(value.source ?? ""),
-    sourceSlot: finiteNumber(value.sourceSlot),
+    sourceSlot: finiteNumber2(value.sourceSlot),
     destination: String(value.destination ?? ""),
-    destinationSlot: finiteNumber(value.destinationSlot),
-    duplicateCount: Math.max(0, Math.round(finiteNumber(value.duplicateCount))),
-    earliestStart: finiteNumber(value.earliestStart),
-    finishTime: finiteNumber(value.finishTime)
+    destinationSlot: finiteNumber2(value.destinationSlot),
+    duplicateCount: Math.max(0, Math.round(finiteNumber2(value.duplicateCount))),
+    earliestStart: finiteNumber2(value.earliestStart),
+    finishTime: finiteNumber2(value.finishTime)
   };
 }
 function normalizeDecisionTrace(payload) {
@@ -1048,8 +1230,8 @@ function normalizeDecisionTrace(payload) {
         label: String(group.label ?? (actor === "atmosphere" ? "\u5927\u6C14\u7AEF Actor" : "\u771F\u7A7A\u7AEF Actor")),
         selectedActionId: String(group.selectedActionId ?? ""),
         executedActionId: String(group.executedActionId ?? ""),
-        candidateCount: Math.max(groupCandidates.length, finiteNumber(group.candidateCount, groupCandidates.length)),
-        shownCandidateCount: Math.max(groupCandidates.length, finiteNumber(group.shownCandidateCount, groupCandidates.length)),
+        candidateCount: Math.max(groupCandidates.length, finiteNumber2(group.candidateCount, groupCandidates.length)),
+        shownCandidateCount: Math.max(groupCandidates.length, finiteNumber2(group.shownCandidateCount, groupCandidates.length)),
         candidatesTruncated: Boolean(group.candidatesTruncated),
         candidates: groupCandidates
       };
@@ -1079,15 +1261,15 @@ function normalizeDecisionTrace(payload) {
     return {
       model,
       modelLabel: String(step.modelLabel ?? (model === "dual-actor-e2e" ? "\u53CC Actor \u539F\u5B50\u8C03\u5EA6" : "E2E-CTQ")),
-      decisionIndex: finiteNumber(step.decisionIndex),
-      time: finiteNumber(step.time),
-      revision: finiteNumber(step.revision),
-      roundIndex: finiteNumber(step.roundIndex),
+      decisionIndex: finiteNumber2(step.decisionIndex),
+      time: finiteNumber2(step.time),
+      revision: finiteNumber2(step.revision),
+      roundIndex: finiteNumber2(step.roundIndex),
       roundKind: String(step.roundKind ?? ""),
       selectedActionId: String(step.selectedActionId ?? ""),
       executedActionId: String(step.executedActionId ?? ""),
-      candidateCount: Math.max(candidates.length, finiteNumber(step.candidateCount, candidates.length)),
-      shownCandidateCount: Math.max(candidates.length, finiteNumber(step.shownCandidateCount, candidates.length)),
+      candidateCount: Math.max(candidates.length, finiteNumber2(step.candidateCount, candidates.length)),
+      shownCandidateCount: Math.max(candidates.length, finiteNumber2(step.shownCandidateCount, candidates.length)),
       candidatesTruncated: Boolean(step.candidatesTruncated),
       modelEvaluated: Boolean(step.modelEvaluated),
       replayEvaluated: Boolean(step.replayEvaluated),
@@ -1096,16 +1278,16 @@ function normalizeDecisionTrace(payload) {
       actionDiagnosticsSource: String(step.actionDiagnosticsSource ?? ""),
       actionDiagnosticsProvider: String(step.actionDiagnosticsProvider ?? ""),
       actionCounts: {
-        enabled: finiteNumber(rawActionCounts.enabled),
-        "physical-blocked": finiteNumber(rawActionCounts["physical-blocked"]),
-        "deadlock-blocked": finiteNumber(rawActionCounts["deadlock-blocked"])
+        enabled: finiteNumber2(rawActionCounts.enabled),
+        "physical-blocked": finiteNumber2(rawActionCounts["physical-blocked"]),
+        "deadlock-blocked": finiteNumber2(rawActionCounts["deadlock-blocked"])
       },
       actionDiagnostics
     };
   }).sort((left, right) => left.time - right.time || left.decisionIndex - right.decisionIndex);
 }
 function primitiveMoveKind(move) {
-  const moveType = finiteNumber(move.MoveType, -1);
+  const moveType = finiteNumber2(move.MoveType, -1);
   if (PICK_MOVE_TYPES.has(moveType)) return "pick";
   if (PLACE_MOVE_TYPES.has(moveType)) return "place";
   if (moveType === SWAP_MOVE2) return "swap";
@@ -1140,18 +1322,18 @@ function candidateMatchesPrimitiveMove(candidate, move) {
   return !candidate.destination || destinations.includes(candidate.destination);
 }
 function alignOriginalDecisionTraceToMoves(trace, moves) {
-  const primitiveMoves = moves.filter((move) => Boolean(primitiveMoveKind(move))).sort((left, right) => finiteNumber(left.StartTime) - finiteNumber(right.StartTime) || finiteNumber(left.MoveID) - finiteNumber(right.MoveID));
+  const primitiveMoves = moves.filter((move) => Boolean(primitiveMoveKind(move))).sort((left, right) => finiteNumber2(left.StartTime) - finiteNumber2(right.StartTime) || finiteNumber2(left.MoveID) - finiteNumber2(right.MoveID));
   const usedMoveIds = /* @__PURE__ */ new Set();
   const aligned = trace.map((step) => {
     if (step.model !== "dual-actor-e2e") return step;
     const selectedCandidate = step.candidates.find((candidate) => candidate.actionId === step.selectedActionId || candidate.selected);
     if (!selectedCandidate) return step;
     const matchedMove = primitiveMoves.find((move) => {
-      const moveId = finiteNumber(move.MoveID, -1);
+      const moveId = finiteNumber2(move.MoveID, -1);
       return !usedMoveIds.has(moveId) && candidateMatchesPrimitiveMove(selectedCandidate, move);
     });
     if (!matchedMove) return step;
-    usedMoveIds.add(finiteNumber(matchedMove.MoveID, -1));
+    usedMoveIds.add(finiteNumber2(matchedMove.MoveID, -1));
     const executedActionId = selectedCandidate.actionId;
     const candidateGroups = step.candidateGroups.map((group) => {
       const containsExecuted = group.candidates.some((candidate) => candidate.actionId === executedActionId);
@@ -1170,7 +1352,7 @@ function alignOriginalDecisionTraceToMoves(trace, moves) {
     }));
     return {
       ...step,
-      time: finiteNumber(matchedMove.StartTime),
+      time: finiteNumber2(matchedMove.StartTime),
       executedActionId,
       modelEvaluated: true,
       replayEvaluated: false,
@@ -1204,7 +1386,7 @@ function normalizeLoadPortReplenishments(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
   const replayContext = payload.ReplayContext;
   if (!replayContext || typeof replayContext !== "object" || Array.isArray(replayContext)) return [];
-  const updates = listValue(replayContext.updates).filter((update) => Boolean(update) && typeof update === "object" && !Array.isArray(update)).sort((left, right) => finiteNumber(left.CurrentTime) - finiteNumber(right.CurrentTime));
+  const updates = listValue(replayContext.updates).filter((update) => Boolean(update) && typeof update === "object" && !Array.isArray(update)).sort((left, right) => finiteNumber2(left.CurrentTime) - finiteNumber2(right.CurrentTime));
   const knownTaskIdsByPort = /* @__PURE__ */ new Map();
   const replenishments = [];
   updates.forEach((update, updateIndex) => {
@@ -1215,7 +1397,7 @@ function normalizeLoadPortReplenishments(payload) {
       const currentModule = String(material.CurrentModuleName ?? "").trim();
       const taskId = String(material.TaskID ?? "").trim();
       const wafer = String(material.ID ?? material.Name ?? "").trim();
-      const slot = Math.trunc(finiteNumber(material.SlotID));
+      const slot = Math.trunc(finiteNumber2(material.SlotID));
       if (!port || currentModule !== port || !taskId || !wafer || slot < 1) continue;
       const byTask = currentByPortAndTask.get(port) ?? /* @__PURE__ */ new Map();
       const taskMaterials = byTask.get(taskId) ?? [];
@@ -1228,7 +1410,7 @@ function normalizeLoadPortReplenishments(payload) {
       for (const [taskId, taskMaterials] of byTask) {
         if (updateIndex > 0 && !knownTaskIds.has(taskId)) {
           replenishments.push({
-            time: finiteNumber(update.CurrentTime),
+            time: finiteNumber2(update.CurrentTime),
             moduleName: port,
             materials: taskMaterials.sort((left, right) => left.slot - right.slot)
           });
@@ -1268,7 +1450,7 @@ function robotEnvironment(name, definition = {}) {
   return "vacuum";
 }
 function robotCapacity(definition, holdingCount = 0) {
-  const declaredCapacity = finiteNumber(definition.Capacity, 0);
+  const declaredCapacity = finiteNumber2(definition.Capacity, 0);
   const armSlotCount = Object.values(definition.ArmInfo ?? {}).reduce((maximum, arm) => {
     if (!arm || typeof arm !== "object") return maximum;
     return Math.max(maximum, listValue(arm.SlotIDs).length);
@@ -1343,12 +1525,12 @@ function isProcessModule(name, type = "") {
 }
 function normalizeMoves(moves) {
   return moves.map((move, index) => {
-    const startTime = finiteNumber(move.StartTime);
-    const endTime = Math.max(startTime, finiteNumber(move.EndTime, startTime));
+    const startTime = finiteNumber2(move.StartTime);
+    const endTime = Math.max(startTime, finiteNumber2(move.EndTime, startTime));
     return {
       ...move,
-      MoveID: finiteNumber(move.MoveID, index + 1),
-      MoveType: finiteNumber(move.MoveType, -1),
+      MoveID: finiteNumber2(move.MoveID, index + 1),
+      MoveType: finiteNumber2(move.MoveType, -1),
       ModuleName: String(move.ModuleName ?? ""),
       StartTime: startTime,
       EndTime: endTime
@@ -1461,14 +1643,14 @@ function indexedStation(move, field, index) {
 }
 function indexedSlot(move, field, index) {
   const slots = listValue(move[field]);
-  const slot = finiteNumber(slots[index] ?? slots[0], 0);
+  const slot = finiteNumber2(slots[index] ?? slots[0], 0);
   return Number.isInteger(slot) && slot > 0 ? slot : 0;
 }
 function loadPortCapacity(device, name, observedMaximum) {
   const definition = device?.Stations?.[name] ?? {};
-  const declaredSlots = listValue(definition.Slots).map((value) => finiteNumber(value, 0));
+  const declaredSlots = listValue(definition.Slots).map((value) => finiteNumber2(value, 0));
   const declaredCapacity = Math.max(
-    finiteNumber(definition.Capacity, 0),
+    finiteNumber2(definition.Capacity, 0),
     declaredSlots.length,
     ...declaredSlots
   );
@@ -1480,11 +1662,11 @@ function loadPortCapacity(device, name, observedMaximum) {
 }
 function stationSlotCapacity(device, name, defaultCapacity = 1) {
   const definition = device?.Stations?.[name] ?? {};
-  const declaredSlots = listValue(definition.Slots).map((value) => finiteNumber(value, 0));
+  const declaredSlots = listValue(definition.Slots).map((value) => finiteNumber2(value, 0));
   return Math.max(
     1,
     defaultCapacity,
-    finiteNumber(definition.Capacity, 0),
+    finiteNumber2(definition.Capacity, 0),
     declaredSlots.length,
     ...declaredSlots
   );
@@ -1729,7 +1911,7 @@ function activeTarget(move) {
 function buildWorkspaceSnapshot(moves, device, requestedTime, replenishments = []) {
   const records = normalizeMoves(moves);
   const endTime = records.reduce((maximum, move) => Math.max(maximum, move.EndTime), 0);
-  const normalizedRequestedTime = requestedTime === Number.POSITIVE_INFINITY ? endTime : finiteNumber(requestedTime);
+  const normalizedRequestedTime = requestedTime === Number.POSITIVE_INFINITY ? endTime : finiteNumber2(requestedTime);
   const time = Math.max(0, Math.min(normalizedRequestedTime, endTime));
   const robotNames = collectRobotNames(records, device);
   const robotNameSet = new Set(robotNames);
@@ -1912,8 +2094,8 @@ function buildWorkspaceSnapshot(moves, device, requestedTime, replenishments = [
 }
 function stationCapacity(device, name) {
   const definition = device?.Stations?.[name] ?? {};
-  const slots = listValue(definition.Slots).map((value) => finiteNumber(value, 0)).filter((value) => Number.isInteger(value) && value > 0);
-  return Math.max(1, finiteNumber(definition.Capacity, 0), slots.length);
+  const slots = listValue(definition.Slots).map((value) => finiteNumber2(value, 0)).filter((value) => Number.isInteger(value) && value > 0);
+  return Math.max(1, finiteNumber2(definition.Capacity, 0), slots.length);
 }
 function routeByPJobName(plan, pjobName) {
   const routes = Array.isArray(plan?.routes) ? plan.routes : [];
@@ -2106,8 +2288,7 @@ function icon(name) {
   const paths = {
     play: '<path d="M8 5v14l11-7z"/>',
     pause: '<path d="M7 5h4v14H7zM15 5h4v14h-4z"/>',
-    robot: '<rect x="5" y="7" width="14" height="11" rx="3"/><path d="M12 3v4M8 12h.01M16 12h.01M9 18v3M15 18v3"/>',
-    upload: '<path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v5h14v-5"/>'
+    robot: '<rect x="5" y="7" width="14" height="11" rx="3"/><path d="M12 3v4M8 12h.01M16 12h.01M9 18v3M15 18v3"/>'
   };
   return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths[name]}</svg>`;
 }
@@ -2677,7 +2858,7 @@ function detectDeviceTopologyLayout(device) {
   if (robotCount > 2) return "cascade";
   const hasMultiProcessChamber = Object.values(device?.Stations ?? {}).some((station2) => {
     const type = String(station2.Type ?? "");
-    return isMultiProcessChamberType(type) || /process|chamber/i.test(type) && finiteNumber(station2.Capacity, 1) > 1;
+    return isMultiProcessChamberType(type) || /process|chamber/i.test(type) && finiteNumber2(station2.Capacity, 1) > 1;
   });
   return hasMultiProcessChamber ? "dual" : "single";
 }
@@ -3226,12 +3407,12 @@ function decisionSpaceSignature(decision) {
 }
 function decisionBoundaryTimes(moves) {
   return [...new Set(
-    moves.filter((move) => DECISION_COMPLETION_MOVE_TYPES.has(finiteNumber(move.MoveType, -1))).map((move) => finiteNumber(move.EndTime)).filter((time) => time >= 0)
+    moves.filter((move) => DECISION_COMPLETION_MOVE_TYPES.has(finiteNumber2(move.MoveType, -1))).map((move) => finiteNumber2(move.EndTime)).filter((time) => time >= 0)
   )].sort((left, right) => left - right);
 }
 function primitiveDecisionBoundaryTimes(moves) {
   return [...new Set(
-    moves.filter((move) => PRIMITIVE_DECISION_COMPLETION_MOVE_TYPES.has(finiteNumber(move.MoveType, -1))).map((move) => finiteNumber(move.EndTime)).filter((time) => time >= 0)
+    moves.filter((move) => PRIMITIVE_DECISION_COMPLETION_MOVE_TYPES.has(finiteNumber2(move.MoveType, -1))).map((move) => finiteNumber2(move.EndTime)).filter((time) => time >= 0)
   )].sort((left, right) => left - right);
 }
 function formatActionEndpoint(name, slot) {
@@ -3735,14 +3916,9 @@ var VisualizationWorkspace = class {
       void this.renderPerformance();
     }
   }
-  /** 加载浏览器中选择的 MoveList 文件。 */
+  /** 加载内部调用或测试夹具提供的 MoveList 文件；页面文件入口不调用此方法。 */
   async loadFile(file) {
     const payload = JSON.parse(await file.text());
-    const metadata = payload && typeof payload === "object" && !Array.isArray(payload) ? payload.RunMetricsMetadata ?? payload.ProductionMetricsMetadata : null;
-    const rawCpuTimeMs = metadata && typeof metadata === "object" && !Array.isArray(metadata) ? Number(metadata.cpuTimeMs ?? Number(metadata.calculationSeconds) * 1e3) : Number.NaN;
-    const recomputePoints = payload && typeof payload === "object" && !Array.isArray(payload) ? payload.RecomputePoints : null;
-    const metadataRecomputeCount = metadata && typeof metadata === "object" && !Array.isArray(metadata) ? Number(metadata.recomputeCount) : Number.NaN;
-    const rawRecomputeCount = Number.isFinite(metadataRecomputeCount) ? metadataRecomputeCount : Array.isArray(recomputePoints) && Number.isFinite(rawCpuTimeMs) ? recomputePoints.length + 1 : 0;
     await this.loadMoves(
       normalizeMovePayload(payload),
       normalizeDecisionTrace(payload),
@@ -3750,8 +3926,28 @@ var VisualizationWorkspace = class {
       file.name,
       "",
       "",
-      Number.isFinite(rawCpuTimeMs) ? Math.max(rawCpuTimeMs, 0) : null,
-      Number.isFinite(rawRecomputeCount) ? Math.max(0, Math.trunc(rawRecomputeCount)) : 0
+      null,
+      0
+    );
+  }
+  /** 加载用户在回放页选择的平台复现日志。 */
+  async loadReplayLogFile(file) {
+    this.setLoading(true, "\u6B63\u5728\u89E3\u6790\u590D\u73B0\u65E5\u5FD7\u2026");
+    const payload = JSON.parse(await file.text());
+    const replayLog = normalizeReplayLogPayload(payload);
+    if (replayLog.device) this.device = replayLog.device;
+    this.setReplayPlan(null);
+    this.analysisRoutes = [];
+    this.analysisRounds = [];
+    await this.loadMoves(
+      replayLog.moves,
+      [],
+      replayLog.loadPortReplenishments,
+      file.name,
+      "",
+      "",
+      null,
+      0
     );
   }
   /** 从后端保存的运行结果加载 MoveList。 */
@@ -3876,7 +4072,7 @@ var VisualizationWorkspace = class {
     if (!this.moves.length) return;
     const bounded = Math.max(
       0,
-      Math.min(finiteNumber(time), finiteNumber(this.elements.range.max))
+      Math.min(finiteNumber2(time), finiteNumber2(this.elements.range.max))
     );
     this.time = bounded;
     this.elements.range.value = String(bounded);
@@ -3953,8 +4149,8 @@ var VisualizationWorkspace = class {
     this.elements.playbackEmpty.classList.remove("is-loading", "is-error");
     this.elements.playbackEmpty.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg>
-      <strong>\u7B49\u5F85 MoveList</strong>
-      <span>\u8FD0\u884C\u4E00\u6B21\u8BA1\u5212\uFF0C\u6216\u5BFC\u5165\u5DF2\u6709\u7684 MoveList JSON \u6587\u4EF6\u540E\u67E5\u770B\u8BBE\u5907\u62D3\u6251\u5E76\u5F00\u59CB\u56DE\u653E\u3002</span>`;
+      <strong>\u7B49\u5F85\u56DE\u653E\u6570\u636E</strong>
+      <span>\u8FD0\u884C\u4E00\u6B21\u8BA1\u5212\uFF0C\u6216\u4F7F\u7528\u53F3\u4E0A\u89D2\u201C\u5BFC\u5165\u65E5\u5FD7\u201D\u8F7D\u5165\u5E73\u53F0\u590D\u73B0\u65E5\u5FD7\u540E\u5F00\u59CB\u56DE\u653E\u3002</span>`;
   }
   /** 接收规范化后的 MoveList 并重置时间轴。 */
   async loadMoves(moves, _decisionTrace, loadPortReplenishments, sourceName, resultUrl, analysisResultId, cpuTimeMs = null, recomputeCount = 0) {
@@ -4019,12 +4215,12 @@ var VisualizationWorkspace = class {
     this.elements.fileInput.addEventListener("change", () => {
       const file = this.elements.fileInput.files?.item(0);
       if (!file) return;
-      this.loadFile(file).catch((error) => this.showError(error instanceof Error ? error.message : String(error))).finally(() => {
+      this.loadReplayLogFile(file).catch((error) => this.showError(error instanceof Error ? error.message : String(error))).finally(() => {
         this.elements.fileInput.value = "";
       });
     });
     this.elements.range.addEventListener("input", () => {
-      this.time = finiteNumber(this.elements.range.value);
+      this.time = finiteNumber2(this.elements.range.value);
       this.render();
     });
     this.elements.playButton.addEventListener("click", () => {
@@ -4036,7 +4232,7 @@ var VisualizationWorkspace = class {
       this.render();
     }));
     this.elements.speed.addEventListener("change", () => {
-      this.playbackSpeed = Math.max(0.25, finiteNumber(this.elements.speed.value, DEFAULT_PLAYBACK_SPEED));
+      this.playbackSpeed = Math.max(0.25, finiteNumber2(this.elements.speed.value, DEFAULT_PLAYBACK_SPEED));
     });
     this.elements.performanceWindow.addEventListener("change", () => {
       this.performanceWindowMode = this.elements.performanceWindow.value === "full" ? "full" : "steady";
@@ -4085,7 +4281,7 @@ var VisualizationWorkspace = class {
   /** 从当前时间开始播放；到达末尾时自动回到起点。 */
   play() {
     if (!this.moves.length || this.playing) return;
-    const endTime = finiteNumber(this.elements.range.max);
+    const endTime = finiteNumber2(this.elements.range.max);
     if (this.time >= endTime) {
       this.time = 0;
       this.elements.range.value = "0";
@@ -4108,7 +4304,7 @@ var VisualizationWorkspace = class {
     if (!this.playing) return;
     const elapsedSeconds = Math.max(0, timestamp - this.previousFrameTime) / 1e3;
     this.previousFrameTime = timestamp;
-    const endTime = finiteNumber(this.elements.range.max);
+    const endTime = finiteNumber2(this.elements.range.max);
     const advancedTime = Math.min(endTime, this.time + elapsedSeconds * this.playbackSpeed);
     this.time = advancedTime;
     this.elements.range.value = String(this.time);
@@ -4213,10 +4409,10 @@ var VisualizationWorkspace = class {
     if (this.analysis) updateReplayThroughput(this.root, this.time, updateThroughputChartRange);
     this.elements.activeMoves.innerHTML = snapshot.activeMoves.length ? snapshot.activeMoves.map((move) => `
         <li>
-          <span class="active-move-id">#${finiteNumber(move.MoveID)}</span>
-          <strong>${escapeHtml(MOVE_NAMES[finiteNumber(move.MoveType, -1)] ?? `\u52A8\u4F5C ${move.MoveType}`)}</strong>
+          <span class="active-move-id">#${finiteNumber2(move.MoveID)}</span>
+          <strong>${escapeHtml(MOVE_NAMES[finiteNumber2(move.MoveType, -1)] ?? `\u52A8\u4F5C ${move.MoveType}`)}</strong>
           <span>${escapeHtml(move.ModuleName || activeTarget(move) || "\u2014")}</span>
-          <time>${formatSeconds(finiteNumber(move.StartTime))}\u2013${formatSeconds(finiteNumber(move.EndTime))} s</time>
+          <time>${formatSeconds(finiteNumber2(move.StartTime))}\u2013${formatSeconds(finiteNumber2(move.EndTime))} s</time>
         </li>`).join("") : '<li class="active-move-empty">\u5F53\u524D\u65F6\u523B\u6CA1\u6709\u6267\u884C\u4E2D\u7684\u52A8\u4F5C</li>';
   }
   /** 返回不晚于当前时刻的最近原子动作边界。 */
@@ -4371,17 +4567,10 @@ var VisualizationWorkspace = class {
     this.elements.playbackEmpty.classList.remove("is-loading");
     this.elements.playbackEmpty.classList.add("is-error");
     const errorMarkup = `
-      <strong>\u65E0\u6CD5\u52A0\u8F7D MoveList</strong>
+      <strong>\u65E0\u6CD5\u52A0\u8F7D\u590D\u73B0\u65E5\u5FD7</strong>
       <span>${escapeHtml(message)}</span>
-      <label class="btn visual-import-button">${icon("upload")}\u91CD\u65B0\u9009\u62E9\u6587\u4EF6<input type="file" accept=".json,application/json" data-visual-retry></label>`;
+      <span>\u8BF7\u4F7F\u7528\u53F3\u4E0A\u89D2\u201C\u5BFC\u5165\u65E5\u5FD7\u201D\u91CD\u65B0\u9009\u62E9\u6587\u4EF6\u3002</span>`;
     this.elements.playbackEmpty.innerHTML = errorMarkup;
-    [this.elements.playbackEmpty].forEach((container) => {
-      const retryInput = container.querySelector("[data-visual-retry]");
-      retryInput?.addEventListener("change", () => {
-        const file = retryInput.files?.item(0);
-        if (file) this.loadFile(file).catch((error) => this.showError(error instanceof Error ? error.message : String(error)));
-      });
-    });
   }
 };
 function createVisualizationWorkspace(root = document) {
@@ -4408,6 +4597,7 @@ function createVisualizationWorkspace(root = document) {
   normalizeDecisionTrace,
   normalizeLoadPortReplenishments,
   normalizeMovePayload,
+  normalizeReplayLogPayload,
   primitiveDecisionBoundaryTimes,
   projectTopologyTransfers,
   renderDecisionLens,

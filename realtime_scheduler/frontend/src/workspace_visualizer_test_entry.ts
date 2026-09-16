@@ -19,6 +19,7 @@ export {
   normalizeDecisionTrace,
   normalizeLoadPortReplenishments,
   normalizeMovePayload,
+  normalizeReplayLogPayload,
   primitiveDecisionBoundaryTimes,
   renderEquipmentTopology,
   renderFrontSlotOverview,

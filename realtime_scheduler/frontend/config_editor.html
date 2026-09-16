@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>调度平台</title>
   <link rel="stylesheet" href="/assets/katex.min.css?v=1.4.4">
-  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.2">
-  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.2">
+  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.3">
+  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.3">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -40,7 +40,7 @@
       <div class="sidebar-footer">
         <span class="sidebar-footer-label">系统状态</span>
         <div class="service-pill" id="serviceState">本地服务</div>
-        <span class="frontend-version">V1.6.2</span>
+        <span class="frontend-version">V1.6.3</span>
       </div>
     </aside>
 
@@ -131,18 +131,18 @@
         <div class="tab-view" data-tab-view="playback">
           <article class="visual-workbench playback-workbench">
             <div class="visual-toolbar playback-toolbar-placeholder" id="visualToolbar" aria-hidden="true"></div>
+            <div class="playback-log-import">
+              <button class="btn primary playback-log-import-button" id="visualImportButton" type="button" aria-label="导入复现日志">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v5h14v-5"/></svg>
+                导入日志
+              </button>
+              <input id="visualFileInput" type="file" accept=".json,application/json" hidden>
+            </div>
 
             <div class="visual-empty" id="visualPlaybackEmpty">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg>
-              <strong>等待 MoveList</strong>
-              <span>运行一次计划，或导入已有的 MoveList JSON 文件后查看设备拓扑并开始回放。</span>
-            </div>
-            <div class="visual-empty-import">
-              <label class="btn visual-import-button">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v5h14v-5"/></svg>
-                导入 MoveList
-                <input id="visualFileInput" type="file" accept=".json,application/json">
-              </label>
+              <strong>等待回放数据</strong>
+              <span>运行一次计划，或使用右上角“导入日志”载入平台复现日志后开始回放。</span>
             </div>
 
             <section class="topology-playback" id="visualTopologyPlayback" hidden aria-label="回放诊断">
@@ -179,10 +179,6 @@
                       </select>
                     </label>
                     <div class="topology-toolbar-actions" aria-label="回放工具">
-                      <button class="btn toolbar-import" id="visualImportButton" type="button" aria-label="导入 MoveList">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v5h14v-5"/></svg>
-                        <span class="toolbar-label-full">导入 MoveList</span><span class="toolbar-label-compact">导入</span>
-                      </button>
                       <a class="btn toolbar-gantt" id="visualOpenGantt" href="#" target="_blank" aria-label="打开甘特图" aria-disabled="true">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v14h16M8 15v-3m4 3V8m4 7v-5"/></svg>
                         <span class="toolbar-label-full">打开甘特图</span><span class="toolbar-label-compact">甘特图</span>
@@ -787,7 +783,7 @@
     </aside>
   </dialog>
 
-  <script type="module" src="/assets/config_editor.js?v=1.6.2"></script>
+  <script type="module" src="/assets/config_editor.js?v=1.6.3"></script>
   <dialog id="testDraftDialog" aria-labelledby="testDraftTitle">
     <h2 id="testDraftTitle">测试有未保存的修改</h2><p>保存后再离开，或放弃本次修改。</p>
     <form method="dialog" class="editor-save-actions"><button class="btn" value="cancel" autofocus>继续编辑</button><button class="btn" value="discard">放弃修改</button><button class="btn primary" value="save">保存并继续</button></form>

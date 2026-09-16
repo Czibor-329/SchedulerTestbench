@@ -20,6 +20,7 @@ import { projectTopologyTransfers } from "./topology_transfer_projection";
 import { projectLoadLockDoors, type LoadLockDoors } from "./topology_loadlock_doors";
 import { atmosphereRailMotion, type AtmosphereRailMotion } from "./topology_atmosphere_rail";
 import { renderRobotSlotRow } from "./topology_robot_slots";
+import { reconstructExecutionLog } from "./gantt_execution_compare";
 import type {
   ActivityCategory,
   BottleneckUtilizationSummary,
@@ -346,6 +347,74 @@ export function normalizeMovePayload(payload: unknown): MoveRecord[] {
       Boolean(record) && typeof record === "object" && !Array.isArray(record)
     ))
     .map(record => ({ ...record }));
+}
+
+export interface ReplayLogPayload {
+  moves: MoveRecord[];
+  device: DeviceDefinition | null;
+  loadPortReplenishments: LoadPortReplenishment[];
+}
+
+/**
+ * 将平台复现日志还原为拓扑回放输入。
+ *
+ * 日志中的每个 ``AlgOutput`` 只代表当代计划；这里复用甘特图的跨代拼接规则，
+ * 并用 ``AlgUpdateMove`` 的 Running/Done 时间覆盖原计划时间。普通 MoveList 数组
+ * 或结果对象不属于日志，必须明确拒绝，避免用户误以为两类文件语义相同。
+ */
+export function normalizeReplayLogPayload(payload: unknown): ReplayLogPayload {
+  const logEntries = Array.isArray(payload) ? payload : null;
+  const reconstruction = logEntries ? reconstructExecutionLog(logEntries) : null;
+  if (!reconstruction) {
+    throw new Error("文件必须是包含 AlgOutput 的平台复现日志，普通 MoveList 文件不受支持");
+  }
+
+  const moves = reconstruction.records.map(record => {
+    const actualStart = record.actualStart ?? record.planStart;
+    const actualEnd = record.actualEnd
+      ?? (record.actualStart === null
+        ? record.planEnd
+        : actualStart + Math.max(0, record.planEnd - record.planStart));
+    return {
+      ...record.raw,
+      PlannedStartTime: record.planStart,
+      PlannedEndTime: record.planEnd,
+      StartTime: actualStart,
+      EndTime: actualEnd,
+    } as MoveRecord;
+  });
+
+  const entries = logEntries.filter((entry): entry is UnknownRecord => (
+    Boolean(entry) && typeof entry === "object" && !Array.isArray(entry)
+  ));
+  const scheduleUpdates = entries
+    .filter(entry => entry.Describe === "AlgSchedule")
+    .map(entry => entry.Info)
+    .filter((info): info is UnknownRecord => Boolean(info) && typeof info === "object" && !Array.isArray(info));
+  const topologyInfo = entries
+    .filter(entry => entry.Describe === "AlgInit" || entry.Describe === "AlgSchedule")
+    .map(entry => entry.Info)
+    .find((info): info is UnknownRecord => (
+      Boolean(info)
+      && typeof info === "object"
+      && !Array.isArray(info)
+      && Boolean((info as UnknownRecord).Stations)
+      && Boolean((info as UnknownRecord).Robots)
+    ));
+  const device = topologyInfo
+    ? {
+        Stations: structuredClone(topologyInfo.Stations as DeviceDefinition["Stations"]),
+        Robots: structuredClone(topologyInfo.Robots as DeviceDefinition["Robots"]),
+      }
+    : null;
+
+  return {
+    moves,
+    device,
+    loadPortReplenishments: normalizeLoadPortReplenishments({
+      ReplayContext: { updates: scheduleUpdates },
+    }),
+  };
 }
 
 /** 规范旧结果文件中的候选字段；当前动作状态卡片不会展示这些字段。 */
@@ -1889,12 +1958,11 @@ function collectElements(root: Document): WorkspaceElements {
 }
 
 /** 生成统一线性 SVG 图标，避免用 Emoji 充当结构图标。 */
-function icon(name: "play" | "pause" | "robot" | "upload"): string {
+function icon(name: "play" | "pause" | "robot"): string {
   const paths = {
     play: '<path d="M8 5v14l11-7z"/>',
     pause: '<path d="M7 5h4v14H7zM15 5h4v14h-4z"/>',
     robot: '<rect x="5" y="7" width="14" height="11" rx="3"/><path d="M12 3v4M8 12h.01M16 12h.01M9 18v3M15 18v3"/>',
-    upload: '<path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v5h14v-5"/>',
   };
   return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths[name]}</svg>`;
 }
@@ -4142,27 +4210,9 @@ export class VisualizationWorkspace {
     }
   }
 
-  /** 加载浏览器中选择的 MoveList 文件。 */
+  /** 加载内部调用或测试夹具提供的 MoveList 文件；页面文件入口不调用此方法。 */
   async loadFile(file: File): Promise<void> {
     const payload = JSON.parse(await file.text()) as unknown;
-    const metadata = payload && typeof payload === "object" && !Array.isArray(payload)
-      ? ((payload as UnknownRecord).RunMetricsMetadata ?? (payload as UnknownRecord).ProductionMetricsMetadata)
-      : null;
-    const rawCpuTimeMs = metadata && typeof metadata === "object" && !Array.isArray(metadata)
-      ? Number((metadata as UnknownRecord).cpuTimeMs ?? Number((metadata as UnknownRecord).calculationSeconds) * 1000)
-      : Number.NaN;
-    const recomputePoints = payload && typeof payload === "object" && !Array.isArray(payload)
-      ? (payload as UnknownRecord).RecomputePoints
-      : null;
-    const metadataRecomputeCount = metadata && typeof metadata === "object" && !Array.isArray(metadata)
-      ? Number((metadata as UnknownRecord).recomputeCount)
-      : Number.NaN;
-    const rawRecomputeCount = Number.isFinite(metadataRecomputeCount)
-      ? metadataRecomputeCount
-      // 旧结果仅有 RecomputePoints；它不包含首轮算法 update。
-      : Array.isArray(recomputePoints) && Number.isFinite(rawCpuTimeMs)
-        ? recomputePoints.length + 1
-        : 0;
     await this.loadMoves(
       normalizeMovePayload(payload),
       normalizeDecisionTrace(payload),
@@ -4170,8 +4220,29 @@ export class VisualizationWorkspace {
       file.name,
       "",
       "",
-      Number.isFinite(rawCpuTimeMs) ? Math.max(rawCpuTimeMs, 0) : null,
-      Number.isFinite(rawRecomputeCount) ? Math.max(0, Math.trunc(rawRecomputeCount)) : 0,
+      null,
+      0,
+    );
+  }
+
+  /** 加载用户在回放页选择的平台复现日志。 */
+  private async loadReplayLogFile(file: File): Promise<void> {
+    this.setLoading(true, "正在解析复现日志…");
+    const payload = JSON.parse(await file.text()) as unknown;
+    const replayLog = normalizeReplayLogPayload(payload);
+    if (replayLog.device) this.device = replayLog.device;
+    this.setReplayPlan(null);
+    this.analysisRoutes = [];
+    this.analysisRounds = [];
+    await this.loadMoves(
+      replayLog.moves,
+      [],
+      replayLog.loadPortReplenishments,
+      file.name,
+      "",
+      "",
+      null,
+      0,
     );
   }
 
@@ -4408,8 +4479,8 @@ export class VisualizationWorkspace {
     this.elements.playbackEmpty.classList.remove("is-loading", "is-error");
     this.elements.playbackEmpty.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg>
-      <strong>等待 MoveList</strong>
-      <span>运行一次计划，或导入已有的 MoveList JSON 文件后查看设备拓扑并开始回放。</span>`;
+      <strong>等待回放数据</strong>
+      <span>运行一次计划，或使用右上角“导入日志”载入平台复现日志后开始回放。</span>`;
   }
 
   /** 接收规范化后的 MoveList 并重置时间轴。 */
@@ -4487,7 +4558,7 @@ export class VisualizationWorkspace {
     this.elements.fileInput.addEventListener("change", () => {
       const file = this.elements.fileInput.files?.item(0);
       if (!file) return;
-      this.loadFile(file)
+      this.loadReplayLogFile(file)
         .catch(error => this.showError(error instanceof Error ? error.message : String(error)))
         .finally(() => { this.elements.fileInput.value = ""; });
     });
@@ -4882,17 +4953,10 @@ export class VisualizationWorkspace {
     this.elements.playbackEmpty.classList.remove("is-loading");
     this.elements.playbackEmpty.classList.add("is-error");
     const errorMarkup = `
-      <strong>无法加载 MoveList</strong>
+      <strong>无法加载复现日志</strong>
       <span>${escapeHtml(message)}</span>
-      <label class="btn visual-import-button">${icon("upload")}重新选择文件<input type="file" accept=".json,application/json" data-visual-retry></label>`;
+      <span>请使用右上角“导入日志”重新选择文件。</span>`;
     this.elements.playbackEmpty.innerHTML = errorMarkup;
-    [this.elements.playbackEmpty].forEach(container => {
-      const retryInput = container.querySelector<HTMLInputElement>("[data-visual-retry]");
-      retryInput?.addEventListener("change", () => {
-        const file = retryInput.files?.item(0);
-        if (file) this.loadFile(file).catch(error => this.showError(error instanceof Error ? error.message : String(error)));
-      });
-    });
   }
 }
 
