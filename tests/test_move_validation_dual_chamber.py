@@ -141,6 +141,66 @@ def test_dual_chamber_mixed_process_times_still_require_process_move() -> None:
     assert issues
     assert "没有匹配的已完成物料" in issues[0]
 
+
+def test_aligner_zero_route_step_does_not_consume_explicit_alignment_move() -> None:
+    """Aligner 的逻辑零时长 Route 不能在关门时抢先完成显式物理校准。"""
+    route = _zero_duration_pm_route(station="Aligner1")
+    update = {
+        "Stations": {
+            "P1": {"Type": "LoadPort", "Capacity": 1},
+            "Aligner1": {"Type": "Aligner", "Capacity": 1},
+        },
+        "Robots": {
+            "ATMRobot": {
+                "Type": "ATMRobot",
+                "Capacity": 2,
+                "ArmInfo": {
+                    "ArmA": {
+                        "Name": "ArmA",
+                        "IsEnable": True,
+                        "SlotIDs": [1, 2],
+                        "AccessibleStations": ["P1", "Aligner1"],
+                    }
+                },
+            }
+        },
+        "Materials": [{
+            "ID": 101,
+            "CurrentModuleName": "P1",
+            "SlotID": 1,
+            "StepID": 4,
+            "Route": route,
+        }],
+    }
+    moves = [
+        _move(1, 6, 0, 0, ModuleName="P1", MatIDList=[101], RelatedActionType=1),
+        _move(
+            2, 0, 0, 1, ModuleName="ATMRobot", Robot="ATMRobot",
+            MatIDList=[101], SrcStationList=["P1"], SrcSlotList=[1],
+            RobotSlotList=[1], StepIDList=[4],
+        ),
+        _move(3, 7, 1, 1, ModuleName="P1", MatIDList=[101]),
+        _move(
+            4, 5, 1, 2, ModuleName="ATMRobot", Robot="ATMRobot",
+            MatIDList=[101], SrcStationList=["P1"],
+            DestStationList=["Aligner1"], RobotSlotList=[1],
+        ),
+        _move(5, 6, 2, 2, ModuleName="Aligner1", MatIDList=[101], RelatedActionType=0),
+        _move(
+            6, 1, 2, 2, ModuleName="ATMRobot", Robot="ATMRobot",
+            MatIDList=[101], DestStationList=["Aligner1"],
+            DestSlotList=[1], RobotSlotList=[1], StepIDList=[4],
+        ),
+        _move(7, 7, 2, 2, ModuleName="Aligner1", MatIDList=[101]),
+        _move(
+            8, 9, 2, 10.5, ModuleName="Aligner1", Station="Aligner1",
+            MatIDList=[101], SlotList=[1], ProcessRecipe="",
+        ),
+    ]
+
+    assert validate_move_list(None, moves, update) == []
+
+
 def test_empty_pretrans_may_carry_future_pick_material_id() -> None:
     """Pick 明确引用的空载 PreTrans 可用 MatIDList 标注将要运输的晶圆。"""
     moves = [

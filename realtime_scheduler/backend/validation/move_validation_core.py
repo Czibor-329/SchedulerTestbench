@@ -1673,10 +1673,10 @@ def _apply_omitted_zero_duration_process(
 ) -> None:
     """为当前腔室内可证明的零时长驻片补齐已加工状态。
 
-    双腔必须两槽同时完成：只有全部未加工驻片都能证明为零时长，才一起补齐。
-    单腔仍按片补齐。库存站和 LoadLock 不走产品 Process 语义。
+    只允许双腔 PM 省略逻辑层的零时长 ProcessMove，并且必须两槽同时完成。
+    Aligner 即使逻辑 Route 时长为零，也必须保留物理解包生成的显式校准动作。
     """
-    if station.is_load_lock or station.completes_material_on_place:
+    if not _is_paired_process_chamber(station):
         return
     unprocessed = [
         slot
@@ -1685,18 +1685,13 @@ def _apply_omitted_zero_duration_process(
     ]
     if not unprocessed:
         return
-    if _is_paired_process_chamber(station):
-        if not all(
-            _is_omitted_zero_duration_process(state, station.name, slot.material)
-            for slot in unprocessed
-        ):
-            return
-        for slot in unprocessed:
-            _finish_omitted_zero_duration_slot(state, station.name, slot)
+    if not all(
+        _is_omitted_zero_duration_process(state, station.name, slot.material)
+        for slot in unprocessed
+    ):
         return
     for slot in unprocessed:
-        if _is_omitted_zero_duration_process(state, station.name, slot.material):
-            _finish_omitted_zero_duration_slot(state, station.name, slot)
+        _finish_omitted_zero_duration_slot(state, station.name, slot)
 
 
 def _zero_duration_environment_transitions(

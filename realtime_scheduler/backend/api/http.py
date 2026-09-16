@@ -79,8 +79,10 @@ def _evaluate_replay_action_context(payload: Mapping[str, Any]) -> Dict[str, Any
         if float(move.get("StartTime") or 0.0)
         <= replay_time + TIME_TOLERANCE
     ]
+    plan_strategy = str(raw_plan.get("strategy") or "")
     action_context = {
         "schemaVersion": 1,
+        "Strategy": plan_strategy,
         "CurrentTime": replay_time,
         "ToolTopo": raw_plan["device"],
         "UpdateParams": update_params,
@@ -88,7 +90,6 @@ def _evaluate_replay_action_context(payload: Mapping[str, Any]) -> Dict[str, Any
         "MoveStates": replay_move_states,
     }
     algorithm_action_diagnostics = None
-    plan_strategy = str(raw_plan.get("strategy") or "")
     if payload.get("includeActions", True):
         if plan_strategy.startswith(OTHER_ALGORITHM_STRATEGY_PREFIX):
             algorithm_id = plan_strategy.removeprefix(OTHER_ALGORITHM_STRATEGY_PREFIX)
