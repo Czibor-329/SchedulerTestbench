@@ -43,7 +43,12 @@ def _argument_parser() -> argparse.ArgumentParser:
         help="按自然顺序只运行前 N 项，适合快速复现",
     )
     parser.add_argument("--strategy", default="heuristic", help="算法策略，默认 heuristic")
-    parser.add_argument("--workers", type=int, default=1, help="并发数 1-4，默认 1 便于复现")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="并发数，上限同批量执行服务；默认 1 便于复现",
+    )
     parser.add_argument("--process-isolation", action="store_true", help="使用平台已有的隔离进程运行整组回归；单次耗时基准仍用一个 worker")
     parser.add_argument(
         "--with-baseline",
@@ -162,10 +167,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _argument_parser().parse_args(argv)
     if not args.list and (not args.device or args.group is None):
         raise ValueError("运行测试集必须同时指定 --device 和 --group；可先用 --list 查询")
-    if not 1 <= args.workers <= 4:
-        raise ValueError("--workers 必须在 1 到 4 之间")
-
     from realtime_scheduler.backend import application as scheduler_server
+    from realtime_scheduler.backend.execution.batch_service import (
+        MAXIMUM_BATCH_WORKERS,
+    )
+
+    # 并发上限直接引用批量执行服务的上限，避免终端入口维护第二个真相来源。
+    if not 1 <= args.workers <= MAXIMUM_BATCH_WORKERS:
+        raise ValueError(
+            f"--workers 必须在 1 到 {MAXIMUM_BATCH_WORKERS} 之间",
+        )
 
     devices = scheduler_server.list_workspace_devices()
     if args.list and not args.device:
