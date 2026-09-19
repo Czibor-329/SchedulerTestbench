@@ -15,6 +15,7 @@ from realtime_scheduler.backend.workspace.repository import *
 from realtime_scheduler.backend.workspace.catalog_service import *
 from realtime_scheduler.backend.workspace.exchange_service import *
 from realtime_scheduler.backend.workspace.transfer_jobs import *
+from realtime_scheduler.backend.company_capacity_baselines import *
 from realtime_scheduler.backend.artifacts.repository import *
 from realtime_scheduler.backend.preferences.repository import *
 from realtime_scheduler.backend.wiring import *

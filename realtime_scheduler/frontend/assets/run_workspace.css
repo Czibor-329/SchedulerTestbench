@@ -28,7 +28,8 @@
 .catalog-toolbar { display: grid; grid-template-columns: minmax(145px, .8fr) minmax(240px, 1.5fr) auto; align-items: center; gap: 10px; padding: 14px 16px; }
 .catalog-toolbar .workspace-device-controls { grid-template-columns: minmax(145px, 1fr) auto; }
 .catalog-group-control > .compact-select { min-width: 180px; flex: 1; }
-.catalog-new-test { white-space: nowrap; }
+.catalog-new-test, .catalog-primary-actions { white-space: nowrap; }
+.catalog-primary-actions { display: flex; gap: 8px; }
 .catalog-toolbar .workspace-status { max-width: 180px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .catalog-group-hint { margin: -8px 16px 0; padding: 0 0 2px; }
 .catalog-group-hint:empty { display: none; }
@@ -41,6 +42,8 @@
 @keyframes test-creation-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .test-creation-spinner { animation-duration: 1.5s; } }
 .test-list-name { min-width: 0; overflow-wrap: anywhere; }
+.test-list-name strong { display: block; }
+.test-list-baseline { display: inline-block; margin-top: 4px; color: #44698f; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .test-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .text-back-button { padding: 0; border: 0; color: var(--brand); background: transparent; font-weight: 800; cursor: pointer; }
 #testEditorPanel { width: 100%; max-width: 100%; overflow: hidden; }

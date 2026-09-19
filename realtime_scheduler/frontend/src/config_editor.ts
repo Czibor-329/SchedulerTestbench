@@ -141,7 +141,7 @@ const ROBOT_ACTION_TIME_FIELDS = [
 ];
 
 const state = {
-  workspaceDevices: [], workspaceDevice: null, workspaceDeviceId: "", testCaseId: "", testCaseName: "", testCaseGroup: "", activeTestGroup: "", serviceCompatible: false, dirty: false,
+  workspaceDevices: [], workspaceDevice: null, workspaceDeviceId: "", testCaseId: "", testCaseName: "", testCaseGroup: "", activeTestGroup: "", companyCapacityBaselines: [], serviceCompatible: false, dirty: false,
   activeBatchId: "", batchRunning: false, batchCancelRequested: false, batchCancelSent: false, batchResult: null,
   deviceName: "", baseDevice: null, device: null, stationNames: [], loadPorts: [], processModules: [], robotNames: [], robotScopes: {}, robotSlots: {}, robotSlotsSaving: new Set(),
   deviceConfigSection: "station-time", deviceStationName: "", deviceRobotName: "", deviceRobotTransferAxes: {}, deviceRobotTransferSources: {}, deviceTimingDraft: null, deviceTimingDirty: false, deviceTimingSaving: false, deviceTimingStatusMessage: "选择设备后开始配置",
@@ -1673,6 +1673,13 @@ function renderWorkspaceControls() {
 }
 
 /** 绘制当前测试组的只读目录卡片；名称居左、操作居右，编辑入口与内容表单保持分离。 */
+function companyCapacityBaselineFor(deviceName, testName) {
+  const key = `${String(deviceName || "").trim().toLocaleLowerCase()}\u0000${String(testName || "").trim().toLocaleLowerCase()}`;
+  const row = state.companyCapacityBaselines.find(item => `${String(item.deviceName || "").trim().toLocaleLowerCase()}\u0000${String(item.testName || "").trim().toLocaleLowerCase()}` === key);
+  const value = Number(row?.baselineWph);
+  return Number.isFinite(value) ? value : null;
+}
+
 function renderTestCatalog(tests) {
   const body = document.getElementById("testCatalogBody");
   if (!body) return;
@@ -1680,8 +1687,10 @@ function renderTestCatalog(tests) {
   const disabled = pending ? "disabled" : "";
   const rows = tests.map(test => {
     const copyLabel = pending?.mode === "copy" && pending.sourceTestId === test.id ? "复制中…" : "复制";
+    const baseline = companyCapacityBaselineFor(state.workspaceDevice?.name, test.name);
+    const baselineLabel = Number.isFinite(baseline) ? `<span class="test-list-baseline">Baseline ${baseline.toFixed(1)} 片/h</span>` : "";
     return `<div class="test-list-row" data-test-row="${escapeHtml(test.id)}" role="listitem">
-      <strong class="test-list-name">${escapeHtml(test.name || "未命名测试")}</strong>
+      <div class="test-list-name"><strong>${escapeHtml(test.name || "未命名测试")}</strong>${baselineLabel}</div>
       <div class="test-row-actions"><button class="btn small primary" type="button" data-test-action="edit" data-test-id="${escapeHtml(test.id)}" ${disabled}>编辑</button><button class="btn small" type="button" data-test-action="copy" data-test-id="${escapeHtml(test.id)}" ${disabled}>${copyLabel}</button><button class="btn small danger" type="button" data-test-action="delete" data-test-id="${escapeHtml(test.id)}" ${state.workspaceDevice?.tests?.length <= 1 || pending ? "disabled" : ""}>删除</button></div>
     </div>`;
   }).join("");
@@ -1691,6 +1700,24 @@ function renderTestCatalog(tests) {
   </div>` : "";
   body.innerHTML = rows + pendingRow;
   body.setAttribute("aria-busy", String(Boolean(pending)));
+}
+
+/** 上传公司产能 CSV，并刷新当前用例卡片的 Baseline 显示。 */
+async function importCompanyCapacityBaseline(file: File) {
+  const response = await fetch("/api/company-capacity-baselines/import", {
+    method: "POST", headers: { "Content-Type": "text/csv" }, body: file,
+  });
+  const result = await response.json();
+  if (!response.ok || result?.ok === false) throw new Error(result?.error || "Baseline 导入失败");
+  state.companyCapacityBaselines = await loadCompanyCapacityBaselines();
+  renderWorkspaceControls();
+  setWorkspaceStatus(`已导入 ${result.rowCount} 条产能 Baseline`, "saved");
+}
+
+/** 读取独立的公司产能快照，供用例卡片按设备和名称精确匹配。 */
+async function loadCompanyCapacityBaselines() {
+  const result = await requestJson("/api/company-capacity-baselines");
+  return Array.isArray(result.baselines) ? result.baselines : [];
 }
 
 /** 进入用例编辑态；目录选择和表格暂时收起。 */
@@ -2575,7 +2602,7 @@ async function selectWorkspaceDevice(deviceId, preferredTestId = "") {
 
 /** 加载设备目录，并选择指定设备或目录中的第一台设备。 */
 async function loadWorkspaceCatalog(preferredDeviceId = "", preferredTestId = "") {
-  const result = await requestJson("/api/workspaces"); state.workspaceDevices = result.devices;
+  const [result, baselines] = await Promise.all([requestJson("/api/workspaces"), loadCompanyCapacityBaselines()]); state.workspaceDevices = result.devices; state.companyCapacityBaselines = baselines;
   const deviceId = result.devices.some(device => device.id === preferredDeviceId) ? preferredDeviceId : result.devices[0]?.id;
   if (deviceId) await selectWorkspaceDevice(deviceId, preferredTestId); else resetWorkspaceSelection();
 }
@@ -5011,6 +5038,7 @@ function renderBatchItems(items) {
     const summaryNote = failed ? "" : summaryError;
     const displayId = `t${index + 1}`;
     const testId = String(item.testId || "");
+    const companyBaseline = companyCapacityBaselineFor(state.workspaceDevice?.name, item.testName);
     return `
       <div class="batch-result ${escapeHtml(item.status || "queued")} ${testId === expandedBatchTestId ? "details-open" : ""}" data-batch-test-card="${escapeHtml(testId)}" role="button" tabindex="0" aria-expanded="${testId === expandedBatchTestId}" aria-label="${escapeHtml(item.testName || `测试 ${index + 1}`)}：单击查看详情，双击加入运行队列" title="单击查看只读配置；双击加入运行队列">
         <div class="batch-result-head">
@@ -5025,7 +5053,7 @@ function renderBatchItems(items) {
         </div>
         <div class="batch-result-summary">
           <div class="batch-metric-tags" aria-label="主要指标">
-            <span class="batch-metric-tag production">${hasThroughput ? `产能 ${throughput.toFixed(1)} 片/h` : `Makespan ${hasMetrics && Number.isFinite(Number(item.makespan)) ? `${Number(item.makespan).toFixed(2)} s` : "—"}`}</span>
+            <span class="batch-metric-tag production">${companyBaseline === null ? (hasThroughput ? `产能 ${throughput.toFixed(1)} 片/h` : "产能 -") : `产能 ${hasThroughput ? throughput.toFixed(1) : "-"}/${companyBaseline.toFixed(1)} 片/h`}</span>
             <span class="batch-metric-tag recompute">平均重算 ${hasMetrics && hasAverageRecomputeTime ? `${averageRecomputeTime.toFixed(1)} ms` : "—"}</span>
           </div>
           ${summaryNote ? `<span class="summary-error" title="${escapeHtml(summaryNote)}">${escapeHtml(summaryNote)}</span>` : ""}
@@ -5443,6 +5471,15 @@ document.getElementById("cleanDialogForm").addEventListener("submit", event => {
 });
 document.getElementById("workspaceImportButton").addEventListener("click", () => openDataTransferDialog("import"));
 document.getElementById("workspaceExportButton").addEventListener("click", () => openDataTransferDialog("export"));
+document.getElementById("importCompanyBaselineButton").addEventListener("click", () => document.getElementById("companyBaselineFile").click());
+document.getElementById("companyBaselineFile").addEventListener("change", event => {
+  const input = event.currentTarget as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  importCompanyCapacityBaseline(file)
+    .catch(error => setWorkspaceStatus(`Baseline 导入失败：${error.message}`, "dirty"))
+    .finally(() => { input.value = ""; });
+});
 document.getElementById("dataTransferDialogClose").addEventListener("click", () => (document.getElementById("dataTransferDialog") as HTMLDialogElement).close());
 document.getElementById("dataTransferDialog").addEventListener("cancel", event => {
   if (document.getElementById("dataTransferDialog").classList.contains("is-busy")) event.preventDefault();

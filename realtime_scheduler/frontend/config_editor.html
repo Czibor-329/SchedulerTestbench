@@ -111,7 +111,7 @@
             <div class="catalog-toolbar">
               <div class="workspace-device-controls"><select id="deviceSelect" data-compact-label="设备" aria-label="设备"><option value="">尚未导入设备</option></select></div>
               <div class="workspace-control-row catalog-group-control"><select id="testGroupSelect" data-compact-label="测试组别" aria-label="测试组别"><option value="">尚无测试组</option></select><div class="workspace-icon-actions" aria-label="测试组别操作"><button class="btn workspace-icon-button" id="newGroupButton" type="button" title="新增组别" aria-label="新增组别" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button class="btn danger workspace-icon-button" id="deleteGroupButton" type="button" title="删除组别" aria-label="删除组别" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v5m4-5v5M9 7l1-2h4l1 2M7 7l1 13h8l1-13"/></svg></button><button class="btn workspace-icon-button" id="renameGroupButton" type="button" title="重命名组别" aria-label="重命名组别" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5V20h3.5L18 9.5 14.5 6 4 16.5zM13.5 7l3.5 3.5"/></svg></button></div></div>
-              <button class="btn primary catalog-new-test" id="newTestButton" type="button" disabled>＋ 新建测试</button>
+              <div class="catalog-primary-actions"><button class="btn" id="importCompanyBaselineButton" type="button">导入产能 Baseline</button><input id="companyBaselineFile" type="file" accept=".csv,text/csv" hidden><button class="btn primary catalog-new-test" id="newTestButton" type="button" disabled>＋ 新建测试</button></div>
               <div class="workspace-status sr-only" id="workspaceStatus" role="status" aria-live="polite"></div>
             </div>
           </article>

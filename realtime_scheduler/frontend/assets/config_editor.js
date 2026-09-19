@@ -5297,6 +5297,7 @@ var state = {
   testCaseName: "",
   testCaseGroup: "",
   activeTestGroup: "",
+  companyCapacityBaselines: [],
   serviceCompatible: false,
   dirty: false,
   activeBatchId: "",
@@ -6657,6 +6658,12 @@ function renderWorkspaceControls() {
   renderTestCatalog(visibleTests);
   compactSelectTargets().forEach(refreshCompactSelect);
 }
+function companyCapacityBaselineFor(deviceName, testName) {
+  const key = `${String(deviceName || "").trim().toLocaleLowerCase()}\0${String(testName || "").trim().toLocaleLowerCase()}`;
+  const row = state.companyCapacityBaselines.find((item) => `${String(item.deviceName || "").trim().toLocaleLowerCase()}\0${String(item.testName || "").trim().toLocaleLowerCase()}` === key);
+  const value = Number(row?.baselineWph);
+  return Number.isFinite(value) ? value : null;
+}
 function renderTestCatalog(tests) {
   const body = document.getElementById("testCatalogBody");
   if (!body) return;
@@ -6664,8 +6671,10 @@ function renderTestCatalog(tests) {
   const disabled = pending ? "disabled" : "";
   const rows = tests.map((test) => {
     const copyLabel = pending?.mode === "copy" && pending.sourceTestId === test.id ? "\u590D\u5236\u4E2D\u2026" : "\u590D\u5236";
+    const baseline = companyCapacityBaselineFor(state.workspaceDevice?.name, test.name);
+    const baselineLabel = Number.isFinite(baseline) ? `<span class="test-list-baseline">Baseline ${baseline.toFixed(1)} \u7247/h</span>` : "";
     return `<div class="test-list-row" data-test-row="${escapeHtml3(test.id)}" role="listitem">
-      <strong class="test-list-name">${escapeHtml3(test.name || "\u672A\u547D\u540D\u6D4B\u8BD5")}</strong>
+      <div class="test-list-name"><strong>${escapeHtml3(test.name || "\u672A\u547D\u540D\u6D4B\u8BD5")}</strong>${baselineLabel}</div>
       <div class="test-row-actions"><button class="btn small primary" type="button" data-test-action="edit" data-test-id="${escapeHtml3(test.id)}" ${disabled}>\u7F16\u8F91</button><button class="btn small" type="button" data-test-action="copy" data-test-id="${escapeHtml3(test.id)}" ${disabled}>${copyLabel}</button><button class="btn small danger" type="button" data-test-action="delete" data-test-id="${escapeHtml3(test.id)}" ${state.workspaceDevice?.tests?.length <= 1 || pending ? "disabled" : ""}>\u5220\u9664</button></div>
     </div>`;
   }).join("");
@@ -6675,6 +6684,22 @@ function renderTestCatalog(tests) {
   </div>` : "";
   body.innerHTML = rows + pendingRow;
   body.setAttribute("aria-busy", String(Boolean(pending)));
+}
+async function importCompanyCapacityBaseline(file) {
+  const response = await fetch("/api/company-capacity-baselines/import", {
+    method: "POST",
+    headers: { "Content-Type": "text/csv" },
+    body: file
+  });
+  const result = await response.json();
+  if (!response.ok || result?.ok === false) throw new Error(result?.error || "Baseline \u5BFC\u5165\u5931\u8D25");
+  state.companyCapacityBaselines = await loadCompanyCapacityBaselines();
+  renderWorkspaceControls();
+  setWorkspaceStatus(`\u5DF2\u5BFC\u5165 ${result.rowCount} \u6761\u4EA7\u80FD Baseline`, "saved");
+}
+async function loadCompanyCapacityBaselines() {
+  const result = await requestJson("/api/company-capacity-baselines");
+  return Array.isArray(result.baselines) ? result.baselines : [];
 }
 function showTestEditor() {
   document.getElementById("testCatalogView").hidden = true;
@@ -7203,8 +7228,9 @@ async function selectWorkspaceDevice(deviceId, preferredTestId = "") {
   showCurrentGroupTestCards(true);
 }
 async function loadWorkspaceCatalog(preferredDeviceId = "", preferredTestId = "") {
-  const result = await requestJson("/api/workspaces");
+  const [result, baselines] = await Promise.all([requestJson("/api/workspaces"), loadCompanyCapacityBaselines()]);
   state.workspaceDevices = result.devices;
+  state.companyCapacityBaselines = baselines;
   const deviceId = result.devices.some((device) => device.id === preferredDeviceId) ? preferredDeviceId : result.devices[0]?.id;
   if (deviceId) await selectWorkspaceDevice(deviceId, preferredTestId);
   else resetWorkspaceSelection();
@@ -9410,6 +9436,7 @@ function renderBatchItems(items) {
     const summaryNote = failed ? "" : summaryError;
     const displayId = `t${index + 1}`;
     const testId = String(item.testId || "");
+    const companyBaseline = companyCapacityBaselineFor(state.workspaceDevice?.name, item.testName);
     return `
       <div class="batch-result ${escapeHtml3(item.status || "queued")} ${testId === expandedBatchTestId ? "details-open" : ""}" data-batch-test-card="${escapeHtml3(testId)}" role="button" tabindex="0" aria-expanded="${testId === expandedBatchTestId}" aria-label="${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}\uFF1A\u5355\u51FB\u67E5\u770B\u8BE6\u60C5\uFF0C\u53CC\u51FB\u52A0\u5165\u8FD0\u884C\u961F\u5217" title="\u5355\u51FB\u67E5\u770B\u53EA\u8BFB\u914D\u7F6E\uFF1B\u53CC\u51FB\u52A0\u5165\u8FD0\u884C\u961F\u5217">
         <div class="batch-result-head">
@@ -9424,7 +9451,7 @@ function renderBatchItems(items) {
         </div>
         <div class="batch-result-summary">
           <div class="batch-metric-tags" aria-label="\u4E3B\u8981\u6307\u6807">
-            <span class="batch-metric-tag production">${hasThroughput ? `\u4EA7\u80FD ${throughput.toFixed(1)} \u7247/h` : `Makespan ${hasMetrics && Number.isFinite(Number(item.makespan)) ? `${Number(item.makespan).toFixed(2)} s` : "\u2014"}`}</span>
+            <span class="batch-metric-tag production">${companyBaseline === null ? hasThroughput ? `\u4EA7\u80FD ${throughput.toFixed(1)} \u7247/h` : "\u4EA7\u80FD -" : `\u4EA7\u80FD ${hasThroughput ? throughput.toFixed(1) : "-"}/${companyBaseline.toFixed(1)} \u7247/h`}</span>
             <span class="batch-metric-tag recompute">\u5E73\u5747\u91CD\u7B97 ${hasMetrics && hasAverageRecomputeTime ? `${averageRecomputeTime.toFixed(1)} ms` : "\u2014"}</span>
           </div>
           ${summaryNote ? `<span class="summary-error" title="${escapeHtml3(summaryNote)}">${escapeHtml3(summaryNote)}</span>` : ""}
@@ -9740,6 +9767,15 @@ document.getElementById("cleanDialogForm").addEventListener("submit", (event) =>
 });
 document.getElementById("workspaceImportButton").addEventListener("click", () => openDataTransferDialog("import"));
 document.getElementById("workspaceExportButton").addEventListener("click", () => openDataTransferDialog("export"));
+document.getElementById("importCompanyBaselineButton").addEventListener("click", () => document.getElementById("companyBaselineFile").click());
+document.getElementById("companyBaselineFile").addEventListener("change", (event) => {
+  const input = event.currentTarget;
+  const file = input.files?.[0];
+  if (!file) return;
+  importCompanyCapacityBaseline(file).catch((error) => setWorkspaceStatus(`Baseline \u5BFC\u5165\u5931\u8D25\uFF1A${error.message}`, "dirty")).finally(() => {
+    input.value = "";
+  });
+});
 document.getElementById("dataTransferDialogClose").addEventListener("click", () => document.getElementById("dataTransferDialog").close());
 document.getElementById("dataTransferDialog").addEventListener("cancel", (event) => {
   if (document.getElementById("dataTransferDialog").classList.contains("is-busy")) event.preventDefault();

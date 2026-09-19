@@ -14,6 +14,7 @@ from realtime_scheduler.backend.workspace.repository import *
 from realtime_scheduler.backend.workspace.catalog_service import *
 from realtime_scheduler.backend.workspace.exchange_service import *
 from realtime_scheduler.backend.workspace.transfer_jobs import *
+from realtime_scheduler.backend.company_capacity_baselines import *
 from realtime_scheduler.backend.artifacts.repository import *
 from realtime_scheduler.backend.artifacts.deadlock_diagnostic import *
 from realtime_scheduler.backend.analysis_jobs import (
@@ -291,6 +292,12 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
             except Exception as error:  # noqa: BLE001
                 self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
             return
+        if path == "/api/company-capacity-baselines":
+            try:
+                self._send_json({"ok": True, "baselines": read_company_capacity_baselines()})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
         if path.startswith("/api/workspaces/"):
             parts = [part for part in path.split("/") if part]
             if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "export":
@@ -404,6 +411,15 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                     {"ok": True, "transfer": transfer},
                     HTTPStatus.ACCEPTED,
                 )
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path == "/api/company-capacity-baselines/import":
+            try:
+                summary = import_company_capacity_baselines(
+                    self._read_binary_body(2 * 1024 * 1024),
+                )
+                self._send_json({"ok": True, **summary})
             except Exception as error:  # noqa: BLE001
                 self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
             return
