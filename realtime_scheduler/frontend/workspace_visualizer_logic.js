@@ -57,6 +57,7 @@ __export(workspace_visualizer_test_entry_exports, {
   setReplayInspectorExpanded: () => setReplayInspectorExpanded,
   simplifyThroughputPoints: () => simplifyThroughputPoints,
   snapshotWithFullDeviceModules: () => snapshotWithFullDeviceModules,
+  testGroupSummaryCsv: () => testGroupSummaryCsv,
   updateReplayThroughput: () => updateReplayThroughput,
   updateWaferProgressPanel: () => updateWaferProgressPanel,
   waferDispatchProgress: () => waferDispatchProgress
@@ -4576,6 +4577,83 @@ var VisualizationWorkspace = class {
 function createVisualizationWorkspace(root = document) {
   return new VisualizationWorkspace(root);
 }
+
+// src/group_analysis_view.ts
+function csvNumber(value, digits) {
+  return value === null || !Number.isFinite(value) ? "\u2014" : value.toFixed(digits);
+}
+function csvPercent(value, fromRatio = false) {
+  const normalized = value === null ? null : value * (fromRatio ? 100 : 1);
+  return csvNumber(normalized, 2);
+}
+function caseLabel(item, index) {
+  return item.name || `t${index + 1}`;
+}
+function csvEscape(value) {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+var DEFAULT_SELECTED_METRIC_IDS = [
+  "validation",
+  "makespan",
+  "baseline_improvement",
+  "cpu_time",
+  "throughput",
+  "departure_interval_cv",
+  "process_chamber_dwell",
+  "robot_wafer_dwell",
+  "system_residence",
+  "system_residence_cv",
+  "resource_utilization",
+  "bottleneck_candidates"
+];
+function selectedMetricIds(summary) {
+  return new Set(summary.selectedMetricIds ?? DEFAULT_SELECTED_METRIC_IDS);
+}
+function bottleneckText(item) {
+  return `${item.bottleneckResource || "\u2014"}${item.bottleneckCandidateCount > 1 ? ` +${item.bottleneckCandidateCount - 1} \u4E2A\u5019\u9009` : ""}`;
+}
+function validationText(item) {
+  if (item.analysisStatus && item.analysisStatus !== "completed") {
+    return item.error || item.analysisStatus || "\u2014";
+  }
+  return item.validationPassed ? "\u901A\u8FC7" : item.validation || item.status || "\u2014";
+}
+function makespanReferenceText(item, summary) {
+  if (summary.referenceCaseId && item.id === summary.referenceCaseId) return "\u53C2\u8003";
+  if (item.referenceDeltas?.makespan?.percent === void 0) return "\u2014";
+  if (!item.referenceComparable) return "\u4EC5\u89C2\u5BDF";
+  return csvNumber(item.referenceDeltas.makespan.percent, 2);
+}
+var CSV_COLUMNS = [
+  { metricId: "makespan", header: "Makespan", value: (item) => csvNumber(item.makespan, 2) },
+  { metricId: "makespan", header: "\u76F8\u5BF9\u53C2\u8003", value: makespanReferenceText },
+  { metricId: "baseline_improvement", header: "Baseline", value: (item) => csvNumber(item.baselineMakespan, 2) },
+  { metricId: "baseline_improvement", header: "\u6539\u5584", value: (item) => csvNumber(item.improvementPercent, 2) },
+  { metricId: "bottleneck_candidates", header: "\u74F6\u9888", value: bottleneckText },
+  { metricId: "resource_utilization", header: "\u5229\u7528\u7387", value: (item) => csvPercent(item.bottleneckUtilization, true) },
+  { metricId: "cpu_time", header: "CPU Time", value: (item) => csvNumber(item.cpuTimeMs, 1) },
+  { metricId: "average_recompute_time", header: "\u5E73\u5747\u91CD\u7B97\u65F6\u95F4", value: (item) => csvNumber(item.averageRecomputeTimeMs ?? null, 1) },
+  { metricId: "throughput", header: "\u4EA7\u80FD", value: (item) => csvNumber(item.throughputPerHour, 1) },
+  { metricId: "departure_interval_cv", header: "\u51FA\u7AD9 CV", value: (item) => csvNumber(item.departureIntervalCv, 2) },
+  { metricId: "process_chamber_dwell", header: "\u52A0\u5DE5\u8154\u9A7B\u7559\u5747\u503C", value: (item) => csvNumber(item.processChamberDwellMeanSeconds, 2) },
+  { metricId: "robot_wafer_dwell", header: "\u673A\u5668\u624B\u9A7B\u7559\u5747\u503C", value: (item) => csvNumber(item.robotWaferDwellMeanSeconds, 2) },
+  { metricId: "system_residence", header: "\u7CFB\u7EDF\u505C\u7559\u5747\u503C", value: (item) => csvNumber(item.waferSystemResidenceMeanSeconds, 2) },
+  { metricId: "system_residence_cv", header: "\u7CFB\u7EDF\u505C\u7559 CV", value: (item) => csvNumber(item.waferSystemResidenceCv, 2) },
+  { metricId: "loadlock_wafers_per_cycle", header: "LoadLock \u6BCF\u5468\u671F\u6676\u5706", value: (item) => csvNumber(item.loadLockWafersPerCycle, 2) },
+  { metricId: "loadlock_full_cycle_ratio", header: "LoadLock \u6EE1\u8F7D\u5468\u671F\u7387", value: (item) => csvPercent(item.loadLockFullCycleRatio, true) },
+  { metricId: "loadlock_empty_cycle_ratio", header: "LoadLock \u7A7A\u8F7D\u5468\u671F\u7387", value: (item) => csvPercent(item.loadLockEmptyCycleRatio, true) },
+  { metricId: "validation", header: "\u6821\u9A8C", value: validationText }
+];
+function testGroupSummaryCsv(summary) {
+  const selected = selectedMetricIds(summary);
+  const columns = CSV_COLUMNS.filter((column) => selected.has(column.metricId));
+  const headers = ["\u6D4B\u8BD5", ...columns.map((column) => column.header)];
+  const rows = summary.cases.map((item, index) => [
+    caseLabel(item, index),
+    ...columns.map((column) => column.value(item, summary))
+  ].map(csvEscape));
+  return [headers.map(csvEscape).join(","), ...rows.map((row) => row.join(","))].join("\r\n");
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   alignOriginalDecisionTraceToMoves,
@@ -4616,6 +4694,7 @@ function createVisualizationWorkspace(root = document) {
   setReplayInspectorExpanded,
   simplifyThroughputPoints,
   snapshotWithFullDeviceModules,
+  testGroupSummaryCsv,
   updateReplayThroughput,
   updateWaferProgressPanel,
   waferDispatchProgress

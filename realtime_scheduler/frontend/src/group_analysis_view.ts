@@ -1,6 +1,7 @@
 /**
  * 测试组分析报告视图：负责逐测试指标表、报告操作区和 CSV 导出内容。
  * 本模块只生成展示标记，不持有结果页与分析页之间的导航状态。
+ * CSV 只导出本次勾选并计算的指标列，数值单元格不含单位；页面表格仍附加单位以便阅读。
  */
 import type { TestGroupPerformanceSummary } from "./analysis_contracts";
 
@@ -37,6 +38,17 @@ function durationText(value: number | null): string {
     : `${value.toFixed(1)} ms`;
 }
 
+/** 将有限数值格式化为不含单位的 CSV 单元格，供电子表格按数字处理。 */
+function csvNumber(value: number | null, digits: number): string {
+  return value === null || !Number.isFinite(value) ? "—" : value.toFixed(digits);
+}
+
+/** 将比率或百分比格式化为不含百分号的数值单元格。 */
+function csvPercent(value: number | null, fromRatio = false): string {
+  const normalized = value === null ? null : value * (fromRatio ? 100 : 1);
+  return csvNumber(normalized, 2);
+}
+
 function caseLabel(item: TestGroupCasePerformance, index: number): string {
   return item.name || `t${index + 1}`;
 }
@@ -45,30 +57,73 @@ function csvEscape(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-/** 将逐测试完整指标表格序列化为 CSV 文本（含中文表头，Excel 可直接打开）。 */
+const DEFAULT_SELECTED_METRIC_IDS = [
+  "validation", "makespan", "baseline_improvement", "cpu_time", "throughput",
+  "departure_interval_cv", "process_chamber_dwell", "robot_wafer_dwell",
+  "system_residence", "system_residence_cv", "resource_utilization", "bottleneck_candidates",
+];
+
+/** 解析本次分析实际勾选并计算的指标，缺省时与报告表默认列一致。 */
+function selectedMetricIds(summary: TestGroupPerformanceSummary): Set<string> {
+  return new Set(summary.selectedMetricIds ?? DEFAULT_SELECTED_METRIC_IDS);
+}
+
+function bottleneckText(item: TestGroupCasePerformance): string {
+  return `${item.bottleneckResource || "—"}${item.bottleneckCandidateCount > 1 ? ` +${item.bottleneckCandidateCount - 1} 个候选` : ""}`;
+}
+
+function validationText(item: TestGroupCasePerformance): string {
+  if (item.analysisStatus && item.analysisStatus !== "completed") {
+    return item.error || item.analysisStatus || "—";
+  }
+  return item.validationPassed ? "通过" : (item.validation || item.status || "—");
+}
+
+function makespanReferenceText(
+  item: TestGroupCasePerformance,
+  summary: TestGroupPerformanceSummary,
+): string {
+  if (summary.referenceCaseId && item.id === summary.referenceCaseId) return "参考";
+  if (item.referenceDeltas?.makespan?.percent === undefined) return "—";
+  if (!item.referenceComparable) return "仅观察";
+  return csvNumber(item.referenceDeltas.makespan.percent, 2);
+}
+
+type CsvColumn = {
+  metricId: string;
+  header: string;
+  value: (item: TestGroupCasePerformance, summary: TestGroupPerformanceSummary) => string;
+};
+
+const CSV_COLUMNS: CsvColumn[] = [
+  { metricId: "makespan", header: "Makespan", value: (item) => csvNumber(item.makespan, 2) },
+  { metricId: "makespan", header: "相对参考", value: makespanReferenceText },
+  { metricId: "baseline_improvement", header: "Baseline", value: (item) => csvNumber(item.baselineMakespan, 2) },
+  { metricId: "baseline_improvement", header: "改善", value: (item) => csvNumber(item.improvementPercent, 2) },
+  { metricId: "bottleneck_candidates", header: "瓶颈", value: bottleneckText },
+  { metricId: "resource_utilization", header: "利用率", value: (item) => csvPercent(item.bottleneckUtilization, true) },
+  { metricId: "cpu_time", header: "CPU Time", value: (item) => csvNumber(item.cpuTimeMs, 1) },
+  { metricId: "average_recompute_time", header: "平均重算时间", value: (item) => csvNumber(item.averageRecomputeTimeMs ?? null, 1) },
+  { metricId: "throughput", header: "产能", value: (item) => csvNumber(item.throughputPerHour, 1) },
+  { metricId: "departure_interval_cv", header: "出站 CV", value: (item) => csvNumber(item.departureIntervalCv, 2) },
+  { metricId: "process_chamber_dwell", header: "加工腔驻留均值", value: (item) => csvNumber(item.processChamberDwellMeanSeconds, 2) },
+  { metricId: "robot_wafer_dwell", header: "机器手驻留均值", value: (item) => csvNumber(item.robotWaferDwellMeanSeconds, 2) },
+  { metricId: "system_residence", header: "系统停留均值", value: (item) => csvNumber(item.waferSystemResidenceMeanSeconds, 2) },
+  { metricId: "system_residence_cv", header: "系统停留 CV", value: (item) => csvNumber(item.waferSystemResidenceCv, 2) },
+  { metricId: "loadlock_wafers_per_cycle", header: "LoadLock 每周期晶圆", value: (item) => csvNumber(item.loadLockWafersPerCycle, 2) },
+  { metricId: "loadlock_full_cycle_ratio", header: "LoadLock 满载周期率", value: (item) => csvPercent(item.loadLockFullCycleRatio, true) },
+  { metricId: "loadlock_empty_cycle_ratio", header: "LoadLock 空载周期率", value: (item) => csvPercent(item.loadLockEmptyCycleRatio, true) },
+  { metricId: "validation", header: "校验", value: validationText },
+];
+
+/** 将本次勾选并计算的指标序列化为 CSV 文本（含中文表头，Excel 可直接打开）。 */
 export function testGroupSummaryCsv(summary: TestGroupPerformanceSummary): string {
-  const headers = [
-    "测试", "Makespan", "Baseline", "改善", "瓶颈", "利用率", "CPU Time",
-    "产能", "出站 CV", "加工腔驻留均值", "机器手驻留均值",
-    "系统停留均值", "系统停留 CV", "校验",
-  ];
+  const selected = selectedMetricIds(summary);
+  const columns = CSV_COLUMNS.filter((column) => selected.has(column.metricId));
+  const headers = ["测试", ...columns.map((column) => column.header)];
   const rows = summary.cases.map((item, index) => [
     caseLabel(item, index),
-    finiteText(item.makespan, 2, " s"),
-    finiteText(item.baselineMakespan, 2, " s"),
-    item.improvementPercent === null
-      ? "—"
-      : `${item.improvementPercent > 0 ? "+" : ""}${item.improvementPercent.toFixed(2)}%`,
-    `${item.bottleneckResource || "—"}${item.bottleneckCandidateCount > 1 ? ` +${item.bottleneckCandidateCount - 1} 个候选` : ""}`,
-    percentText(item.bottleneckUtilization, true),
-    durationText(item.cpuTimeMs),
-    finiteText(item.throughputPerHour, 1, " 片/h"),
-    finiteText(item.departureIntervalCv, 2),
-    finiteText(item.processChamberDwellMeanSeconds, 2, " s"),
-    finiteText(item.robotWaferDwellMeanSeconds, 2, " s"),
-    finiteText(item.waferSystemResidenceMeanSeconds, 2, " s"),
-    finiteText(item.waferSystemResidenceCv, 2),
-    item.validationPassed ? "通过" : (item.validation || item.status || "—"),
+    ...columns.map((column) => column.value(item, summary)),
   ].map(csvEscape));
   return [headers.map(csvEscape).join(","), ...rows.map(row => row.join(","))].join("\r\n");
 }
@@ -78,7 +133,7 @@ function resultTable(summary: TestGroupPerformanceSummary, selected: Set<string>
     const cells = [`<th scope="row">${escapeHtml(caseLabel(item, index))}</th>`];
     if (selected.has("makespan")) {
       cells.push(`<td>${finiteText(item.makespan, 2, " s")}</td>`);
-      cells.push(`<td>${item.id === summary.referenceCaseId
+      cells.push(`<td>${summary.referenceCaseId && item.id === summary.referenceCaseId
         ? '<span class="group-reference">参考</span>'
         : item.referenceDeltas?.makespan?.percent === undefined
           ? "—"
@@ -107,7 +162,7 @@ function resultTable(summary: TestGroupPerformanceSummary, selected: Set<string>
       ? `<span class="group-fail">${escapeHtml(item.error || item.analysisStatus)}</span>`
       : item.validationPassed ? '<span class="group-pass">通过</span>' : `<span class="group-fail">${escapeHtml(item.validation || item.status)}</span>`}</td>`);
     const rowClasses = [
-      item.id === summary.referenceCaseId ? "is-reference" : "",
+      summary.referenceCaseId && item.id === summary.referenceCaseId ? "is-reference" : "",
       item.analysisStatus && item.analysisStatus !== "completed" ? "is-incomplete" : "",
     ].filter(Boolean).join(" ");
     const compactValues = cells.slice(1)
@@ -123,11 +178,7 @@ export function renderTestGroupAnalysis(
   summary: TestGroupPerformanceSummary,
   groupName: string,
 ): string {
-  const selected = new Set(summary.selectedMetricIds ?? [
-    "validation", "makespan", "baseline_improvement", "cpu_time", "throughput",
-    "departure_interval_cv", "process_chamber_dwell", "robot_wafer_dwell",
-    "system_residence", "system_residence_cv", "resource_utilization", "bottleneck_candidates",
-  ]);
+  const selected = selectedMetricIds(summary);
   const selectedLabels: Record<string, string> = {
     validation: "校验结果", makespan: "Makespan", baseline_improvement: "Baseline 改善",
     cpu_time: "CPU Time", average_recompute_time: "平均重算时间", throughput: "产能",
