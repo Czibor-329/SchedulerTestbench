@@ -1,7 +1,7 @@
 """公司产能 Baseline CSV 的校验、持久化与读取。
 
-该参考数据独立于设备与测试集主数据。它只用于首页展示同一设备、同一用例的
-公司 WPH，不参与排程输入、校验或设备包交换。
+该参考数据独立于设备与测试集主数据，持久化在 ``data/company_capacity/``。
+它只用于首页展示同一设备、同一用例的公司 WPH，不参与排程输入、校验或设备包交换。
 """
 
 from __future__ import annotations
@@ -19,13 +19,36 @@ from realtime_scheduler.backend.time_utils import _workspace_timestamp
 
 
 COMPANY_CAPACITY_BASELINE_SCHEMA_VERSION = 1
-COMPANY_CAPACITY_BASELINE_FILE_NAME = "company_capacity_baselines.json"
+COMPANY_CAPACITY_DIRECTORY_NAME = "company_capacity"
+COMPANY_CAPACITY_BASELINE_FILE_NAME = "baselines.json"
+COMPANY_CAPACITY_LEGACY_BASELINE_FILE_NAME = "company_capacity_baselines.json"
 COMPANY_CAPACITY_BASELINE_REQUIRED_COLUMNS = frozenset({"device_name", "test_name", "baseline_wph"})
 
 
+def _data_root(data_directory: Path | None = None) -> Path:
+    """返回平台数据根目录，测试可注入临时目录。"""
+    return data_directory or DATA_DIR
+
+
 def _baseline_path(data_directory: Path | None = None) -> Path:
-    """返回独立基准快照的持久化路径。"""
-    return (data_directory or DATA_DIR) / COMPANY_CAPACITY_BASELINE_FILE_NAME
+    """返回 ``data/company_capacity/baselines.json``，与 datasets 分目录存放。"""
+    return _data_root(data_directory) / COMPANY_CAPACITY_DIRECTORY_NAME / COMPANY_CAPACITY_BASELINE_FILE_NAME
+
+
+def _legacy_baseline_path(data_directory: Path | None = None) -> Path:
+    """返回迁移前放在数据根目录的产能快照路径。"""
+    return _data_root(data_directory) / COMPANY_CAPACITY_LEGACY_BASELINE_FILE_NAME
+
+
+def _existing_baseline_path(data_directory: Path | None = None) -> Path | None:
+    """优先使用新目录中的快照；仅当新文件不存在时回退到旧根目录文件。"""
+    current = _baseline_path(data_directory)
+    if current.is_file():
+        return current
+    legacy = _legacy_baseline_path(data_directory)
+    if legacy.is_file():
+        return legacy
+    return None
 
 
 def _normalized_row(row: Mapping[str, Any], line_number: int) -> dict[str, Any]:
@@ -78,13 +101,16 @@ def import_company_capacity_baselines(csv_content: bytes, data_directory: Path |
     }
     with _workspace_catalog_guard(path):
         _write_json_atomic(path, payload)
+        legacy = _legacy_baseline_path(data_directory)
+        if legacy.is_file() and legacy.resolve() != path.resolve():
+            legacy.unlink()
     return {"rowCount": len(rows), "deviceNames": sorted({row["deviceName"] for row in rows})}
 
 
 def read_company_capacity_baselines(data_directory: Path | None = None) -> list[dict[str, Any]]:
     """读取当前快照；文件不存在时返回空列表，损坏或新版本则明确报错。"""
-    path = _baseline_path(data_directory)
-    if not path.is_file():
+    path = _existing_baseline_path(data_directory)
+    if path is None:
         return []
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))

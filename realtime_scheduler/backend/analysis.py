@@ -1443,6 +1443,20 @@ def _normalize_group_case(input_case: Mapping[str, Any]) -> Dict[str, Any]:
 
     window = performance.get("window") if isinstance(performance, Mapping) else None
     load_lock = performance.get("loadLockEfficiency") if isinstance(performance, Mapping) else None
+    # 公司产能基线不依赖 MoveList；产能比 = 算法产能 / 基线产能。
+    throughput_per_hour = _group_case_throughput(performance)
+    company_capacity_baseline_wph = _finite_or_none(
+        input_case.get("companyCapacityBaselineWph")
+    )
+    company_capacity_ratio = (
+        throughput_per_hour / company_capacity_baseline_wph
+        if (
+            throughput_per_hour is not None
+            and company_capacity_baseline_wph is not None
+            and company_capacity_baseline_wph > 0
+        )
+        else None
+    )
     return {
         "id": str(input_case.get("id") or ""),
         "name": str(input_case.get("name") or ""),
@@ -1473,7 +1487,9 @@ def _normalize_group_case(input_case: Mapping[str, Any]) -> Dict[str, Any]:
         ),
         "bottleneckCandidateCount": len(raw_candidates) if raw_candidates else int(bool(legacy)),
         "bottleneckCandidates": candidates,
-        "throughputPerHour": _group_case_throughput(performance),
+        "throughputPerHour": throughput_per_hour,
+        "companyCapacityBaselineWph": company_capacity_baseline_wph,
+        "companyCapacityRatio": company_capacity_ratio,
         "throughputSampleCount": (
             max(0, int(_finite_number(performance.get("throughputSampleCount"), 0)))
             if isinstance(performance, Mapping)

@@ -24,7 +24,7 @@ from realtime_scheduler.backend.execution.validation_limiter import (
 from realtime_scheduler.backend.workspace.repository import _write_json_atomic
 
 
-RUN_PREFERENCES_SCHEMA_VERSION = 5
+RUN_PREFERENCES_SCHEMA_VERSION = 6
 RUN_PREFERENCES_PATH = DATA_DIR / "run_preferences.json"
 _RUN_PREFERENCES_LOCK = threading.RLock()
 _BOOLEAN_FIELDS = (
@@ -44,13 +44,17 @@ _DEFAULT_RUN_SETTINGS = {
     "cleanValidationTypes": list(_CLEAN_VALIDATION_TYPES),
 }
 _ANALYSIS_METRIC_IDS = (
-    "validation", "makespan", "baseline_improvement", "cpu_time",
-    "average_recompute_time", "throughput", "departure_interval_cv",
+    "throughput", "average_recompute_time", "company_capacity_baseline",
+    "company_capacity_ratio", "bottleneck_candidates", "makespan",
+    "validation", "cpu_time", "resource_utilization", "departure_interval_cv",
     "process_chamber_dwell", "robot_wafer_dwell", "system_residence",
-    "system_residence_cv", "resource_utilization", "bottleneck_candidates",
-    "loadlock_wafers_per_cycle", "loadlock_full_cycle_ratio",
-    "loadlock_empty_cycle_ratio",
+    "system_residence_cv", "loadlock_wafers_per_cycle",
+    "loadlock_full_cycle_ratio", "loadlock_empty_cycle_ratio",
 )
+_ANALYSIS_METRIC_ID_ALIASES = {
+    "company_capacity_improvement": "company_capacity_ratio",
+}
+_REMOVED_ANALYSIS_METRIC_IDS = frozenset({"baseline_improvement"})
 _DEFAULT_ANALYSIS_SETTINGS = {
     "metricIds": list(_ANALYSIS_METRIC_IDS),
     "windowMode": "steady",
@@ -94,9 +98,15 @@ def _validate_analysis_settings(value: Mapping[str, Any]) -> Dict[str, Any]:
     metric_ids = value.get("metricIds")
     if not isinstance(metric_ids, list) or not all(isinstance(item, str) for item in metric_ids):
         raise ValueError("metricIds 必须是字符串数组")
-    unknown_ids = set(metric_ids) - set(_ANALYSIS_METRIC_IDS)
+    remapped_ids = []
+    for metric_id in metric_ids:
+        if metric_id in _REMOVED_ANALYSIS_METRIC_IDS:
+            continue
+        remapped_ids.append(_ANALYSIS_METRIC_ID_ALIASES.get(metric_id, metric_id))
+    unknown_ids = set(remapped_ids) - set(_ANALYSIS_METRIC_IDS)
     if unknown_ids:
         raise ValueError(f"metricIds 包含不支持的指标：{sorted(unknown_ids)}")
+    metric_ids = remapped_ids
     window_mode = value.get("windowMode")
     if window_mode not in {"steady", "full"}:
         raise ValueError("windowMode 只支持 steady 或 full")
@@ -122,6 +132,7 @@ def _migrate_run_preferences(payload: Mapping[str, Any], path: Path, source_vers
         migrated["cleanValidationTypes"] = list(_CLEAN_VALIDATION_TYPES)
     if source_version < 3:
         migrated["executionTimingEnabled"] = False
+    # v6 把已更名或删除的分析指标 ID 写成当前白名单，避免旧偏好文件卡住页面保存。
     normalized_run = _validate_run_settings(migrated)
     raw_analysis = payload.get("analysisSettings")
     normalized_analysis = (
@@ -154,7 +165,7 @@ def read_run_preferences(path: Optional[Path] = None) -> Dict[str, Any]:
         if not isinstance(payload, Mapping):
             raise ValueError("本地运行偏好必须是 JSON 对象")
         schema_version = payload.get("schemaVersion")
-        if schema_version in {1, 2, 3, 4}:
+        if schema_version in {1, 2, 3, 4, 5}:
             return _migrate_run_preferences(payload, path, int(schema_version))["runSettings"]
         if schema_version != RUN_PREFERENCES_SCHEMA_VERSION:
             if isinstance(schema_version, int) and schema_version > RUN_PREFERENCES_SCHEMA_VERSION:
@@ -179,7 +190,7 @@ def read_analysis_preferences(path: Optional[Path] = None) -> Dict[str, Any]:
         if not isinstance(payload, Mapping):
             raise ValueError("本地运行偏好必须是 JSON 对象")
         schema_version = payload.get("schemaVersion")
-        if schema_version in {1, 2, 3, 4}:
+        if schema_version in {1, 2, 3, 4, 5}:
             return _migrate_run_preferences(payload, path, int(schema_version))["analysisSettings"]
         if schema_version != RUN_PREFERENCES_SCHEMA_VERSION:
             if isinstance(schema_version, int) and schema_version > RUN_PREFERENCES_SCHEMA_VERSION:

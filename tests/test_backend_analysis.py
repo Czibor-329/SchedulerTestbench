@@ -445,6 +445,40 @@ class BackendAnalysisTests(unittest.TestCase):
         self.assertIsNone(result["cases"][1]["throughputPerHour"])
         self.assertEqual(0, result["cases"][1]["throughputSampleCount"])
 
+    def test_group_analysis_reports_company_capacity_baseline_ratio(self) -> None:
+        """有公司 WPH 基线且产能有效时，产能比为算法产能除以基线产能。"""
+        result = analyze_test_group_performance(
+            [
+                {
+                    "id": "matched",
+                    "name": "test1",
+                    "status": "succeeded",
+                    "validation": "passed",
+                    "makespan": 90,
+                    "companyCapacityBaselineWph": 80.0,
+                    "performance": {
+                        "throughputPerHour": 88.0,
+                        "throughputSampleCount": 120,
+                    },
+                },
+                {
+                    "id": "missing",
+                    "name": "test2",
+                    "status": "succeeded",
+                    "validation": "passed",
+                    "makespan": 90,
+                    "performance": {
+                        "throughputPerHour": 88.0,
+                        "throughputSampleCount": 120,
+                    },
+                },
+            ]
+        )
+        self.assertEqual(80.0, result["cases"][0]["companyCapacityBaselineWph"])
+        self.assertAlmostEqual(1.1, result["cases"][0]["companyCapacityRatio"])
+        self.assertIsNone(result["cases"][1]["companyCapacityBaselineWph"])
+        self.assertIsNone(result["cases"][1]["companyCapacityRatio"])
+
 
 if __name__ == "__main__":
     unittest.main()

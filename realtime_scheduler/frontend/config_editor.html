@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>调度平台</title>
   <link rel="stylesheet" href="/assets/katex.min.css?v=1.4.4">
-  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.8">
-  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.8">
+  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.9">
+  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.9">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -40,7 +40,7 @@
       <div class="sidebar-footer">
         <span class="sidebar-footer-label">系统状态</span>
         <div class="service-pill" id="serviceState">本地服务</div>
-        <span class="frontend-version">V1.6.8</span>
+        <span class="frontend-version">V1.6.9</span>
       </div>
     </aside>
 
@@ -417,19 +417,20 @@
       <section class="analysis-options-page active" data-analysis-page="1">
         <div class="analysis-options-section-head"><strong>计算指标</strong><small>设置会保存为个人偏好</small></div>
         <div class="analysis-metric-options">
-          <label><input type="checkbox" checked value="validation" data-analysis-metric>校验结果</label>
-          <label><input type="checkbox" checked value="makespan" data-analysis-metric>Makespan</label>
-          <label><input type="checkbox" checked value="baseline_improvement" data-analysis-metric>相对 Baseline 改善</label>
-          <label><input type="checkbox" checked value="cpu_time" data-analysis-metric>CPU Time</label>
-          <label><input type="checkbox" checked value="average_recompute_time" data-analysis-metric>平均重算时间</label>
           <label><input type="checkbox" checked value="throughput" data-analysis-metric>产能</label>
+          <label><input type="checkbox" checked value="average_recompute_time" data-analysis-metric>平均重算时间</label>
+          <label><input type="checkbox" checked value="company_capacity_baseline" data-analysis-metric>产能基线</label>
+          <label><input type="checkbox" checked value="company_capacity_ratio" data-analysis-metric title="算法产能除以公司产能基线">产能比</label>
+          <label><input type="checkbox" checked value="bottleneck_candidates" data-analysis-metric>瓶颈</label>
+          <label><input type="checkbox" checked value="makespan" data-analysis-metric>Makespan</label>
+          <label><input type="checkbox" checked value="validation" data-analysis-metric>校验结果</label>
+          <label><input type="checkbox" checked value="cpu_time" data-analysis-metric>算法总耗时</label>
+          <label><input type="checkbox" checked value="resource_utilization" data-analysis-metric>资源利用率</label>
           <label><input type="checkbox" checked value="departure_interval_cv" data-analysis-metric>出站间隔 CV</label>
           <label><input type="checkbox" checked value="process_chamber_dwell" data-analysis-metric>加工腔驻留均值</label>
           <label><input type="checkbox" checked value="robot_wafer_dwell" data-analysis-metric>机器手驻留均值</label>
           <label><input type="checkbox" checked value="system_residence" data-analysis-metric>系统停留均值</label>
           <label><input type="checkbox" checked value="system_residence_cv" data-analysis-metric>系统停留 CV</label>
-          <label><input type="checkbox" checked value="resource_utilization" data-analysis-metric>资源利用率</label>
-          <label><input type="checkbox" checked value="bottleneck_candidates" data-analysis-metric>瓶颈候选</label>
           <label><input type="checkbox" checked value="loadlock_wafers_per_cycle" data-analysis-metric>LoadLock 每周期晶圆</label>
           <label><input type="checkbox" checked value="loadlock_full_cycle_ratio" data-analysis-metric>LoadLock 满载周期率</label>
           <label><input type="checkbox" checked value="loadlock_empty_cycle_ratio" data-analysis-metric>LoadLock 空载周期率</label>
@@ -784,7 +785,7 @@
     </aside>
   </dialog>
 
-  <script type="module" src="/assets/config_editor.js?v=1.6.8"></script>
+  <script type="module" src="/assets/config_editor.js?v=1.6.9"></script>
   <dialog id="testDraftDialog" aria-labelledby="testDraftTitle">
     <h2 id="testDraftTitle">测试有未保存的修改</h2><p>保存后再离开，或放弃本次修改。</p>
     <form method="dialog" class="editor-save-actions"><button class="btn" value="cancel" autofocus>继续编辑</button><button class="btn" value="discard">放弃修改</button><button class="btn primary" value="save">保存并继续</button></form>

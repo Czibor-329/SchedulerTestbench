@@ -33,12 +33,12 @@ def _analysis_settings(**overrides) -> dict:
     """构造一份完整有效的个人结果分析设置。"""
     value = {
         "metricIds": [
-            "validation", "makespan", "baseline_improvement", "cpu_time",
-            "average_recompute_time", "throughput", "departure_interval_cv",
+            "throughput", "average_recompute_time", "company_capacity_baseline",
+            "company_capacity_ratio", "bottleneck_candidates", "makespan",
+            "validation", "cpu_time", "resource_utilization", "departure_interval_cv",
             "process_chamber_dwell", "robot_wafer_dwell", "system_residence",
-            "system_residence_cv", "resource_utilization", "bottleneck_candidates",
-            "loadlock_wafers_per_cycle", "loadlock_full_cycle_ratio",
-            "loadlock_empty_cycle_ratio",
+            "system_residence_cv", "loadlock_wafers_per_cycle",
+            "loadlock_full_cycle_ratio", "loadlock_empty_cycle_ratio",
         ],
         "windowMode": "steady",
         "timeBudgetSeconds": 120,
@@ -56,7 +56,7 @@ def test_missing_run_preferences_use_defaults_without_creating_file(tmp_path: Pa
 
 
 def test_run_preferences_are_versioned_and_persisted_atomically(tmp_path: Path) -> None:
-    """保存后应写入 schemaVersion 5，并保留默认分析设置。"""
+    """保存后应写入 schemaVersion 6，并保留默认分析设置。"""
     path = tmp_path / "run_preferences.json"
     expected = _settings(
         skipBaseline=True,
@@ -66,7 +66,7 @@ def test_run_preferences_are_versioned_and_persisted_atomically(tmp_path: Path) 
     assert update_run_preferences(expected, path) == expected
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload == {
-        "schemaVersion": 5,
+        "schemaVersion": 6,
         "runSettings": expected,
         "analysisSettings": _analysis_settings(),
     }
@@ -96,10 +96,10 @@ def test_run_preferences_reject_newer_schema(tmp_path: Path) -> None:
     """较新版本偏好文件必须显式拒绝，不能按旧格式静默覆盖。"""
     path = tmp_path / "run_preferences.json"
     path.write_text(
-        json.dumps({"schemaVersion": 6, "runSettings": _settings()}),
+        json.dumps({"schemaVersion": 7, "runSettings": _settings()}),
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="版本过新：6"):
+    with pytest.raises(ValueError, match="版本过新：7"):
         read_run_preferences(path)
 
 
@@ -132,7 +132,7 @@ def test_run_preferences_migrate_v3_and_add_analysis_settings(tmp_path: Path) ->
     path.write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
 
     assert read_analysis_preferences(path) == _analysis_settings()
-    assert json.loads(path.read_text(encoding="utf-8"))["schemaVersion"] == 5
+    assert json.loads(path.read_text(encoding="utf-8"))["schemaVersion"] == 6
     assert json.loads((tmp_path / "run_preferences.json.v3.bak").read_text(encoding="utf-8"))["schemaVersion"] == 3
 
 
@@ -153,6 +153,47 @@ def test_v4_migration_removes_compatibility_without_disabling_fluctuation(tmp_pa
     assert json.loads(backup.read_text(encoding="utf-8")) == original
 
 
+def test_v5_migrates_renamed_analysis_metric_ids(tmp_path: Path) -> None:
+    """v5 偏好应自动把旧指标 ID 改写成当前白名单，并保留用户勾选。"""
+    path = tmp_path / "run_preferences.json"
+    original = {
+        "schemaVersion": 5,
+        "runSettings": _settings(),
+        "analysisSettings": {
+            "metricIds": [
+                "average_recompute_time",
+                "throughput",
+                "company_capacity_baseline",
+                "company_capacity_improvement",
+                "baseline_improvement",
+            ],
+            "windowMode": "steady",
+            "timeBudgetSeconds": 300,
+        },
+    }
+    path.write_text(json.dumps(original), encoding="utf-8")
+
+    assert read_analysis_preferences(path) == {
+        "metricIds": [
+            "throughput",
+            "average_recompute_time",
+            "company_capacity_baseline",
+            "company_capacity_ratio",
+        ],
+        "windowMode": "steady",
+        "timeBudgetSeconds": 300,
+    }
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["schemaVersion"] == 6
+    assert payload["analysisSettings"]["metricIds"] == [
+        "throughput",
+        "average_recompute_time",
+        "company_capacity_baseline",
+        "company_capacity_ratio",
+    ]
+    assert json.loads((tmp_path / "run_preferences.json.v5.bak").read_text(encoding="utf-8")) == original
+
+
 def test_analysis_preferences_persist_without_overwriting_run_settings(tmp_path: Path) -> None:
     """保存个人分析习惯时应逐指标规范化，并完整保留运行设置。"""
     path = tmp_path / "run_preferences.json"
@@ -163,12 +204,7 @@ def test_analysis_preferences_persist_without_overwriting_run_settings(tmp_path:
         windowMode="full",
         timeBudgetSeconds=300,
     )
-
-    assert update_analysis_preferences(expected, path) == _analysis_settings(
-        metricIds=["makespan", "throughput"],
-        windowMode="full",
-        timeBudgetSeconds=300,
-    )
+    assert update_analysis_preferences(expected, path) == expected
     assert read_run_preferences(path) == run_settings
 
 

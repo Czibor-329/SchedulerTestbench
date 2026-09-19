@@ -4824,6 +4824,7 @@ async function showTestGroupAnalysis() {
         validation: String(item.validation || "unknown"),
         makespan: item.makespan,
         baselineMakespan: item.baseline?.status === "succeeded" ? item.baseline.makespan : null,
+        companyCapacityBaselineWph: companyCapacityBaselineFor(state.workspaceDevice?.name, item.testName),
         cpuTimeMs: item.cpuTimeMs ?? item.totalElapsedMs,
         elapsedTimeMs: item.totalElapsedMs,
         error: item.error || item.baseline?.error || "",

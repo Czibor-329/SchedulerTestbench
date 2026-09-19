@@ -4798,18 +4798,20 @@ function csvEscape(value) {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 var DEFAULT_SELECTED_METRIC_IDS = [
-  "validation",
-  "makespan",
-  "baseline_improvement",
-  "cpu_time",
   "throughput",
+  "average_recompute_time",
+  "company_capacity_baseline",
+  "company_capacity_ratio",
+  "bottleneck_candidates",
+  "makespan",
+  "validation",
+  "cpu_time",
+  "resource_utilization",
   "departure_interval_cv",
   "process_chamber_dwell",
   "robot_wafer_dwell",
   "system_residence",
-  "system_residence_cv",
-  "resource_utilization",
-  "bottleneck_candidates"
+  "system_residence_cv"
 ];
 function selectedMetricIds(summary) {
   return new Set(summary.selectedMetricIds ?? DEFAULT_SELECTED_METRIC_IDS);
@@ -4824,23 +4826,23 @@ function validationText(item) {
   return item.validationPassed ? "\u901A\u8FC7" : item.validation || item.status || "\u2014";
 }
 var CSV_COLUMNS = [
-  { metricId: "makespan", header: "Makespan", value: (item) => csvNumber(item.makespan, 2) },
-  { metricId: "baseline_improvement", header: "Baseline", value: (item) => csvNumber(item.baselineMakespan, 2) },
-  { metricId: "baseline_improvement", header: "\u6539\u5584", value: (item) => csvNumber(item.improvementPercent, 2) },
+  { metricId: "throughput", header: "\u4EA7\u80FD\uFF08\u7247/\u5C0F\u65F6\uFF09", value: (item) => csvNumber(item.throughputPerHour, 1) },
+  { metricId: "average_recompute_time", header: "\u5E73\u5747\u91CD\u7B97\u65F6\u95F4\uFF08ms\uFF09", value: (item) => csvNumber(item.averageRecomputeTimeMs ?? null, 1) },
+  { metricId: "company_capacity_baseline", header: "\u4EA7\u80FD\u57FA\u7EBF\uFF08\u7247/\u5C0F\u65F6\uFF09", value: (item) => csvNumber(item.companyCapacityBaselineWph ?? null, 1) },
+  { metricId: "company_capacity_ratio", header: "\u4EA7\u80FD\u6BD4", value: (item) => csvNumber(item.companyCapacityRatio ?? null, 2) },
   { metricId: "bottleneck_candidates", header: "\u74F6\u9888", value: bottleneckText },
-  { metricId: "resource_utilization", header: "\u5229\u7528\u7387", value: (item) => csvPercent(item.bottleneckUtilization, true) },
-  { metricId: "cpu_time", header: "CPU Time", value: (item) => csvNumber(item.cpuTimeMs, 1) },
-  { metricId: "average_recompute_time", header: "\u5E73\u5747\u91CD\u7B97\u65F6\u95F4", value: (item) => csvNumber(item.averageRecomputeTimeMs ?? null, 1) },
-  { metricId: "throughput", header: "\u4EA7\u80FD", value: (item) => csvNumber(item.throughputPerHour, 1) },
+  { metricId: "makespan", header: "Makespan\uFF08s\uFF09", value: (item) => csvNumber(item.makespan, 2) },
+  { metricId: "validation", header: "\u6821\u9A8C\u7ED3\u679C", value: validationText },
+  { metricId: "cpu_time", header: "\u7B97\u6CD5\u603B\u8017\u65F6\uFF08ms\uFF09", value: (item) => csvNumber(item.cpuTimeMs, 1) },
+  { metricId: "resource_utilization", header: "\u5229\u7528\u7387\uFF08%\uFF09", value: (item) => csvPercent(item.bottleneckUtilization, true) },
   { metricId: "departure_interval_cv", header: "\u51FA\u7AD9 CV", value: (item) => csvNumber(item.departureIntervalCv, 2) },
-  { metricId: "process_chamber_dwell", header: "\u52A0\u5DE5\u8154\u9A7B\u7559\u5747\u503C", value: (item) => csvNumber(item.processChamberDwellMeanSeconds, 2) },
-  { metricId: "robot_wafer_dwell", header: "\u673A\u5668\u624B\u9A7B\u7559\u5747\u503C", value: (item) => csvNumber(item.robotWaferDwellMeanSeconds, 2) },
-  { metricId: "system_residence", header: "\u7CFB\u7EDF\u505C\u7559\u5747\u503C", value: (item) => csvNumber(item.waferSystemResidenceMeanSeconds, 2) },
+  { metricId: "process_chamber_dwell", header: "\u52A0\u5DE5\u8154\u9A7B\u7559\u5747\u503C\uFF08s\uFF09", value: (item) => csvNumber(item.processChamberDwellMeanSeconds, 2) },
+  { metricId: "robot_wafer_dwell", header: "\u673A\u5668\u624B\u9A7B\u7559\u5747\u503C\uFF08s\uFF09", value: (item) => csvNumber(item.robotWaferDwellMeanSeconds, 2) },
+  { metricId: "system_residence", header: "\u7CFB\u7EDF\u505C\u7559\u5747\u503C\uFF08s\uFF09", value: (item) => csvNumber(item.waferSystemResidenceMeanSeconds, 2) },
   { metricId: "system_residence_cv", header: "\u7CFB\u7EDF\u505C\u7559 CV", value: (item) => csvNumber(item.waferSystemResidenceCv, 2) },
-  { metricId: "loadlock_wafers_per_cycle", header: "LoadLock \u6BCF\u5468\u671F\u6676\u5706", value: (item) => csvNumber(item.loadLockWafersPerCycle, 2) },
-  { metricId: "loadlock_full_cycle_ratio", header: "LoadLock \u6EE1\u8F7D\u5468\u671F\u7387", value: (item) => csvPercent(item.loadLockFullCycleRatio, true) },
-  { metricId: "loadlock_empty_cycle_ratio", header: "LoadLock \u7A7A\u8F7D\u5468\u671F\u7387", value: (item) => csvPercent(item.loadLockEmptyCycleRatio, true) },
-  { metricId: "validation", header: "\u6821\u9A8C", value: validationText }
+  { metricId: "loadlock_wafers_per_cycle", header: "LoadLock \u6BCF\u5468\u671F\u6676\u5706\uFF08\u7247\uFF09", value: (item) => csvNumber(item.loadLockWafersPerCycle, 2) },
+  { metricId: "loadlock_full_cycle_ratio", header: "LoadLock \u6EE1\u8F7D\u5468\u671F\u7387\uFF08%\uFF09", value: (item) => csvPercent(item.loadLockFullCycleRatio, true) },
+  { metricId: "loadlock_empty_cycle_ratio", header: "LoadLock \u7A7A\u8F7D\u5468\u671F\u7387\uFF08%\uFF09", value: (item) => csvPercent(item.loadLockEmptyCycleRatio, true) }
 ];
 function testGroupSummaryCsv(summary) {
   const selected = selectedMetricIds(summary);
@@ -4855,16 +4857,18 @@ function testGroupSummaryCsv(summary) {
 function resultTable(summary, selected, compact = false) {
   return summary.cases.map((item, index) => {
     const cells = [`<th scope="row">${escapeHtml2(caseLabel(item, index))}</th>`];
-    if (selected.has("makespan")) cells.push(`<td>${finiteText(item.makespan, 2, " s")}</td>`);
-    if (selected.has("baseline_improvement")) {
-      cells.push(`<td>${finiteText(item.baselineMakespan, 2, " s")}</td>`);
-      cells.push(`<td class="${(item.improvementPercent ?? 0) < 0 ? "loss" : "gain"}">${item.improvementPercent === null ? "\u2014" : `${item.improvementPercent > 0 ? "+" : ""}${item.improvementPercent.toFixed(2)}%`}</td>`);
+    if (selected.has("throughput")) cells.push(`<td>${finiteText(item.throughputPerHour, 1, " \u7247/h")}</td>`);
+    if (selected.has("average_recompute_time")) cells.push(`<td>${durationText(item.averageRecomputeTimeMs ?? null)}</td>`);
+    if (selected.has("company_capacity_baseline")) cells.push(`<td>${finiteText(item.companyCapacityBaselineWph ?? null, 1, " \u7247/h")}</td>`);
+    if (selected.has("company_capacity_ratio")) {
+      const ratio = item.companyCapacityRatio ?? null;
+      cells.push(`<td class="${(ratio ?? 1) < 1 ? "loss" : "gain"}">${finiteText(ratio, 2)}</td>`);
     }
     if (selected.has("bottleneck_candidates")) cells.push(`<td>${escapeHtml2(item.bottleneckResource || "\u2014")}${item.bottleneckCandidateCount > 1 ? ` <small>+${item.bottleneckCandidateCount - 1} \u4E2A\u5019\u9009</small>` : ""}</td>`);
-    if (selected.has("resource_utilization")) cells.push(`<td>${percentText(item.bottleneckUtilization, true)}</td>`);
+    if (selected.has("makespan")) cells.push(`<td>${finiteText(item.makespan, 2, " s")}</td>`);
+    if (selected.has("validation")) cells.push(`<td>${item.analysisStatus && item.analysisStatus !== "completed" ? `<span class="group-fail">${escapeHtml2(item.error || item.analysisStatus)}</span>` : item.validationPassed ? '<span class="group-pass">\u901A\u8FC7</span>' : `<span class="group-fail">${escapeHtml2(item.validation || item.status)}</span>`}</td>`);
     if (selected.has("cpu_time")) cells.push(`<td>${durationText(item.cpuTimeMs)}</td>`);
-    if (selected.has("average_recompute_time")) cells.push(`<td>${durationText(item.averageRecomputeTimeMs ?? null)}</td>`);
-    if (selected.has("throughput")) cells.push(`<td>${finiteText(item.throughputPerHour, 1, " \u7247/h")}</td>`);
+    if (selected.has("resource_utilization")) cells.push(`<td>${percentText(item.bottleneckUtilization, true)}</td>`);
     if (selected.has("departure_interval_cv")) cells.push(`<td>${finiteText(item.departureIntervalCv, 2)}</td>`);
     if (selected.has("process_chamber_dwell")) cells.push(`<td>${finiteText(item.processChamberDwellMeanSeconds, 2, " s")}</td>`);
     if (selected.has("robot_wafer_dwell")) cells.push(`<td>${finiteText(item.robotWaferDwellMeanSeconds, 2, " s")}</td>`);
@@ -4873,7 +4877,6 @@ function resultTable(summary, selected, compact = false) {
     if (selected.has("loadlock_wafers_per_cycle")) cells.push(`<td>${finiteText(item.loadLockWafersPerCycle, 2, " \u7247")}</td>`);
     if (selected.has("loadlock_full_cycle_ratio")) cells.push(`<td>${percentText(item.loadLockFullCycleRatio, true)}</td>`);
     if (selected.has("loadlock_empty_cycle_ratio")) cells.push(`<td>${percentText(item.loadLockEmptyCycleRatio, true)}</td>`);
-    if (selected.has("validation")) cells.push(`<td>${item.analysisStatus && item.analysisStatus !== "completed" ? `<span class="group-fail">${escapeHtml2(item.error || item.analysisStatus)}</span>` : item.validationPassed ? '<span class="group-pass">\u901A\u8FC7</span>' : `<span class="group-fail">${escapeHtml2(item.validation || item.status)}</span>`}</td>`);
     const rowClasses = [
       item.analysisStatus && item.analysisStatus !== "completed" ? "is-incomplete" : ""
     ].filter(Boolean).join(" ");
@@ -4885,32 +4888,35 @@ function resultTable(summary, selected, compact = false) {
 function renderTestGroupAnalysis(summary, groupName) {
   const selected = selectedMetricIds(summary);
   const selectedLabels = {
-    validation: "\u6821\u9A8C\u7ED3\u679C",
-    makespan: "Makespan",
-    baseline_improvement: "Baseline \u6539\u5584",
-    cpu_time: "CPU Time",
-    average_recompute_time: "\u5E73\u5747\u91CD\u7B97\u65F6\u95F4",
     throughput: "\u4EA7\u80FD",
+    average_recompute_time: "\u5E73\u5747\u91CD\u7B97\u65F6\u95F4",
+    company_capacity_baseline: "\u4EA7\u80FD\u57FA\u7EBF",
+    company_capacity_ratio: "\u4EA7\u80FD\u6BD4",
+    bottleneck_candidates: "\u74F6\u9888",
+    makespan: "Makespan",
+    validation: "\u6821\u9A8C\u7ED3\u679C",
+    cpu_time: "\u7B97\u6CD5\u603B\u8017\u65F6",
+    resource_utilization: "\u8D44\u6E90\u5229\u7528\u7387",
     departure_interval_cv: "\u51FA\u7AD9\u95F4\u9694 CV",
     process_chamber_dwell: "\u52A0\u5DE5\u8154\u9A7B\u7559",
     robot_wafer_dwell: "\u673A\u5668\u624B\u9A7B\u7559",
     system_residence: "\u7CFB\u7EDF\u505C\u7559",
     system_residence_cv: "\u7CFB\u7EDF\u505C\u7559 CV",
-    resource_utilization: "\u8D44\u6E90\u5229\u7528\u7387",
-    bottleneck_candidates: "\u74F6\u9888\u5019\u9009",
     loadlock_wafers_per_cycle: "LoadLock \u6BCF\u5468\u671F\u6676\u5706",
     loadlock_full_cycle_ratio: "LoadLock \u6EE1\u8F7D\u5468\u671F\u7387",
     loadlock_empty_cycle_ratio: "LoadLock \u7A7A\u8F7D\u5468\u671F\u7387"
   };
   const compactTable = selected.size <= 2;
   const tableHeaders = compactTable ? ["<th>\u6D4B\u8BD5</th>", "<th>\u6307\u6807\u7ED3\u679C</th>"] : ["<th>\u6D4B\u8BD5</th>"];
-  if (!compactTable && selected.has("makespan")) tableHeaders.push("<th>Makespan</th>");
-  if (!compactTable && selected.has("baseline_improvement")) tableHeaders.push("<th>Baseline</th>", "<th>\u6539\u5584</th>");
-  if (!compactTable && selected.has("bottleneck_candidates")) tableHeaders.push("<th>\u74F6\u9888</th>");
-  if (!compactTable && selected.has("resource_utilization")) tableHeaders.push("<th>\u5229\u7528\u7387</th>");
-  if (!compactTable && selected.has("cpu_time")) tableHeaders.push("<th>CPU Time</th>");
-  if (!compactTable && selected.has("average_recompute_time")) tableHeaders.push("<th>\u5E73\u5747\u91CD\u7B97\u65F6\u95F4</th>");
   if (!compactTable && selected.has("throughput")) tableHeaders.push("<th>\u4EA7\u80FD</th>");
+  if (!compactTable && selected.has("average_recompute_time")) tableHeaders.push("<th>\u5E73\u5747\u91CD\u7B97\u65F6\u95F4</th>");
+  if (!compactTable && selected.has("company_capacity_baseline")) tableHeaders.push("<th>\u4EA7\u80FD\u57FA\u7EBF</th>");
+  if (!compactTable && selected.has("company_capacity_ratio")) tableHeaders.push("<th>\u4EA7\u80FD\u6BD4</th>");
+  if (!compactTable && selected.has("bottleneck_candidates")) tableHeaders.push("<th>\u74F6\u9888</th>");
+  if (!compactTable && selected.has("makespan")) tableHeaders.push("<th>Makespan</th>");
+  if (!compactTable && selected.has("validation")) tableHeaders.push("<th>\u6821\u9A8C\u7ED3\u679C</th>");
+  if (!compactTable && selected.has("cpu_time")) tableHeaders.push("<th>\u7B97\u6CD5\u603B\u8017\u65F6</th>");
+  if (!compactTable && selected.has("resource_utilization")) tableHeaders.push("<th>\u5229\u7528\u7387</th>");
   if (selected.has("departure_interval_cv")) tableHeaders.push("<th>\u51FA\u7AD9 CV</th>");
   if (selected.has("process_chamber_dwell")) tableHeaders.push("<th>\u52A0\u5DE5\u8154\u9A7B\u7559\u5747\u503C</th>");
   if (selected.has("robot_wafer_dwell")) tableHeaders.push("<th>\u673A\u5668\u624B\u9A7B\u7559\u5747\u503C</th>");
@@ -4919,7 +4925,6 @@ function renderTestGroupAnalysis(summary, groupName) {
   if (selected.has("loadlock_wafers_per_cycle")) tableHeaders.push("<th>LoadLock \u6BCF\u5468\u671F\u6676\u5706</th>");
   if (selected.has("loadlock_full_cycle_ratio")) tableHeaders.push("<th>LoadLock \u6EE1\u8F7D\u5468\u671F\u7387</th>");
   if (selected.has("loadlock_empty_cycle_ratio")) tableHeaders.push("<th>LoadLock \u7A7A\u8F7D\u5468\u671F\u7387</th>");
-  if (selected.has("validation")) tableHeaders.push("<th>\u6821\u9A8C</th>");
   return `
     <div class="group-analysis-head">
       <div class="group-analysis-selection">${[...selected].map((metric) => `<span>${escapeHtml2(selectedLabels[metric] || metric)}</span>`).join("")}</div>
@@ -9245,6 +9250,7 @@ async function showTestGroupAnalysis() {
       validation: String(item.validation || "unknown"),
       makespan: item.makespan,
       baselineMakespan: item.baseline?.status === "succeeded" ? item.baseline.makespan : null,
+      companyCapacityBaselineWph: companyCapacityBaselineFor(state.workspaceDevice?.name, item.testName),
       cpuTimeMs: item.cpuTimeMs ?? item.totalElapsedMs,
       elapsedTimeMs: item.totalElapsedMs,
       error: item.error || item.baseline?.error || "",

@@ -4593,18 +4593,20 @@ function csvEscape(value) {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 var DEFAULT_SELECTED_METRIC_IDS = [
-  "validation",
-  "makespan",
-  "baseline_improvement",
-  "cpu_time",
   "throughput",
+  "average_recompute_time",
+  "company_capacity_baseline",
+  "company_capacity_ratio",
+  "bottleneck_candidates",
+  "makespan",
+  "validation",
+  "cpu_time",
+  "resource_utilization",
   "departure_interval_cv",
   "process_chamber_dwell",
   "robot_wafer_dwell",
   "system_residence",
-  "system_residence_cv",
-  "resource_utilization",
-  "bottleneck_candidates"
+  "system_residence_cv"
 ];
 function selectedMetricIds(summary) {
   return new Set(summary.selectedMetricIds ?? DEFAULT_SELECTED_METRIC_IDS);
@@ -4619,23 +4621,23 @@ function validationText(item) {
   return item.validationPassed ? "\u901A\u8FC7" : item.validation || item.status || "\u2014";
 }
 var CSV_COLUMNS = [
-  { metricId: "makespan", header: "Makespan", value: (item) => csvNumber(item.makespan, 2) },
-  { metricId: "baseline_improvement", header: "Baseline", value: (item) => csvNumber(item.baselineMakespan, 2) },
-  { metricId: "baseline_improvement", header: "\u6539\u5584", value: (item) => csvNumber(item.improvementPercent, 2) },
+  { metricId: "throughput", header: "\u4EA7\u80FD\uFF08\u7247/\u5C0F\u65F6\uFF09", value: (item) => csvNumber(item.throughputPerHour, 1) },
+  { metricId: "average_recompute_time", header: "\u5E73\u5747\u91CD\u7B97\u65F6\u95F4\uFF08ms\uFF09", value: (item) => csvNumber(item.averageRecomputeTimeMs ?? null, 1) },
+  { metricId: "company_capacity_baseline", header: "\u4EA7\u80FD\u57FA\u7EBF\uFF08\u7247/\u5C0F\u65F6\uFF09", value: (item) => csvNumber(item.companyCapacityBaselineWph ?? null, 1) },
+  { metricId: "company_capacity_ratio", header: "\u4EA7\u80FD\u6BD4", value: (item) => csvNumber(item.companyCapacityRatio ?? null, 2) },
   { metricId: "bottleneck_candidates", header: "\u74F6\u9888", value: bottleneckText },
-  { metricId: "resource_utilization", header: "\u5229\u7528\u7387", value: (item) => csvPercent(item.bottleneckUtilization, true) },
-  { metricId: "cpu_time", header: "CPU Time", value: (item) => csvNumber(item.cpuTimeMs, 1) },
-  { metricId: "average_recompute_time", header: "\u5E73\u5747\u91CD\u7B97\u65F6\u95F4", value: (item) => csvNumber(item.averageRecomputeTimeMs ?? null, 1) },
-  { metricId: "throughput", header: "\u4EA7\u80FD", value: (item) => csvNumber(item.throughputPerHour, 1) },
+  { metricId: "makespan", header: "Makespan\uFF08s\uFF09", value: (item) => csvNumber(item.makespan, 2) },
+  { metricId: "validation", header: "\u6821\u9A8C\u7ED3\u679C", value: validationText },
+  { metricId: "cpu_time", header: "\u7B97\u6CD5\u603B\u8017\u65F6\uFF08ms\uFF09", value: (item) => csvNumber(item.cpuTimeMs, 1) },
+  { metricId: "resource_utilization", header: "\u5229\u7528\u7387\uFF08%\uFF09", value: (item) => csvPercent(item.bottleneckUtilization, true) },
   { metricId: "departure_interval_cv", header: "\u51FA\u7AD9 CV", value: (item) => csvNumber(item.departureIntervalCv, 2) },
-  { metricId: "process_chamber_dwell", header: "\u52A0\u5DE5\u8154\u9A7B\u7559\u5747\u503C", value: (item) => csvNumber(item.processChamberDwellMeanSeconds, 2) },
-  { metricId: "robot_wafer_dwell", header: "\u673A\u5668\u624B\u9A7B\u7559\u5747\u503C", value: (item) => csvNumber(item.robotWaferDwellMeanSeconds, 2) },
-  { metricId: "system_residence", header: "\u7CFB\u7EDF\u505C\u7559\u5747\u503C", value: (item) => csvNumber(item.waferSystemResidenceMeanSeconds, 2) },
+  { metricId: "process_chamber_dwell", header: "\u52A0\u5DE5\u8154\u9A7B\u7559\u5747\u503C\uFF08s\uFF09", value: (item) => csvNumber(item.processChamberDwellMeanSeconds, 2) },
+  { metricId: "robot_wafer_dwell", header: "\u673A\u5668\u624B\u9A7B\u7559\u5747\u503C\uFF08s\uFF09", value: (item) => csvNumber(item.robotWaferDwellMeanSeconds, 2) },
+  { metricId: "system_residence", header: "\u7CFB\u7EDF\u505C\u7559\u5747\u503C\uFF08s\uFF09", value: (item) => csvNumber(item.waferSystemResidenceMeanSeconds, 2) },
   { metricId: "system_residence_cv", header: "\u7CFB\u7EDF\u505C\u7559 CV", value: (item) => csvNumber(item.waferSystemResidenceCv, 2) },
-  { metricId: "loadlock_wafers_per_cycle", header: "LoadLock \u6BCF\u5468\u671F\u6676\u5706", value: (item) => csvNumber(item.loadLockWafersPerCycle, 2) },
-  { metricId: "loadlock_full_cycle_ratio", header: "LoadLock \u6EE1\u8F7D\u5468\u671F\u7387", value: (item) => csvPercent(item.loadLockFullCycleRatio, true) },
-  { metricId: "loadlock_empty_cycle_ratio", header: "LoadLock \u7A7A\u8F7D\u5468\u671F\u7387", value: (item) => csvPercent(item.loadLockEmptyCycleRatio, true) },
-  { metricId: "validation", header: "\u6821\u9A8C", value: validationText }
+  { metricId: "loadlock_wafers_per_cycle", header: "LoadLock \u6BCF\u5468\u671F\u6676\u5706\uFF08\u7247\uFF09", value: (item) => csvNumber(item.loadLockWafersPerCycle, 2) },
+  { metricId: "loadlock_full_cycle_ratio", header: "LoadLock \u6EE1\u8F7D\u5468\u671F\u7387\uFF08%\uFF09", value: (item) => csvPercent(item.loadLockFullCycleRatio, true) },
+  { metricId: "loadlock_empty_cycle_ratio", header: "LoadLock \u7A7A\u8F7D\u5468\u671F\u7387\uFF08%\uFF09", value: (item) => csvPercent(item.loadLockEmptyCycleRatio, true) }
 ];
 function testGroupSummaryCsv(summary) {
   const selected = selectedMetricIds(summary);
