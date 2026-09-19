@@ -4618,15 +4618,8 @@ function validationText(item) {
   }
   return item.validationPassed ? "\u901A\u8FC7" : item.validation || item.status || "\u2014";
 }
-function makespanReferenceText(item, summary) {
-  if (summary.referenceCaseId && item.id === summary.referenceCaseId) return "\u53C2\u8003";
-  if (item.referenceDeltas?.makespan?.percent === void 0) return "\u2014";
-  if (!item.referenceComparable) return "\u4EC5\u89C2\u5BDF";
-  return csvNumber(item.referenceDeltas.makespan.percent, 2);
-}
 var CSV_COLUMNS = [
   { metricId: "makespan", header: "Makespan", value: (item) => csvNumber(item.makespan, 2) },
-  { metricId: "makespan", header: "\u76F8\u5BF9\u53C2\u8003", value: makespanReferenceText },
   { metricId: "baseline_improvement", header: "Baseline", value: (item) => csvNumber(item.baselineMakespan, 2) },
   { metricId: "baseline_improvement", header: "\u6539\u5584", value: (item) => csvNumber(item.improvementPercent, 2) },
   { metricId: "bottleneck_candidates", header: "\u74F6\u9888", value: bottleneckText },

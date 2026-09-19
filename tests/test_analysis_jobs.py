@@ -13,10 +13,10 @@ from realtime_scheduler.backend.analysis_jobs import (
 
 
 class AnalysisJobTests(unittest.TestCase):
-    """验证分析任务能够报告进度并返回参考测试比较结果。"""
+    """验证分析任务能够报告进度并返回所选指标结果。"""
 
-    def test_job_completes_selected_metrics_and_reference_comparison(self) -> None:
-        """任务应读取运行制品、限制指标并生成严格可比的参考差异。"""
+    def test_job_completes_selected_metrics_without_reference_comparison(self) -> None:
+        """任务应读取运行制品、限制指标，并且不再生成相对参考差异。"""
         saved_results = {
             "r1": {
                 "MoveList": [{"MoveType": 9, "ModuleName": "PM1", "StartTime": 0, "EndTime": 10}],
@@ -31,7 +31,6 @@ class AnalysisJobTests(unittest.TestCase):
             "device": {"Stations": {"PM1": {"Type": "ProcessChamber"}}, "Robots": {}},
             "routes": [],
             "metricIds": ["makespan", "average_recompute_time"],
-            "referenceCaseId": "one",
             "timeBudgetSeconds": 10,
             "cases": [
                 {"id": "one", "name": "一", "status": "succeeded", "validation": "passed", "makespan": 10, "resultId": "r1", "rounds": [], "comparisonKey": "same"},
@@ -61,9 +60,10 @@ class AnalysisJobTests(unittest.TestCase):
             snapshot["result"]["selectedMetricIds"],
         )
         self.assertEqual(6, snapshot["result"]["medianAverageRecomputeTimeMs"])
-        compared = snapshot["result"]["cases"][1]
-        self.assertTrue(compared["referenceComparable"])
-        self.assertEqual(20, compared["referenceDeltas"]["makespan"]["percent"])
+        self.assertNotIn("referenceCaseId", snapshot["result"])
+        self.assertNotIn("referenceDeltas", snapshot["result"]["cases"][1])
+        self.assertNotIn("referenceComparable", snapshot["result"]["cases"][1])
+        self.assertEqual(12, snapshot["result"]["cases"][1]["makespan"])
 
 
 if __name__ == "__main__":

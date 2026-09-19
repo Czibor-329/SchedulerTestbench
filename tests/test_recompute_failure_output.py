@@ -121,12 +121,12 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         package = json.loads((frontend_root / "package.json").read_text(encoding="utf-8"))
         package_lock = json.loads((frontend_root / "package-lock.json").read_text(encoding="utf-8"))
 
-        self.assertEqual("1.6.6", package["version"])
-        self.assertEqual("1.6.6", package_lock["version"])
-        self.assertEqual("1.6.6", package_lock["packages"][""]["version"])
-        self.assertIn('class="frontend-version">V1.6.6</span>', template)
-        self.assertIn('/assets/config_editor.css?v=1.6.6', template)
-        self.assertIn('/assets/config_editor.js?v=1.6.6', template)
+        self.assertEqual("1.6.7", package["version"])
+        self.assertEqual("1.6.7", package_lock["version"])
+        self.assertEqual("1.6.7", package_lock["packages"][""]["version"])
+        self.assertIn('class="frontend-version">V1.6.7</span>', template)
+        self.assertIn('/assets/config_editor.css?v=1.6.7', template)
+        self.assertIn('/assets/config_editor.js?v=1.6.7', template)
 
     def test_single_run_failure_card_does_not_duplicate_validation_issue(self) -> None:
         """状态推进校验失败只展示一条完整错误，不再重复渲染问题列表。"""

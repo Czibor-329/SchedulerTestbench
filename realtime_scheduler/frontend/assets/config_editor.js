@@ -4823,15 +4823,8 @@ function validationText(item) {
   }
   return item.validationPassed ? "\u901A\u8FC7" : item.validation || item.status || "\u2014";
 }
-function makespanReferenceText(item, summary) {
-  if (summary.referenceCaseId && item.id === summary.referenceCaseId) return "\u53C2\u8003";
-  if (item.referenceDeltas?.makespan?.percent === void 0) return "\u2014";
-  if (!item.referenceComparable) return "\u4EC5\u89C2\u5BDF";
-  return csvNumber(item.referenceDeltas.makespan.percent, 2);
-}
 var CSV_COLUMNS = [
   { metricId: "makespan", header: "Makespan", value: (item) => csvNumber(item.makespan, 2) },
-  { metricId: "makespan", header: "\u76F8\u5BF9\u53C2\u8003", value: makespanReferenceText },
   { metricId: "baseline_improvement", header: "Baseline", value: (item) => csvNumber(item.baselineMakespan, 2) },
   { metricId: "baseline_improvement", header: "\u6539\u5584", value: (item) => csvNumber(item.improvementPercent, 2) },
   { metricId: "bottleneck_candidates", header: "\u74F6\u9888", value: bottleneckText },
@@ -4862,10 +4855,7 @@ function testGroupSummaryCsv(summary) {
 function resultTable(summary, selected, compact = false) {
   return summary.cases.map((item, index) => {
     const cells = [`<th scope="row">${escapeHtml2(caseLabel(item, index))}</th>`];
-    if (selected.has("makespan")) {
-      cells.push(`<td>${finiteText(item.makespan, 2, " s")}</td>`);
-      cells.push(`<td>${summary.referenceCaseId && item.id === summary.referenceCaseId ? '<span class="group-reference">\u53C2\u8003</span>' : item.referenceDeltas?.makespan?.percent === void 0 ? "\u2014" : item.referenceComparable ? `${item.referenceDeltas.makespan.percent > 0 ? "+" : ""}${item.referenceDeltas.makespan.percent.toFixed(2)}%` : '<span title="\u8FD0\u884C\u914D\u7F6E\u4E0D\u540C\uFF0C\u53EA\u5E76\u5217\u5C55\u793A\u6570\u503C">\u4EC5\u89C2\u5BDF</span>'}</td>`);
-    }
+    if (selected.has("makespan")) cells.push(`<td>${finiteText(item.makespan, 2, " s")}</td>`);
     if (selected.has("baseline_improvement")) {
       cells.push(`<td>${finiteText(item.baselineMakespan, 2, " s")}</td>`);
       cells.push(`<td class="${(item.improvementPercent ?? 0) < 0 ? "loss" : "gain"}">${item.improvementPercent === null ? "\u2014" : `${item.improvementPercent > 0 ? "+" : ""}${item.improvementPercent.toFixed(2)}%`}</td>`);
@@ -4885,7 +4875,6 @@ function resultTable(summary, selected, compact = false) {
     if (selected.has("loadlock_empty_cycle_ratio")) cells.push(`<td>${percentText(item.loadLockEmptyCycleRatio, true)}</td>`);
     if (selected.has("validation")) cells.push(`<td>${item.analysisStatus && item.analysisStatus !== "completed" ? `<span class="group-fail">${escapeHtml2(item.error || item.analysisStatus)}</span>` : item.validationPassed ? '<span class="group-pass">\u901A\u8FC7</span>' : `<span class="group-fail">${escapeHtml2(item.validation || item.status)}</span>`}</td>`);
     const rowClasses = [
-      summary.referenceCaseId && item.id === summary.referenceCaseId ? "is-reference" : "",
       item.analysisStatus && item.analysisStatus !== "completed" ? "is-incomplete" : ""
     ].filter(Boolean).join(" ");
     const compactValues = cells.slice(1).map((cell) => cell.replace(/^<td(?:\s[^>]*)?>|<\/td>$/g, "")).join('<span aria-hidden="true"> \xB7 </span>');
@@ -4915,7 +4904,7 @@ function renderTestGroupAnalysis(summary, groupName) {
   };
   const compactTable = selected.size <= 2;
   const tableHeaders = compactTable ? ["<th>\u6D4B\u8BD5</th>", "<th>\u6307\u6807\u7ED3\u679C</th>"] : ["<th>\u6D4B\u8BD5</th>"];
-  if (!compactTable && selected.has("makespan")) tableHeaders.push("<th>Makespan</th>", "<th>\u76F8\u5BF9\u53C2\u8003</th>");
+  if (!compactTable && selected.has("makespan")) tableHeaders.push("<th>Makespan</th>");
   if (!compactTable && selected.has("baseline_improvement")) tableHeaders.push("<th>Baseline</th>", "<th>\u6539\u5584</th>");
   if (!compactTable && selected.has("bottleneck_candidates")) tableHeaders.push("<th>\u74F6\u9888</th>");
   if (!compactTable && selected.has("resource_utilization")) tableHeaders.push("<th>\u5229\u7528\u7387</th>");
@@ -4944,7 +4933,7 @@ function renderTestGroupAnalysis(summary, groupName) {
     <section class="group-analysis-table-wrap">
       <div class="group-analysis-table-scroll">
         <table class="group-analysis-table">
-          <caption class="sr-only">${escapeHtml2(groupName || "\u5F53\u524D\u6D4B\u8BD5\u7EC4")}\u9010\u6D4B\u8BD5\u6307\u6807\u5BF9\u6BD4</caption>
+          <caption class="sr-only">${escapeHtml2(groupName || "\u5F53\u524D\u6D4B\u8BD5\u7EC4")}\u9010\u6D4B\u8BD5\u6307\u6807</caption>
           <thead><tr>${tableHeaders.join("")}</tr></thead>
           <tbody>${resultTable(summary, selected, compactTable)}</tbody>
         </table>
@@ -7281,7 +7270,7 @@ function updateAnalysisReportAvailability() {
 function setRunResultView(view) {
   const analysis = view === "analysis";
   if (analysis && !canOpenAnalysisReport()) return;
-  document.getElementById("runResultsView").hidden = analysis;
+  document.getElementById("runPreviewArea").hidden = analysis;
   document.getElementById("runAnalysisView").hidden = !analysis;
   document.querySelectorAll("[data-result-view]").forEach((button) => {
     const selected = button.dataset.resultView === view;
@@ -7738,7 +7727,7 @@ function routePickerStageWacTokens(stage) {
 function routePickerPreviewCleans(route) {
   return routeReferencedCleanNames(route).map(routePickerCleanInfo);
 }
-function routePickerCompactPath(route, includeTestParameters = true, _sourceModule = "") {
+function routePickerCompactPath(route, includeTestParameters = true, sourceModule = "") {
   normalizeRoute(route);
   return compactRoutePreviewPath(route, {
     includeTestParameters,
@@ -9156,9 +9145,6 @@ async function sendBatchCancellation() {
 function hasBatchResultMetrics(item) {
   return item?.status === "succeeded" || item?.metricsAvailable === true;
 }
-function groupAnalysisComparisonKey(testCase) {
-  return JSON.stringify({ rounds: testCase?.rounds || [] });
-}
 function showAnalysisWizardStep(step) {
   analysisWizardStep = Math.max(1, Math.min(3, Number(step) || 1));
   document.querySelectorAll("[data-analysis-page]").forEach((page) => {
@@ -9173,7 +9159,7 @@ function showAnalysisWizardStep(step) {
   });
   const descriptions = {
     1: "\u9010\u9879\u9009\u62E9\u672C\u6B21\u9700\u8981\u5B9E\u9645\u8BA1\u7B97\u7684\u6307\u6807\uFF0C\u9009\u62E9\u4F1A\u4FDD\u5B58\u4E3A\u4E2A\u4EBA\u8BBE\u7F6E\u3002",
-    2: "\u9009\u62E9\u53C2\u4E0E\u5BF9\u6BD4\u7684\u6D4B\u8BD5\uFF0C\u5E76\u786E\u8BA4\u53C2\u8003\u6D4B\u8BD5\u3001\u7EDF\u8BA1\u7A97\u53E3\u548C\u65F6\u95F4\u9884\u7B97\u3002",
+    2: "\u9009\u62E9\u8981\u5206\u6790\u7684\u6D4B\u8BD5\uFF0C\u5E76\u786E\u8BA4\u7EDF\u8BA1\u7A97\u53E3\u548C\u65F6\u95F4\u9884\u7B97\u3002",
     3: "\u6B63\u5728\u6309\u6240\u9009\u6307\u6807\u8BA1\u7B97\uFF0C\u8FBE\u5230\u65F6\u95F4\u9884\u7B97\u65F6\u4F1A\u4FDD\u7559\u5DF2\u5B8C\u6210\u7ED3\u679C\u3002"
   };
   document.getElementById("analysisOptionsDescription").textContent = descriptions[analysisWizardStep];
@@ -9186,17 +9172,12 @@ function showAnalysisWizardStep(step) {
 function openGroupAnalysisOptions() {
   const result = state.batchResult;
   if (!result?.items?.length) return;
-  const testsById = new Map((activeBatchContext?.tests || []).map((test) => [String(test.id), test]));
   const analyzable = result.items.filter((item) => hasBatchResultMetrics(item) && item.resultUrl);
   const options = document.getElementById("analysisTestOptions");
   options.innerHTML = analyzable.map((item, index) => `
     <label><input type="checkbox" checked value="${escapeHtml3(String(item.testId || `index-${index}`))}" data-analysis-test>
       <span><strong>${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}</strong><small>${escapeHtml3(validationDisplay(item.validation))}</small></span>
     </label>`).join("");
-  const reference = document.getElementById("analysisReferenceTest");
-  reference.innerHTML = analyzable.map((item, index) => `
-    <option value="${escapeHtml3(String(item.testId || `index-${index}`))}">${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}</option>`).join("");
-  reference.dataset.testsById = String(testsById.size);
   document.getElementById("analysisToggleAllTests").textContent = "\u53D6\u6D88\u5168\u9009";
   document.getElementById("analysisDialogProgress").innerHTML = "";
   document.getElementById("analysisOptionsCancel").disabled = false;
@@ -9242,19 +9223,15 @@ async function showTestGroupAnalysis() {
       elapsedTimeMs: item.totalElapsedMs,
       error: item.error || item.baseline?.error || "",
       resultId,
-      rounds: testCase?.rounds || [],
-      comparisonKey: groupAnalysisComparisonKey(testCase)
+      rounds: testCase?.rounds || []
     };
   });
-  const referenceSelect = document.getElementById("analysisReferenceTest");
-  const referenceCaseId = selectedIds.has(String(referenceSelect.value)) ? String(referenceSelect.value) : cases[0].id;
   await saveAnalysisSettingsPreferences();
   const job = await createTestGroupAnalysisJob({
     cases,
     device: activeBatchContext?.device,
     routes: activeBatchContext?.routes || [],
     metricIds,
-    referenceCaseId,
     windowMode: document.getElementById("analysisWindowMode").value,
     timeBudgetSeconds: Number(document.getElementById("analysisTimeBudget").value)
   });

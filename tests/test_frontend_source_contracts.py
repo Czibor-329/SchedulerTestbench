@@ -454,14 +454,15 @@ class ConfigEditorFrontendTests(unittest.TestCase):
             '<span class="eyebrow">测试组结果分析</span>',
         ):
             self.assertNotIn(removed_content, group_view_source)
-        self.assertIn('class="group-analysis-table-head"', group_view_source)
+        self.assertIn('class="group-analysis-head"', group_view_source)
         self.assertNotIn('<div class="group-kpi-grid">', group_view_source)
         self.assertIn('<section class="group-analysis-table-wrap">', group_view_source)
         self.assertIn('data-return-run-results', group_view_source)
         self.assertIn('返回运行结果', group_view_source)
         self.assertNotIn('参考测试：', group_view_source)
+        self.assertNotIn("<th>相对参考</th>", group_view_source)
         self.assertNotIn('项命中缓存', group_view_source)
-        self.assertIn("逐测试指标对比", group_view_source)
+        self.assertIn("逐测试指标", group_view_source)
         self.assertNotIn("function throughputChart", group_view_source)
         self.assertIn("<th>产能</th>", group_view_source)
         self.assertNotIn("<th>吞吐</th>", group_view_source)

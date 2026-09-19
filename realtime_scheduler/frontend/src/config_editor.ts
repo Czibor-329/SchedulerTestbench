@@ -2630,7 +2630,7 @@ function updateAnalysisReportAvailability() {
 function setRunResultView(view) {
   const analysis = view === "analysis";
   if (analysis && !canOpenAnalysisReport()) return;
-  document.getElementById("runResultsView").hidden = analysis;
+  document.getElementById("runPreviewArea").hidden = analysis;
   document.getElementById("runAnalysisView").hidden = !analysis;
   document.querySelectorAll("[data-result-view]").forEach(button => {
     const selected = button.dataset.resultView === view;
@@ -4711,11 +4711,6 @@ function hasBatchResultMetrics(item) {
   return item?.status === "succeeded" || item?.metricsAvailable === true;
 }
 
-/** 使用测试任务配置生成严格可比性键；名称不同但运行配置相同时仍可直接比较。 */
-function groupAnalysisComparisonKey(testCase) {
-  return JSON.stringify({ rounds: testCase?.rounds || [] });
-}
-
 /** 切换分析向导页面，并同步步骤图示、说明和底部操作。 */
 function showAnalysisWizardStep(step) {
   analysisWizardStep = Math.max(1, Math.min(3, Number(step) || 1));
@@ -4731,7 +4726,7 @@ function showAnalysisWizardStep(step) {
   });
   const descriptions = {
     1: "逐项选择本次需要实际计算的指标，选择会保存为个人设置。",
-    2: "选择参与对比的测试，并确认参考测试、统计窗口和时间预算。",
+    2: "选择要分析的测试，并确认统计窗口和时间预算。",
     3: "正在按所选指标计算，达到时间预算时会保留已完成结果。",
   };
   document.getElementById("analysisOptionsDescription").textContent = descriptions[analysisWizardStep];
@@ -4746,17 +4741,12 @@ function showAnalysisWizardStep(step) {
 function openGroupAnalysisOptions() {
   const result = state.batchResult;
   if (!result?.items?.length) return;
-  const testsById = new Map((activeBatchContext?.tests || []).map(test => [String(test.id), test]));
   const analyzable = result.items.filter(item => hasBatchResultMetrics(item) && item.resultUrl);
   const options = document.getElementById("analysisTestOptions");
   options.innerHTML = analyzable.map((item, index) => `
     <label><input type="checkbox" checked value="${escapeHtml(String(item.testId || `index-${index}`))}" data-analysis-test>
       <span><strong>${escapeHtml(item.testName || `测试 ${index + 1}`)}</strong><small>${escapeHtml(validationDisplay(item.validation))}</small></span>
     </label>`).join("");
-  const reference = document.getElementById("analysisReferenceTest");
-  reference.innerHTML = analyzable.map((item, index) => `
-    <option value="${escapeHtml(String(item.testId || `index-${index}`))}">${escapeHtml(item.testName || `测试 ${index + 1}`)}</option>`).join("");
-  reference.dataset.testsById = String(testsById.size);
   document.getElementById("analysisToggleAllTests").textContent = "取消全选";
   document.getElementById("analysisDialogProgress").innerHTML = "";
   document.getElementById("analysisOptionsCancel").disabled = false;
@@ -4780,7 +4770,7 @@ function renderGroupAnalysisProgress(job) {
   showAnalysisWizardStep(3);
 }
 
-/** 创建后台分析任务、轮询真实进度，并展示完整或部分比较报告。 */
+/** 创建后台分析任务、轮询真实进度，并展示完整或部分分析报告。 */
 async function showTestGroupAnalysis() {
   const result = state.batchResult;
   if (!result?.items?.length) return;
@@ -4812,20 +4802,14 @@ async function showTestGroupAnalysis() {
         error: item.error || item.baseline?.error || "",
         resultId,
         rounds: testCase?.rounds || [],
-        comparisonKey: groupAnalysisComparisonKey(testCase),
       };
     });
-  const referenceSelect = document.getElementById("analysisReferenceTest");
-  const referenceCaseId = selectedIds.has(String(referenceSelect.value))
-    ? String(referenceSelect.value)
-    : cases[0].id;
   await saveAnalysisSettingsPreferences();
   const job = await createTestGroupAnalysisJob({
     cases,
     device: activeBatchContext?.device,
     routes: activeBatchContext?.routes || [],
     metricIds,
-    referenceCaseId,
     windowMode: document.getElementById("analysisWindowMode").value,
     timeBudgetSeconds: Number(document.getElementById("analysisTimeBudget").value),
   });
@@ -5050,7 +5034,7 @@ function renderBatchItems(items) {
   }).join("");
 }
 
-/** 关闭结果区上方的测试只读详情，并让失效请求不能覆盖当前状态。 */
+/** 关闭结果预览面板下方的测试只读详情，并让失效请求不能覆盖当前状态。 */
 function closeBatchTestDetails() {
   expandedBatchTestId = "";
   batchTestDetailsRequestVersion += 1;
@@ -5083,7 +5067,7 @@ function batchTestDetailRouteSummary(testCase, pjob) {
   return routePickerCompactPath(runtimeRouteForTemplate(template, routeConfig), true, pjob?.loadPort || "");
 }
 
-/** 生成结果区上方的测试只读详情，结构与测试管理的轮次、CJob、PJob 一致。 */
+/** 生成结果预览面板下方的测试只读详情，结构与测试管理的轮次、CJob、PJob 一致。 */
 function renderBatchTestDetails(testCase) {
   const rounds = Array.isArray(testCase?.rounds) ? testCase.rounds : [];
   const details = rounds.map((round, roundIndex) => {

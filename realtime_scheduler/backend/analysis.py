@@ -1553,53 +1553,15 @@ def _normalize_group_case(input_case: Mapping[str, Any]) -> Dict[str, Any]:
             else None
         ),
         "analysisStatus": str(input_case.get("analysisStatus") or ""),
-        "comparisonKey": str(input_case.get("comparisonKey") or ""),
         "error": str(input_case.get("error") or ""),
     }
 
 
 def analyze_test_group_performance(
     inputs: Sequence[Mapping[str, Any]],
-    reference_case_id: str = "",
 ) -> Dict[str, Any]:
-    """生成测试组统计和相对参考测试差异，不压缩为跨量纲综合分数。"""
+    """生成测试组统计，不压缩为跨量纲综合分数，也不相对某一测试计算差异。"""
     cases = [_normalize_group_case(input_case) for input_case in inputs]
-    reference = next(
-        (item for item in cases if item["id"] == reference_case_id),
-        cases[0] if cases else None,
-    )
-    comparison_fields = (
-        "makespan", "cpuTimeMs", "averageRecomputeTimeMs", "throughputPerHour",
-        "departureIntervalCv",
-        "processChamberDwellMeanSeconds", "robotWaferDwellMeanSeconds",
-        "waferSystemResidenceMeanSeconds", "waferSystemResidenceCv",
-        "bottleneckUtilization",
-    )
-    for item in cases:
-        same_configuration = bool(
-            reference
-            and (
-                item["id"] == reference["id"]
-                or item["comparisonKey"]
-                and item["comparisonKey"] == reference["comparisonKey"]
-            )
-        )
-        item["referenceComparable"] = same_configuration
-        item["referenceDeltas"] = {}
-        for field in comparison_fields:
-            value = item.get(field)
-            reference_value = reference.get(field) if reference else None
-            if value is None or reference_value is None:
-                continue
-            difference = float(value) - float(reference_value)
-            item["referenceDeltas"][field] = {
-                "absolute": difference,
-                "percent": (
-                    difference / float(reference_value) * 100
-                    if abs(float(reference_value)) > PERFORMANCE_TIME_TOLERANCE
-                    else None
-                ),
-            }
     succeeded = [item for item in cases if item["status"] == "succeeded"]
     comparable = [item for item in cases if item["comparable"]]
     improvements = [
@@ -1659,7 +1621,6 @@ def analyze_test_group_performance(
         "succeededCount": len(succeeded),
         "failedCount": len(cases) - len(succeeded),
         "metricsCount": sum(bool(item.get("performance")) for item in inputs),
-        "referenceCaseId": reference["id"] if reference else "",
         "validationPassedCount": validation_passed_count,
         "validationPassRate": (
             validation_passed_count / len(succeeded) if succeeded else 0.0

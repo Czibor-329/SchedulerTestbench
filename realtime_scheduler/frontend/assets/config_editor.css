@@ -601,7 +601,7 @@
     .analysis-test-options small { color: var(--muted); }
     .analysis-metric-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
     .analysis-metric-options label:has(input:checked), .analysis-test-options label:has(input:checked) { border-color: #80bca6; color: #174f40; background: #f0faf6; }
-    .analysis-options-controls { display: grid; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .analysis-options-controls { display: grid; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .analysis-options-controls label { display: grid; gap: 5px; color: #40516b; font-size: 11px; font-weight: 750; }
     .analysis-options-controls select { min-width: 0; min-height: 38px; padding: 7px 9px; border: 1px solid #cdd6e2; border-radius: 8px; background: #fff; }
     .analysis-progress-page { align-content: center; }
@@ -637,6 +637,8 @@
     .strategy-card:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
     .strategy-card input { width: auto; margin-right: 6px; }
     .strategy-card:focus-within { outline: 3px solid rgba(36,87,214,.13); outline-offset: 2px; }
+    .run-preview-stack { display: grid; gap: 16px; }
+    .run-preview-stack[hidden] { display: none; }
     .result-panel { container-type: inline-size; container-name: result-area; }
     .result-panel .panel-head { align-items: center; flex-wrap: wrap; }
     .result-head-actions { display: flex; align-items: center; gap: 8px; }
@@ -671,7 +673,7 @@
     .result-error-panel pre[hidden] { display: none; }
     .batch-results { display: grid; max-height: min(520px, 58dvh); padding-right: 4px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; grid-template-columns: repeat(4, minmax(0, 1fr)); align-content: start; gap: 10px; margin-top: 12px; }
     .batch-results:empty { display: none; }
-    .batch-test-details { margin: 16px 0; animation: detail-reveal .18s ease-out; }
+    .batch-test-details { margin: 0; animation: detail-reveal .18s ease-out; }
     .batch-test-details-body { display: grid; gap: 12px; }
     .batch-test-detail-round { overflow: hidden; border: 1px solid #cfdbea; border-radius: 14px; background: #fff; box-shadow: 0 8px 24px rgb(30 64 120 / 7%); }
     .batch-test-detail-round-head { display: flex; align-items: center; gap: 11px; min-height: 48px; padding: 9px 13px; border-bottom: 1px solid #dce5f0; background: linear-gradient(90deg, #f7faff, #fbfcff); }
@@ -786,7 +788,6 @@
     .group-analysis-progress-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2d8e83, #55b88d); transition: width .25s ease; }
     .group-analysis-progress p { margin: 0; }
     .group-analysis-progress .btn { justify-self: start; }
-    .group-reference { color: #17634f; font-weight: 850; }
     .group-analysis-table .gain { color: #087f5b; }
     .group-analysis-table .loss { color: #b42332; }
     .group-analysis-table-wrap { min-width: 0; overflow: hidden; }
@@ -800,9 +801,6 @@
     .group-analysis-table thead th { position: sticky; z-index: 2; top: 0; color: #42536d; background: #f2f6fb; box-shadow: inset 0 -1px #d9e2ed; font-size: 10px; font-weight: 850; letter-spacing: .015em; }
     .group-analysis-table tbody tr:nth-child(even) > * { background: #fafcfe; }
     .group-analysis-table tbody tr:hover > * { background: #eef5ff; }
-    .group-analysis-table tbody tr.is-reference > * { background: #effaf5; }
-    .group-analysis-table tbody tr.is-reference:hover > * { background: #e5f7ef; }
-    .group-analysis-table tbody tr.is-reference th:first-child { box-shadow: inset 3px 0 #2d8e83; color: #0f624c; }
     .group-analysis-table tbody tr.is-incomplete > * { color: #8a4b55; background: #fff8f8; }
     .group-analysis-table th:first-child { position: sticky; z-index: 1; left: 0; min-width: 150px; color: #1e304c; background: #fff; font-weight: 850; text-align: left; box-shadow: 1px 0 #e1e8f0; }
     .group-analysis-table thead th:first-child { z-index: 3; background: #f2f6fb; }

@@ -91,17 +91,37 @@ def test_cancelled_card_does_not_repeat_status_below_metrics() -> None:
     assert 'item.status === "cancelled" ? "调度已终止"' not in render_function
 
 
-def test_result_cards_toggle_readonly_test_details_above_results_area() -> None:
-    """结果卡片按需展示只读详情，详情容器位于结果面板之前。"""
+def test_result_cards_toggle_readonly_test_details_below_preview_cards() -> None:
+    """结果卡片按需展示只读详情，详情位于结果预览面板下方，不再外包一层面板。"""
     template = EDITOR_PATH.read_text(encoding="utf-8")
     source = (EDITOR_PATH.parent / "src" / "config_editor.ts").read_text(encoding="utf-8")
 
-    assert template.index('id="batchTestDetails"') < template.index('id="runResultsView"')
+    assert template.index('id="runPreviewArea"') < template.index('id="runResultsView"')
+    assert template.index('id="resultBatchLogButton"') < template.index('id="batchTestDetails"')
+    assert template.index('id="batchTestDetails"') < template.index('id="runAnalysisView"')
+    assert 'class="batch-test-details"' in template
+    assert 'class="panel batch-test-details"' not in template
+    assert 'getElementById("runPreviewArea").hidden = analysis' in source
     assert 'data-batch-test-card=' in source
     assert "async function toggleBatchTestDetails" in source
     assert "/api/workspaces/${state.workspaceDeviceId}/tests/${encodeURIComponent(testId)}" in source
     assert "点击测试卡片可展开详情<br>再次点击即可收起。" in template
     assert "batch-test-details-head" not in source
+
+
+def test_analysis_wizard_selects_tests_without_reference_comparison() -> None:
+    """分析向导第二步选择要分析的测试，不再提供参考测试对比。"""
+    template = EDITOR_PATH.read_text(encoding="utf-8")
+    source = (EDITOR_PATH.parent / "src" / "config_editor.ts").read_text(encoding="utf-8")
+
+    assert "选择分析的测试" in template
+    assert "参与对比的测试" not in template
+    assert 'id="analysisReferenceTest"' not in template
+    assert "参考测试" not in template
+    assert "referenceCaseId" not in source
+    assert "groupAnalysisComparisonKey" not in source
+    assert 'id="analysisWindowMode"' in template
+    assert 'id="analysisTimeBudget"' in template
 
 
 def test_result_cards_double_click_into_a_serial_run_queue() -> None:

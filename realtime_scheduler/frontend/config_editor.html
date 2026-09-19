@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>调度平台</title>
   <link rel="stylesheet" href="/assets/katex.min.css?v=1.4.4">
-  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.6">
-  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.6">
+  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.7">
+  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.7">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -40,7 +40,7 @@
       <div class="sidebar-footer">
         <span class="sidebar-footer-label">系统状态</span>
         <div class="service-pill" id="serviceState">本地服务</div>
-        <span class="frontend-version">V1.6.6</span>
+        <span class="frontend-version">V1.6.7</span>
       </div>
     </aside>
 
@@ -55,7 +55,7 @@
               </div>
             </div>
           </article>
-          <section class="batch-test-details" id="batchTestDetails" aria-live="polite" hidden></section>
+          <div class="run-preview-stack" id="runPreviewArea">
           <article class="panel result-panel" id="runResultsView">
             <div class="panel-head">
               <div class="result-view-tabs" role="tablist" aria-label="结果视图"><button class="result-view-tab active" id="resultPreviewViewButton" type="button" data-result-view="results" role="tab" aria-selected="true">结果预览</button><button class="result-view-tab" id="analysisReportViewButton" type="button" data-result-view="analysis" role="tab" aria-selected="false" disabled>分析报告</button></div>
@@ -75,6 +75,8 @@
               <div class="result-actions"><a class="btn batch-log-download" id="resultBatchLogButton" href="#" download aria-disabled="true">导出本批日志</a><a class="btn primary" id="batchGanttButton" href="#" target="_blank" aria-disabled="true">全部甘特图</a></div>
             </div>
           </article>
+          <section class="batch-test-details" id="batchTestDetails" aria-live="polite" hidden></section>
+          </div>
         <div id="runAnalysisView" hidden>
           <article class="visual-workbench">
             <section class="test-group-analysis" id="testGroupAnalysisPanel" hidden aria-live="polite"></section>
@@ -434,10 +436,9 @@
         </div>
       </section>
       <section class="analysis-options-page" data-analysis-page="2" hidden>
-        <div class="analysis-options-section-head"><strong>参与对比的测试</strong><button class="text-button" id="analysisToggleAllTests" type="button">取消全选</button></div>
+        <div class="analysis-options-section-head"><strong>选择分析的测试</strong><button class="text-button" id="analysisToggleAllTests" type="button">取消全选</button></div>
         <div class="analysis-test-options" id="analysisTestOptions"></div>
         <div class="analysis-options-controls">
-          <label>参考测试<select id="analysisReferenceTest"></select></label>
           <label>统计窗口<select id="analysisWindowMode"><option value="steady">稳态窗口</option><option value="full">完整周期</option></select></label>
           <label>时间预算<select id="analysisTimeBudget"><option value="30">快速 · 30 秒</option><option value="120" selected>标准 · 2 分钟</option><option value="300">完整 · 5 分钟</option></select></label>
         </div>
@@ -783,7 +784,7 @@
     </aside>
   </dialog>
 
-  <script type="module" src="/assets/config_editor.js?v=1.6.6"></script>
+  <script type="module" src="/assets/config_editor.js?v=1.6.7"></script>
   <dialog id="testDraftDialog" aria-labelledby="testDraftTitle">
     <h2 id="testDraftTitle">测试有未保存的修改</h2><p>保存后再离开，或放弃本次修改。</p>
     <form method="dialog" class="editor-save-actions"><button class="btn" value="cancel" autofocus>继续编辑</button><button class="btn" value="discard">放弃修改</button><button class="btn primary" value="save">保存并继续</button></form>

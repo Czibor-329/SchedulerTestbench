@@ -152,7 +152,6 @@ export interface TestGroupPerformanceSummary {
   succeededCount: number;
   failedCount: number;
   metricsCount: number;
-  referenceCaseId?: string;
   selectedMetricGroups?: string[];
   selectedMetricIds?: string[];
   cacheHitCount?: number;

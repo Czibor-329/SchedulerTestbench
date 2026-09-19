@@ -35,10 +35,10 @@ function sampleSummary(overrides = {}) {
 
 test("导出 CSV 的指标单元格只写数字，不附加单位或符号", () => {
   const [header, row] = testGroupSummaryCsv(sampleSummary()).split("\r\n");
-  assert.match(header, /^测试,Makespan,相对参考,Baseline,改善,瓶颈,利用率,CPU Time,产能,/);
+  assert.match(header, /^测试,Makespan,Baseline,改善,瓶颈,利用率,CPU Time,产能,/);
   assert.equal(
     row,
-    "产能样例,40.50,—,50.00,19.00,PM1 +1 个候选,85.23,1500.0,120.5,0.12,1.50,0.80,90.12,0.05,通过",
+    "产能样例,40.50,50.00,19.00,PM1 +1 个候选,85.23,1500.0,120.5,0.12,1.50,0.80,90.12,0.05,通过",
   );
   assert.doesNotMatch(row, / s| ms|%|片\/h|片\b/);
 });
@@ -60,7 +60,7 @@ test("未勾选、未计算的指标不会出现在 CSV 列中", () => {
   const [header, row] = testGroupSummaryCsv(sampleSummary({
     selectedMetricIds: ["makespan", "cpu_time", "throughput", "departure_interval_cv", "validation"],
   })).split("\r\n");
-  assert.equal(header, "测试,Makespan,相对参考,CPU Time,产能,出站 CV,校验");
-  assert.equal(row, "产能样例,40.50,—,1500.0,120.5,0.12,通过");
+  assert.equal(header, "测试,Makespan,CPU Time,产能,出站 CV,校验");
+  assert.equal(row, "产能样例,40.50,1500.0,120.5,0.12,通过");
   assert.doesNotMatch(header, /Baseline|改善|瓶颈|利用率|驻留|系统停留/);
 });

@@ -264,7 +264,6 @@ def _run_test_group_analysis_job(job_id: str) -> None:
                 for key in (
                     "id", "name", "status", "validation", "makespan",
                     "baselineMakespan", "cpuTimeMs", "elapsedTimeMs", "error",
-                    "comparisonKey",
                 )
             }
             result_id = str(case.get("resultId") or "")
@@ -353,10 +352,7 @@ def _run_test_group_analysis_job(job_id: str) -> None:
         pending["analysisStatus"] = "timeout" if timed_out else "cancelled"
         pending["error"] = "超过分析时间预算" if timed_out else "用户已取消分析"
         results.append(pending)
-    summary = analyze_test_group_performance(
-        results,
-        str(payload.get("referenceCaseId") or ""),
-    )
+    summary = analyze_test_group_performance(results)
     summary["selectedMetricGroups"] = sorted(metric_groups)
     summary["selectedMetricIds"] = list(job["selectedMetricIds"])
     summary["cacheHitCount"] = cache_hits
