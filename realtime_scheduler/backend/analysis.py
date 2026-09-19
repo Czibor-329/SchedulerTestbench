@@ -788,24 +788,17 @@ def _process_job_name(move: Mapping[str, Any]) -> str:
     return str(values[0]) if values else str(value or "")
 
 
-def _process_path_signature(move: Mapping[str, Any]) -> Tuple[str, int]:
-    """提取产能分组所需的工艺结构与加工时长签名。
-
-    Recipe 名称可能因批次、控制任务或 PJob 而不同，不能作为产品是否同工艺的
-    判断依据。产能分组只关心实际执行的 Step 顺序和每个 Step 的加工时长；使用
-    ``PERFORMANCE_TIME_TOLERANCE`` 量化时长，以消除浮点计算带来的微小误差。
-    """
-    duration = max(0.0, float(move["EndTime"]) - float(move["StartTime"]))
-    duration_units = int(round(duration / PERFORMANCE_TIME_TOLERANCE))
-    return _process_step_id(move), duration_units
-
-
 def _production_throughput(
     moves: Sequence[Mapping[str, Any]],
     device: Optional[Mapping[str, Any]],
-    context: Optional[Mapping[str, Any]],
+    _context: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """按全部完工晶圆居中截取的固定 120 片口径计算产能。"""
+    """按晶圆回到 LoadPort 的时刻，用居中连续 120 片计算产能。
+
+    计时以前一片到达终点为起点、以选中末片到达终点为终点，得到恰好 120 个
+    出片间隔。不读取 Recipe、PJob、ProcessMove 或 Route 配置；双腔省略产品
+    工艺动作时，只要 LoadPort 回片记录足够，仍然计算产能。
+    """
     _, completions = _wafer_boundary_times(moves, device)
     completed = sorted(
         completions.items(),
@@ -826,34 +819,6 @@ def _production_throughput(
         middle_start_index:
         middle_start_index + PRODUCTION_SAMPLE_SIZE
     ]
-    selected_ids = {wafer for wafer, _ in selected}
-    process_paths: Dict[str, List[Tuple[str, int]]] = defaultdict(list)
-    for move in moves:
-        if int(move["MoveType"]) != PROCESS_MOVE_TYPE:
-            continue
-        process_signature = _process_path_signature(move)
-        for wafer in _material_ids(move):
-            if wafer not in selected_ids:
-                continue
-            process_paths[wafer].append(process_signature)
-
-    signatures = [
-        tuple(process_paths[wafer])
-        for wafer, _ in selected
-    ]
-    if not signatures or not all(signature for signature in signatures):
-        return {
-            "throughputPerHour": 0.0,
-            "throughputSampleCount": 0,
-            "throughputReason": "固定样本没有完整工艺记录，无法计算产能。",
-        }
-    if len(set(signatures)) != 1:
-        return {
-            "throughputPerHour": 0.0,
-            "throughputSampleCount": 0,
-            "throughputReason": "固定样本的工艺路径结构或各 Step 加工时长不一致，无法计算产能。",
-        }
-
     duration = selected[-1][1] - measurement_start[1]
     return {
         "throughputPerHour": (

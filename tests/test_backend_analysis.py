@@ -130,36 +130,44 @@ class BackendAnalysisTests(unittest.TestCase):
         self.assertEqual(4, available["recomputeCount"])
         self.assertEqual(225.0, available["averageRecomputeTimeMs"])
 
-    def test_production_throughput_groups_by_path_and_duration_not_recipe_name(self) -> None:
-        """不同 Recipe 名称但路径结构与加工时长相同时应可合并计算产能。"""
-        def moves_for(process_duration: float) -> list[dict]:
+    def test_production_throughput_uses_loadport_returns_not_recipe_or_process_moves(self) -> None:
+        """产能只按回到 LoadPort 的时刻计算，不因 Recipe 或加工动作缺失而拒绝。"""
+        def moves_for(include_process: bool) -> list[dict]:
             rows = []
             for index in range(151):
                 wafer = f"W{index + 1}"
                 completed_at = float((index + 1) * 20)
-                rows.extend([
+                rows.append(
                     {"MoveType": 0, "ModuleName": "ATR", "SrcStationList": ["LP1"], "MatIDList": [wafer], "StartTime": completed_at - 19, "EndTime": completed_at - 18},
-                    {
+                )
+                if include_process:
+                    rows.append({
                         "MoveType": 9, "ModuleName": "PM1", "MatIDList": [wafer],
                         "PJobName": [f"1.C1.P{index % 2 + 1}"], "StepID": 1,
                         "ProcessRecipe": f"批次专用名称-{index % 2 + 1}",
                         "StartTime": completed_at - 17,
-                        "EndTime": completed_at - 17 + process_duration,
-                    },
+                        "EndTime": completed_at - 12,
+                    })
+                rows.append(
                     {"MoveType": 1, "ModuleName": "ATR", "DestStationList": ["LP1"], "MatIDList": [wafer], "StartTime": completed_at - 1, "EndTime": completed_at},
-                ])
+                )
             return rows
 
         device = {"Stations": {"LP1": {"Type": "LoadPort"}, "PM1": {"Type": "ProcessModule"}}, "Robots": {"ATR": {}}}
-        same_process = analyze_schedule_performance(moves_for(5), device, "full")
-        self.assertEqual(120, same_process["throughputSampleCount"])
-        self.assertEqual("", same_process["throughputReason"])
+        with_process = analyze_schedule_performance(moves_for(True), device, "full")
+        without_process = analyze_schedule_performance(moves_for(False), device, "full")
+        expected = 3600 * 120 / 2400
+        self.assertEqual(120, with_process["throughputSampleCount"])
+        self.assertEqual("", with_process["throughputReason"])
+        self.assertAlmostEqual(expected, with_process["throughputPerHour"])
+        self.assertEqual(120, without_process["throughputSampleCount"])
+        self.assertAlmostEqual(expected, without_process["throughputPerHour"])
 
-        mismatched = moves_for(5)
+        mismatched = moves_for(True)
         mismatched[16 * 3 + 1]["EndTime"] += 1
         different_duration = analyze_schedule_performance(mismatched, device, "full")
-        self.assertEqual(0, different_duration["throughputSampleCount"])
-        self.assertIn("加工时长不一致", different_duration["throughputReason"])
+        self.assertEqual(120, different_duration["throughputSampleCount"])
+        self.assertAlmostEqual(expected, different_duration["throughputPerHour"])
 
     def test_production_throughput_uses_the_middle_120_completed_wafers(self) -> None:
         """300 片任务应只用完成顺序第 91 至第 210 片校验并计算产能。"""
