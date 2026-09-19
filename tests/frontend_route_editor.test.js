@@ -177,3 +177,113 @@ test("新增候选继承统一参数，删除候选不改变剩余参数", () =>
   assert.deepEqual(stage.visits.map(item => item.stationName), ["PM1", "PM3"]);
   assert.ok(stage.visits.every(item => item.processTime === 42));
 });
+
+function previewRoute(processGroups, extras = {}) {
+  const processStages = processGroups.map((names) => ({
+    kind: "station",
+    needProcess: true,
+    visits: names.map((name) => visit(name, extras.times?.[name] ?? extras.processTime ?? 10)),
+  }));
+  return {
+    prePJobCleanRefs: extras.prePJobCleanRefs || [],
+    postPJobCleanRefs: extras.postPJobCleanRefs || [],
+    stages: [
+      { kind: "station", needProcess: false, visits: [visit("LP1")] },
+      { kind: "robot", needProcess: false, visits: [visit("ATR")] },
+      ...processStages,
+      { kind: "robot", needProcess: false, visits: [visit("ATR")] },
+      { kind: "station", needProcess: false, visits: [visit("LP1")] },
+    ],
+  };
+}
+
+test("OriginRoute 预览把 Pre/Dummy 挂在腔室左侧，WAC 与 Post 分括号挂在右侧", () => {
+  const value = previewRoute([["PM1"], ["PM2"]], {
+    times: { PM1: 10, PM2: 20 },
+    prePJobCleanRefs: ["PreA", "DummyA"],
+    postPJobCleanRefs: ["PostA"],
+  });
+  value.stages[2].visits[0].afterCleanRefs = ["WacA"];
+  assert.equal(
+    logic.compactRoutePreviewPath(value, {
+      robotNames: ["ATR"],
+      cleans: [
+        { name: "PreA", cleanType: "preclean", recipeTime: 20, modules: ["PM1"], defined: true },
+        { name: "DummyA", cleanType: "dummy", recipeTime: 20, triggerCount: 2, modules: ["PM2"], defined: true },
+        { name: "PostA", cleanType: "postclean", recipeTime: 15, modules: ["PM1"], defined: true },
+        { name: "WacA", cleanType: "wacclean", recipeTime: 10, triggerCount: 2, modules: ["PM1"], defined: true },
+      ],
+    }),
+    "Src->[pre 20s]PM1(10s)[wac 2|10s][post 15s]->[dummy 2|20s]PM2(20s)->Sink",
+  );
+});
+
+test("同一腔室多种进腔前清洁按 dummy、dummywac、pre 合并到左侧括号", () => {
+  const value = previewRoute([["PM1"]], { prePJobCleanRefs: ["DummyA", "PreA", "DummyWacA"] });
+  assert.equal(
+    logic.compactRoutePreviewPath(value, {
+      robotNames: ["ATR"],
+      cleans: [
+        { name: "PreA", cleanType: "preclean", recipeTime: 20, modules: ["PM1"], defined: true },
+        { name: "DummyA", cleanType: "dummy", recipeTime: 20, triggerCount: 2, modules: ["PM1"], defined: true },
+        {
+          name: "DummyWacA", cleanType: "dummywac", recipeTime: 20, wacRecipeTime: 10,
+          triggerCount: 2, modules: ["PM1"], defined: true,
+        },
+      ],
+    }),
+    "Src->[dummy 2|20s+dummywac 2|20s|10s+pre 20s]PM1(10s)->Sink",
+  );
+});
+
+test("并行候选只给部分腔室配置清洁时写出腔室限定名", () => {
+  const value = previewRoute([["PM1", "PM2"]], { prePJobCleanRefs: ["PreA"], postPJobCleanRefs: ["PostA"] });
+  assert.equal(
+    logic.compactRoutePreviewPath(value, {
+      robotNames: ["ATR"],
+      cleans: [
+        { name: "PreA", cleanType: "preclean", recipeTime: 20, modules: ["PM1"], defined: true },
+        { name: "PostA", cleanType: "postclean", recipeTime: 15, modules: ["PM2"], defined: true },
+      ],
+    }),
+    "Src->[pre PM1 20s]PM1/PM2(10s)[post PM2 15s]->Sink",
+  );
+});
+
+test("未解析的 Clean 只保留类型标签，模板视图不附加时间和清洁", () => {
+  const value = previewRoute([["PM1"]], { prePJobCleanRefs: ["PreA"] });
+  value.stages[2].visits[0].afterCleanRefs = ["WacA"];
+  assert.equal(
+    logic.formatRoutePreviewCleanToken({ name: "PreA", cleanType: "preclean", defined: false }),
+    "pre",
+  );
+  assert.equal(
+    logic.compactRoutePreviewPath(value, {
+      includeTestParameters: false,
+      robotNames: ["ATR"],
+      cleans: [{ name: "PreA", cleanType: "preclean", recipeTime: 20, modules: ["PM1"], defined: true }],
+    }),
+    "Src->PM1->Sink",
+  );
+  assert.equal(
+    logic.compactRoutePreviewPath(value, {
+      robotNames: ["ATR"],
+      cleans: [
+        { name: "PreA", cleanType: "preclean", defined: false },
+        { name: "WacA", cleanType: "wacclean", defined: false },
+      ],
+    }),
+    "Src->[pre]PM1(10s)[wac]->Sink",
+  );
+});
+
+test("未选择适用腔室的 Route 级清洁只挂在第一道加工", () => {
+  const value = previewRoute([["PM1"], ["PM2"]], { prePJobCleanRefs: ["PreA"] });
+  assert.equal(
+    logic.compactRoutePreviewPath(value, {
+      robotNames: ["ATR"],
+      cleans: [{ name: "PreA", cleanType: "preclean", recipeTime: 20, modules: [], defined: true }],
+    }),
+    "Src->[pre 20s]PM1(10s)->PM2(10s)->Sink",
+  );
+});

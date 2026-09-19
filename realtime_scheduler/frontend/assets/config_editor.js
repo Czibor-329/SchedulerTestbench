@@ -33,20 +33,26 @@ function createDraftChoiceDialog(dialog) {
 var route_editor_logic_exports = {};
 __export(route_editor_logic_exports, {
   VISIT_SHARED_FIELDS: () => VISIT_SHARED_FIELDS,
+  attachRoutePreviewCleanTokens: () => attachRoutePreviewCleanTokens,
   automaticRouteName: () => automaticRouteName,
   automaticTemplateName: () => automaticTemplateName,
   cloneVisitParameters: () => cloneVisitParameters,
+  compactRoutePreviewPath: () => compactRoutePreviewPath,
   compareProfiles: () => compareProfiles,
   differenceFields: () => differenceFields,
+  formatRoutePreviewCleanToken: () => formatRoutePreviewCleanToken,
   minimumResidencyConstraint: () => minimumResidencyConstraint,
   normalizeStageProcessRecipes: () => normalizeStageProcessRecipes,
   processProfile: () => processProfile,
   processRecipeName: () => processRecipeName,
   replaceCandidates: () => replaceCandidates,
   routeCleanSignature: () => routeCleanSignature,
+  routeReferencedCleanNames: () => routeReferencedCleanNames,
   selectReferencedRoutes: () => selectReferencedRoutes,
   synchronizeVisits: () => synchronizeVisits
 });
+var TRANSFER_ROBOT_NAME = /^(?:ATR|VTR|DBR|UBR|TM|VTM|EFEM)(?:[_-]?\d+)?$/i;
+var LEFT_CLEAN_ORDER = ["dummy", "dummywac", "preclean"];
 var VISIT_SHARED_FIELDS = [
   "processTime",
   "recipeTime",
@@ -101,6 +107,133 @@ function formatSeconds(value) {
 function cleanNames(value) {
   const rows = Array.isArray(value) ? value : value ? [value] : [];
   return [...new Set(rows.map((item) => String(item || "").trim()).filter(Boolean))];
+}
+function routeReferencedCleanNames(route) {
+  return [.../* @__PURE__ */ new Set([
+    ...cleanNames(route.prePJobCleanRefs),
+    ...cleanNames(route.postPJobCleanRefs),
+    ...cleanNames(route.postCJobCleanRefs),
+    ...(route.stages || []).flatMap((stage) => (stage.visits || []).flatMap((visit) => [
+      ...cleanNames(visit.beforeCleanRefs),
+      ...cleanNames(visit.afterCleanRefs)
+    ]))
+  ])];
+}
+function routeLevelCleanNames(route) {
+  return /* @__PURE__ */ new Set([
+    ...cleanNames(route.prePJobCleanRefs),
+    ...cleanNames(route.postPJobCleanRefs),
+    ...cleanNames(route.postCJobCleanRefs)
+  ]);
+}
+function stageVisitCleanNames(stage) {
+  return new Set((stage.visits || []).flatMap((visit) => [
+    ...cleanNames(visit.beforeCleanRefs),
+    ...cleanNames(visit.afterCleanRefs)
+  ]));
+}
+function previewCleanType(clean) {
+  const value = String(clean.cleanType || "").toLowerCase().replace(/[-_\s]/g, "");
+  if (value === "dummyclean") return "dummy";
+  if (value === "dummywacclean") return "dummywac";
+  if (value === "preclean" || value === "postclean" || value === "wacclean" || value === "dummy" || value === "dummywac") {
+    return value;
+  }
+  return "";
+}
+function matchingCleanModules(clean, candidates) {
+  const modules = cleanNames(clean.modules);
+  return modules.filter((name) => candidates.includes(name));
+}
+function previewCleanAppliesToStage(clean, route, stage, stageIndex, candidates, firstProcessStageIndex2) {
+  const name = String(clean.name || "").trim();
+  if (!name) return false;
+  if (stageVisitCleanNames(stage).has(name)) return true;
+  if (!routeLevelCleanNames(route).has(name)) return false;
+  const modules = cleanNames(clean.modules);
+  if (modules.length) return matchingCleanModules(clean, candidates).length > 0;
+  return Boolean(stage.needProcess) && stageIndex === firstProcessStageIndex2;
+}
+function previewCleanQualifier(clean, candidates) {
+  const matching = matchingCleanModules(clean, candidates);
+  if (!matching.length || matching.length >= candidates.length) return "";
+  return matching.join("/");
+}
+function previewCleanLabel(type) {
+  if (type === "preclean") return "pre";
+  if (type === "postclean") return "post";
+  if (type === "wacclean") return "wac";
+  return type;
+}
+function formatRoutePreviewCleanToken(clean, qualifier = "") {
+  const type = previewCleanType(clean);
+  if (!type) return String(clean.name || "").trim();
+  const label = qualifier ? `${previewCleanLabel(type)} ${qualifier}` : previewCleanLabel(type);
+  if (clean.defined === false) return label;
+  const duration = formatSeconds(Number(clean.recipeTime));
+  const triggerCount = Number(clean.triggerCount) || 0;
+  if (type === "dummywac") {
+    return `${label} ${triggerCount}|${duration}|${formatSeconds(Number(clean.wacRecipeTime))}`;
+  }
+  if (type === "dummy" || type === "wacclean") return `${label} ${triggerCount}|${duration}`;
+  return `${label} ${duration}`;
+}
+function sortPreviewCleans(left, right) {
+  const leftType = previewCleanType(left);
+  const rightType = previewCleanType(right);
+  const leftRank = LEFT_CLEAN_ORDER.indexOf(leftType);
+  const rightRank = LEFT_CLEAN_ORDER.indexOf(rightType);
+  return (leftRank < 0 ? LEFT_CLEAN_ORDER.length : leftRank) - (rightRank < 0 ? LEFT_CLEAN_ORDER.length : rightRank);
+}
+function wrapPreviewTokens(tokens) {
+  return tokens.length ? `[${tokens.join("+")}]` : "";
+}
+function attachRoutePreviewCleanTokens(node, candidates, cleans) {
+  const decorated = cleans.map((clean) => ({
+    clean,
+    type: previewCleanType(clean),
+    token: formatRoutePreviewCleanToken(clean, previewCleanQualifier(clean, candidates))
+  })).filter((item) => item.token);
+  const left = decorated.filter((item) => LEFT_CLEAN_ORDER.includes(item.type)).sort((leftItem, rightItem) => sortPreviewCleans(leftItem.clean, rightItem.clean)).map((item) => item.token);
+  const wac = decorated.filter((item) => item.type === "wacclean").map((item) => item.token);
+  const post = decorated.filter((item) => item.type === "postclean").map((item) => item.token);
+  return `${wrapPreviewTokens(left)}${node}${wrapPreviewTokens(wac)}${wrapPreviewTokens(post)}`;
+}
+function stageCandidates(stage) {
+  return [...new Set((stage.visits || []).map((visit) => String(visit.stationName || "").trim()).filter(Boolean))];
+}
+function isTransferOnlyStage(stage, robotNames) {
+  const candidates = stageCandidates(stage);
+  return stage.kind === "robot" || Boolean(candidates.length && candidates.every((name) => robotNames.includes(name) || /robot/i.test(name) || TRANSFER_ROBOT_NAME.test(name)));
+}
+function firstProcessStageIndex(route) {
+  return (route.stages || []).findIndex((stage) => stage.needProcess);
+}
+function compactRoutePreviewPath(route, options = {}) {
+  const includeTestParameters = options.includeTestParameters !== false;
+  const robotNames = options.robotNames || [];
+  const cleans = options.cleans || [];
+  const stages = route.stages || [];
+  const firstProcess = firstProcessStageIndex(route);
+  return stages.map((stage, stageIndex) => {
+    if (isTransferOnlyStage(stage, robotNames)) return "";
+    const candidates = stageCandidates(stage);
+    const fixedSource = stageIndex === 0 || stageIndex === stages.length - 1;
+    let node = fixedSource ? stageIndex === 0 ? "Src" : "Sink" : candidates.join("/") || "\u672A\u9009\u8154\u5BA4";
+    if (includeTestParameters && stage.needProcess) {
+      node += `(${formatSeconds(Number(stage.visits?.[0]?.processTime ?? stage.visits?.[0]?.recipeTime ?? 0))})`;
+    }
+    if (!includeTestParameters) return node;
+    const stageCleans = cleans.filter((clean) => previewCleanAppliesToStage(
+      clean,
+      route,
+      stage,
+      stageIndex,
+      candidates,
+      firstProcess
+    ));
+    return attachRoutePreviewCleanTokens(node, candidates, stageCleans);
+  }).filter(Boolean).join("->") || "\u672A\u914D\u7F6E\u8DEF\u5F84";
 }
 function routeCleanSignature(route) {
   const parts = [];
@@ -7602,30 +7735,19 @@ function routePickerStageWacTokens(stage) {
   ]))];
   return names.filter((name) => routePickerCleanInfo(name).cleanType === "wacclean").map(routePickerWacToken);
 }
-function routePickerCompactPath(route, includeTestParameters = true, sourceModule = "") {
+function routePickerPreviewCleans(route) {
+  return routeReferencedCleanNames(route).map(routePickerCleanInfo);
+}
+function routePickerCompactPath(route, includeTestParameters = true, _sourceModule = "") {
   normalizeRoute(route);
-  return (route.stages || []).map((stage, stageIndex) => {
-    const candidates = [...new Set((stage.visits || []).map((visit) => String(visit.stationName || "").trim()).filter(Boolean))];
-    const transferOnly = stage.kind === "robot" || candidates.length && candidates.every((name) => state.robotNames.includes(name) || /robot/i.test(name) || /^(?:ATR|VTR|DBR|UBR|TM|VTM|EFEM)(?:[_-]?\d+)?$/i.test(name));
-    if (transferOnly) return "";
-    const fixedSource = isFixedRouteStep(route, stageIndex);
-    let node = fixedSource ? stageIndex === 0 ? "Src" : "Sink" : candidates.join("/") || "\u672A\u9009\u8154\u5BA4";
-    if (includeTestParameters && stage.needProcess) {
-      const processTime = Number(stage.visits?.[0]?.processTime ?? stage.visits?.[0]?.recipeTime ?? 0);
-      node += `(${formatCleanSeconds(processTime)})`;
-    }
-    const wacTokens = includeTestParameters ? routePickerStageWacTokens(stage) : [];
-    return `${node}${wacTokens.length ? `[${wacTokens.join("+")}]` : ""}`;
-  }).filter(Boolean).join("->") || "\u672A\u914D\u7F6E\u8DEF\u5F84";
+  return compactRoutePreviewPath(route, {
+    includeTestParameters,
+    robotNames: state.robotNames,
+    cleans: includeTestParameters ? routePickerPreviewCleans(route) : []
+  });
 }
 function routePickerSpecialCleanSummary(route) {
-  const names = [.../* @__PURE__ */ new Set([
-    ...ROUTE_CLEAN_KEYS.flatMap((key) => stringList(route[key])),
-    ...(route.stages || []).flatMap((stage) => (stage.visits || []).flatMap((visit) => [
-      ...stringList(visit.beforeCleanRefs),
-      ...stringList(visit.afterCleanRefs)
-    ]))
-  ])];
+  const names = routeReferencedCleanNames(route);
   return names.map(routePickerCleanInfo).filter((clean) => ["preclean", "postclean", "dummy", "dummywac"].includes(clean.cleanType)).map((clean) => {
     if (!clean.defined) return clean.name;
     if (clean.cleanType === "dummywac") return `dummywac ${formatCleanSeconds(clean.recipeTime)}|${formatCleanSeconds(clean.wacRecipeTime)}`;

@@ -3165,28 +3165,19 @@ function routePickerStageWacTokens(stage) {
   return names.filter(name => routePickerCleanInfo(name).cleanType === "wacclean").map(routePickerWacToken);
 }
 
+/** 解析当前 Route 引用的全部 Clean，供 OriginRoute 预览挂载标签。 */
+function routePickerPreviewCleans(route) {
+  return RouteEditorLogic.routeReferencedCleanNames(route).map(routePickerCleanInfo);
+}
+
 /** 生成紧凑路径文本；模板视图只显示拓扑，测试视图再显示时间与清洁。 */
 function routePickerCompactPath(route, includeTestParameters = true, sourceModule = "") {
   normalizeRoute(route);
-  return (route.stages || []).map((stage, stageIndex) => {
-    const candidates = [...new Set((stage.visits || []).map(visit => String(visit.stationName || "").trim()).filter(Boolean))];
-    const transferOnly = stage.kind === "robot" || (candidates.length && candidates.every(name => (
-      state.robotNames.includes(name)
-      || /robot/i.test(name)
-      || /^(?:ATR|VTR|DBR|UBR|TM|VTM|EFEM)(?:[_-]?\d+)?$/i.test(name)
-    )));
-    if (transferOnly) return "";
-    const fixedSource = isFixedRouteStep(route, stageIndex);
-    let node = fixedSource
-      ? (stageIndex === 0 ? "Src" : "Sink")
-      : candidates.join("/") || "未选腔室";
-    if (includeTestParameters && stage.needProcess) {
-      const processTime = Number(stage.visits?.[0]?.processTime ?? stage.visits?.[0]?.recipeTime ?? 0);
-      node += `(${formatCleanSeconds(processTime)})`;
-    }
-    const wacTokens = includeTestParameters ? routePickerStageWacTokens(stage) : [];
-    return `${node}${wacTokens.length ? `[${wacTokens.join("+")}]` : ""}`;
-  }).filter(Boolean).join("->") || "未配置路径";
+  return RouteEditorLogic.compactRoutePreviewPath(route, {
+    includeTestParameters,
+    robotNames: state.robotNames,
+    cleans: includeTestParameters ? routePickerPreviewCleans(route) : [],
+  });
 }
 
 /** 用“工序数 + 候选腔室”描述一个工序结构，不暴露内部路径名。 */
@@ -3197,13 +3188,7 @@ function routePickerProcessSummary(profile) {
 
 /** 把 Pre/Post/Dummy/DummyWAC 清洁压缩到单独一行。 */
 function routePickerSpecialCleanSummary(route) {
-  const names = [...new Set([
-    ...ROUTE_CLEAN_KEYS.flatMap(key => stringList(route[key])),
-    ...(route.stages || []).flatMap(stage => (stage.visits || []).flatMap(visit => [
-      ...stringList(visit.beforeCleanRefs),
-      ...stringList(visit.afterCleanRefs),
-    ])),
-  ])];
+  const names = RouteEditorLogic.routeReferencedCleanNames(route);
   return names.map(routePickerCleanInfo).filter(clean => ["preclean", "postclean", "dummy", "dummywac"].includes(clean.cleanType)).map(clean => {
     if (!clean.defined) return clean.name;
     if (clean.cleanType === "dummywac") return `dummywac ${formatCleanSeconds(clean.recipeTime)}|${formatCleanSeconds(clean.wacRecipeTime)}`;
