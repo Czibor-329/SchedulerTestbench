@@ -330,6 +330,16 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         self.assertIn('id="nextDiffBtn"', viewer)
         self.assertIn("function timeWithPlan(current, planned, estimated = false)", viewer)
         self.assertIn("hasExecutionTimeDifference(bar.rec, durationOnly)", viewer)
+        self.assertIn("function describeMove(raw)", viewer)
+        self.assertIn("max-width: 320px", viewer)
+        self.assertIn('class="tooltip-description"', viewer)
+        self.assertIn('class="tooltip-description">${escapeHtml(describeMove(raw))}', viewer)
+        self.assertIn('旋转${destination ? `到 ${destination}` : ""}', viewer)
+        self.assertNotIn("Move描述:", viewer)
+        self.assertIn("case 4:", viewer)
+        self.assertIn("const robot = firstTooltipText(raw && raw.Robot", viewer)
+        self.assertIn("dom.tooltip.innerHTML = header + rows + description", viewer)
+        self.assertNotIn("GanttMoveSemantics", viewer)
 
     def test_result_preview_and_group_analysis_use_main_area(self) -> None:
         """结果预览应保持简洁，并提供独立的测试组分析入口。"""

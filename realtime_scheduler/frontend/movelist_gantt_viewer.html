@@ -980,9 +980,10 @@
     .tooltip {
       position: fixed;
       z-index: 20;
-      max-width: 420px;
+      max-width: 320px;
       max-height: 70vh;
       overflow-y: auto;
+      overflow-wrap: anywhere;
       pointer-events: none;
       background: rgba(17, 24, 39, 0.96);
       color: #ffffff;
@@ -1002,6 +1003,13 @@
 
     .tooltip .muted {
       color: #cbd5e1;
+    }
+
+    .tooltip-description {
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(148, 163, 184, 0.35);
+      color: #e2e8f0;
     }
 
     .status {
@@ -2833,6 +2841,7 @@
       };
     }
 
+    /** 把原始 Move 字段格式化成悬浮提示中的文本。 */
     function formatTooltipValue(value) {
       if (value === null || value === undefined) return "";
       if (Array.isArray(value)) return value.length ? value.join(", ") : "[]";
@@ -2851,6 +2860,99 @@
         notes.push(`raw ${fmt(planned)}`);
       }
       return notes.length ? `${display} (${notes.join(", ")})` : display;
+    }
+
+    /** 生成一行简短的动作内容，供悬浮提示末尾使用。 */
+    function describeMove(raw) {
+      const moveType = Number.parseInt(raw && raw.MoveType, 10);
+      const actor = firstTooltipText(raw && raw.ModuleName, raw && raw.Robot, raw && raw.Station, raw && raw.RobotPort);
+      const materials = tooltipMaterials(raw && raw.MatIDList);
+      const source = tooltipLocation(
+        raw && (raw.SrcStationList || raw.Source),
+        raw && raw.SrcSlotList,
+      );
+      const destination = tooltipLocation(
+        raw && (raw.DestStationList || raw.Destination),
+        raw && raw.DestSlotList,
+      );
+      const robotSlots = tooltipList(raw && (raw.RobotSlotList || raw.SlotList));
+      const slotText = robotSlots.length ? `用 slot ${robotSlots.join("、")}` : "";
+      const prefix = actor ? `${actor} ` : "";
+      switch (moveType) {
+        case 0:
+        case 2:
+          return `${prefix}${slotText}${source ? ` 从 ${source}` : ""} ${moveType === 2 ? "同时取走" : "取走"}${materials || "物料"}`.trim();
+        case 1:
+        case 3:
+          return `${prefix}${slotText ? `${slotText} ` : ""}将${materials || "物料"}${moveType === 3 ? "同时放入" : "放入"}${destination || "目标站点"}`.trim();
+        case 4: {
+          const station = firstTooltipText(raw && raw.StationList, raw && raw.Station);
+          const received = tooltipMaterials(raw && raw.RecvMatList);
+          const sent = tooltipMaterials(raw && raw.SendMatList);
+          const source = tooltipLocation(raw && raw.StationList, raw && raw.StnSendSlotList) || station;
+          const destination = tooltipLocation(raw && raw.StationList, raw && raw.StnRecvSlotList) || station;
+          const receivedSlots = tooltipList(raw && raw.RecvSlotList);
+          const sentSlots = tooltipList(raw && raw.SendSlotList);
+          const robot = firstTooltipText(raw && raw.Robot, raw && raw.ModuleName, raw && raw.RobotPort) || "机械手";
+          const receiveAction = `${receivedSlots.length ? `用 slot ${receivedSlots.join("、")} ` : ""}从 ${source || "站点"} 取出${received || "物料"}`;
+          const sendAction = `${sentSlots.length ? `用 slot ${sentSlots.join("、")} ` : ""}将${sent || "物料"}放入${destination || "站点"}`;
+          return `${robot} ${receiveAction}，再${sendAction}`;
+        }
+        case 5:
+          return `${prefix}${source ? `从 ${source} ` : ""}旋转${destination ? `到 ${destination}` : ""}`.trim();
+        case 6:
+          return `${actor || "模块"}开门`;
+        case 7:
+        case 8:
+          return `${actor || "模块"}关门`;
+        case 9:
+        case 14: {
+          const slots = tooltipList(raw && raw.SlotList);
+          const recipe = firstTooltipText(raw && raw.ProcessRecipe, raw && raw.CleanRecipe, raw && raw.RecipeName);
+          const cleaning = moveType === 14 || (Array.isArray(raw && raw.MatIDList) && raw.MatIDList.length === 0);
+          return `${actor || "模块"}${slots.length ? `在slot ${slots.join("、")}` : ""}${cleaning ? "执行清洁" : `对${materials || "物料"}执行工艺`}${recipe ? ` ${recipe}` : ""}`;
+        }
+        case 10:
+          return `${prefix}${firstTooltipText(raw && raw.LastState) && firstTooltipText(raw && raw.CurState)
+            ? `从 ${firstTooltipText(raw && raw.LastState)} 转换到 ${firstTooltipText(raw && raw.CurState)}`
+            : "执行状态转换"}`.trim();
+        case 11:
+          return `${prefix}对${materials || "物料"}执行对准`.trim();
+        default:
+          return `${prefix}执行${S.MOVETYPE_NAMES[moveType] || "该动作"}`.trim();
+      }
+    }
+
+    /** 将提示字段统一转成可拼接的字符串数组。 */
+    function tooltipList(value) {
+      if (value === null || value === undefined || value === "") return [];
+      return (Array.isArray(value) ? value : [value]).map(String).filter(Boolean);
+    }
+
+    /** 从多个候选值中取第一个非空文本。 */
+    function firstTooltipText(...values) {
+      for (const value of values) {
+        const text = value === null || value === undefined ? "" : String(value).trim();
+        if (text) return text;
+      }
+      return "";
+    }
+
+    /** 把站点和槽位合并成 Move 描述中的位置文本。 */
+    function tooltipLocation(stations, slots) {
+      const stationList = tooltipList(stations);
+      const slotList = tooltipList(slots);
+      if (stationList.length && slotList.length && stationList.length === slotList.length) {
+        return stationList.map((station, index) => `${station} slot ${slotList[index]}`).join("、");
+      }
+      if (stationList.length && slotList.length) return `${stationList.join("、")} slot ${slotList.join("、")}`;
+      return stationList.join("、") || slotList.map((slot) => `slot ${slot}`).join("、");
+    }
+
+    /** 生成“物料 1、2”形式的描述片段。 */
+    function tooltipMaterials(value) {
+      const values = tooltipList(value);
+      return values.length ? `物料${values.join("、")}` : "";
     }
 
     function showTooltip(event, bar) {
@@ -2877,7 +2979,8 @@
         }
         return `<div><span class="muted">${escapeHtml(key)}:</span> ${escapeHtml(value)}</div>`;
       }).join("");
-      dom.tooltip.innerHTML = header + rows;
+      const description = `<div class="tooltip-description">${escapeHtml(describeMove(raw))}</div>`;
+      dom.tooltip.innerHTML = header + rows + description;
       positionTooltip(event);
       dom.tooltip.classList.add("visible");
     }
