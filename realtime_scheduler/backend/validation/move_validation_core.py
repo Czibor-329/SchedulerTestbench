@@ -39,6 +39,7 @@ COMPLETED_ON_PLACE_STATION_TYPES = frozenset({
     BUFFER_TYPE,
 })
 MULTI_PROCESS_CHAMBER_TYPE = "multiprocesschamber"
+PROCESS_CHAMBER_TYPE = "processchamber"
 DOORLESS_STATION_NAMES = frozenset({"Cooler", "Cool"})
 TWIN_LOAD_LOCK_PAIRS = frozenset({
     frozenset({"LA", "LB"}),
@@ -1622,6 +1623,14 @@ def _is_paired_process_chamber(station: StationState) -> bool:
     )
 
 
+def _is_product_process_chamber(station: StationState) -> bool:
+    """判断站点是否允许按产品工艺语义补齐省略的零时长 ProcessMove。"""
+    return station.station_type.lower() in {
+        PROCESS_CHAMBER_TYPE,
+        MULTI_PROCESS_CHAMBER_TYPE,
+    }
+
+
 def _is_omitted_zero_duration_process(
     state: MachineState,
     station_name: str,
@@ -1673,10 +1682,11 @@ def _apply_omitted_zero_duration_process(
 ) -> None:
     """为当前腔室内可证明的零时长驻片补齐已加工状态。
 
-    只允许双腔 PM 省略逻辑层的零时长 ProcessMove，并且必须两槽同时完成。
-    Aligner 即使逻辑 Route 时长为零，也必须保留物理解包生成的显式校准动作。
+    单腔和双腔 PM 都允许省略逻辑层的零时长 ProcessMove；双腔必须两槽同时
+    证明为零时长后一起补齐。Aligner 即使逻辑 Route 时长为零，也必须保留
+    物理解包生成的显式校准动作。
     """
-    if not _is_paired_process_chamber(station):
+    if not _is_product_process_chamber(station):
         return
     unprocessed = [
         slot
@@ -2048,7 +2058,7 @@ def _start_prepare(state: MachineState, move: Mapping[str, Any], end_time: float
         station.last_environment_transition_was_empty = False
         _complete_ready_loadlock_outbound_slots(station, move, related)
     else:
-        # 双腔 0s 产品工艺省略 ProcessMove 后，开门取片前把两槽一起补成完成态。
+        # PM 0s 产品工艺省略 ProcessMove 后，开门取片前补成完成态。
         _apply_omitted_zero_duration_process(state, station)
     station.door_busy_until = end_time
     _schedule(scheduled, move, end_time, lambda: setattr(station, "door", DoorState.OPEN))
@@ -2070,7 +2080,7 @@ def _start_complete(state: MachineState, move: Mapping[str, Any], end_time: floa
     station.door_busy_until = end_time
 
     def complete() -> None:
-        """关门完成后，为双腔零时长驻片补齐成对加工结束态。"""
+        """关门完成后，为零时长 PM 驻片补齐加工结束态。"""
         station.door = DoorState.CLOSED
         _apply_omitted_zero_duration_process(state, station)
 

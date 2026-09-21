@@ -1,4 +1,4 @@
-"""平台双腔、Swap 与多槽 Robot 校验测试。"""
+"""平台加工腔、Swap 与多槽 Robot 校验测试。"""
 
 from __future__ import annotations
 
@@ -140,6 +140,37 @@ def test_dual_chamber_mixed_process_times_still_require_process_move() -> None:
     issues = validate_move_list(None, moves, update)
     assert issues
     assert "没有匹配的已完成物料" in issues[0]
+
+
+def test_single_process_chamber_omitted_zero_duration_process_allows_pick() -> None:
+    """单腔 PM 的 0s 工艺省略 ProcessMove 后，开门即可取出已完成晶圆。"""
+    update = _dual_chamber_update()
+    update["Stations"]["PM1"] = {"Type": "ProcessChamber", "Capacity": 1}
+    update["Stations"].pop("LL1")
+    update["Materials"] = [update["Materials"][0]]
+    zero_route = _zero_duration_pm_route()
+    zero_route["RouteSteps"][0]["Visits"][0]["ProcessRecipe"] = "ZeroRecipe"
+    update["Materials"][0]["Route"] = zero_route
+    update["Materials"][0]["PJobName"] = "P1"
+    update["ProcessRecipes"] = [{
+        "Name": "ZeroRecipe",
+        "ModuleName": "PM1",
+        "Time": 0.0,
+    }]
+    update["ProcessJobs"] = [{
+        "JobName": "P1",
+        "MatList": [101],
+        "OriginRoute": zero_route,
+    }]
+    moves = [
+        _move(1, 6, 0, 1, ModuleName="PM1", RelatedRobotType=1),
+        _move(
+            2, 0, 1, 2, ModuleName="VACRobot", MatIDList=[101],
+            SrcStationList=["PM1"], SrcSlotList=[1], RobotSlotList=[1],
+            StepIDList=[4],
+        ),
+    ]
+    assert validate_move_list(None, moves, update) == []
 
 
 def test_aligner_zero_route_step_does_not_consume_explicit_alignment_move() -> None:
