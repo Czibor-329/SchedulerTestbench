@@ -118,6 +118,7 @@ export interface SchedulePerformance {
     rollingByWindow: Record<string, ThroughputTimelinePoint[]>;
   };
   cpuTimeMs: number | null;
+  recomputeWindowElapsedMs: number | null;
   recomputeCount: number;
   averageRecomputeTimeMs: number | null;
   meanDepartureInterval: number;

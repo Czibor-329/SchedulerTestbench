@@ -108,8 +108,20 @@ class BatchResultAssembler:
     ) -> Dict[str, Any]:
         """保存通过校验的结果、回放上下文和复现日志。"""
         artifact = deepcopy(dict(result["output"]))
+        algorithm_elapsed_ms = max(0.0, float(
+            result.get(
+                "algorithmElapsedMs",
+                result.get("cpuTimeMs", result.get("totalElapsedMs", 0.0)),
+            )
+        ))
+        recompute_window_elapsed_ms = max(0.0, float(
+            result.get("recomputeWindowElapsedMs", algorithm_elapsed_ms)
+        ))
         artifact["RunMetricsMetadata"] = {
-            "cpuTimeMs": max(0.0, float(result.get("cpuTimeMs", result.get("totalElapsedMs", 0.0)))),
+            "algorithmElapsedMs": algorithm_elapsed_ms,
+            "recomputeWindowElapsedMs": recompute_window_elapsed_ms,
+            # 兼容旧分析接口；语义已统一为算法请求墙钟耗时。
+            "cpuTimeMs": algorithm_elapsed_ms,
             "recomputeCount": len(list(result.get("updates") or [])),
         }
         run_metrics = artifact["RunMetricsMetadata"]
@@ -125,10 +137,12 @@ class BatchResultAssembler:
             "ok": True,
             "status": "succeeded",
             "totalElapsedMs": result["totalElapsedMs"],
-            "cpuTimeMs": result.get("cpuTimeMs", result["totalElapsedMs"]),
+            "algorithmElapsedMs": algorithm_elapsed_ms,
+            "recomputeWindowElapsedMs": recompute_window_elapsed_ms,
+            "cpuTimeMs": algorithm_elapsed_ms,
             "recomputeCount": run_metrics["recomputeCount"],
             "averageRecomputeTimeMs": (
-                run_metrics["cpuTimeMs"] / run_metrics["recomputeCount"]
+                recompute_window_elapsed_ms / run_metrics["recomputeCount"]
                 if run_metrics["recomputeCount"] > 0
                 else None
             ),

@@ -1253,13 +1253,26 @@ def analyze_schedule_performance(
         report("loadlock")
         load_lock_efficiency = _build_load_lock_efficiency(records, device)
     cpu_time_ms = _finite_or_none(
-        run_metrics.get("cpuTimeMs") if isinstance(run_metrics, Mapping) else None,
+        (
+            run_metrics.get("algorithmElapsedMs", run_metrics.get("cpuTimeMs"))
+            if isinstance(run_metrics, Mapping)
+            else None
+        ),
     )
     if cpu_time_ms is not None:
         cpu_time_ms = max(cpu_time_ms, 0.0)
     recompute_count = max(0, int(_finite_number(
         run_metrics.get("recomputeCount") if isinstance(run_metrics, Mapping) else None,
     )))
+    recompute_window_elapsed_ms = _finite_or_none(
+        (
+            run_metrics.get("recomputeWindowElapsedMs", cpu_time_ms)
+            if isinstance(run_metrics, Mapping)
+            else None
+        ),
+    )
+    if recompute_window_elapsed_ms is not None:
+        recompute_window_elapsed_ms = max(recompute_window_elapsed_ms, 0.0)
     performance = {
         "window": window,
         "resources": resources,
@@ -1270,10 +1283,11 @@ def analyze_schedule_performance(
         "throughputTimeline": throughput_timeline,
         **production_throughput,
         "cpuTimeMs": cpu_time_ms,
+        "recomputeWindowElapsedMs": recompute_window_elapsed_ms,
         "recomputeCount": recompute_count,
         "averageRecomputeTimeMs": (
-            cpu_time_ms / recompute_count
-            if cpu_time_ms is not None and recompute_count > 0
+            recompute_window_elapsed_ms / recompute_count
+            if recompute_window_elapsed_ms is not None and recompute_count > 0
             else None
         ),
         "meanDepartureInterval": mean_departure_interval,

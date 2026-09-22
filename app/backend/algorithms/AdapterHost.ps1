@@ -17,6 +17,10 @@ $ErrorActionPreference = "Stop"
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 $resolvedPackageRoot = [System.IO.Path]::GetFullPath($PackageRoot)
+# 部分企业 Adapter 按宿主应用域的 BaseDirectory 解析配置、日志和运行资源。
+# PowerShell 默认把它设为自身安装目录；加载任何程序集前切到算法包根目录，
+# 使独立 Host 与“宿主 exe 和 Adapter DLL 同目录”的正式部署契约一致。
+[AppDomain]::CurrentDomain.SetData("APPBASE", $resolvedPackageRoot)
 $requiredAssemblies = @(
     "SchedulerStandardInterface.dll",
     "Newtonsoft.Json.dll",
@@ -35,24 +39,100 @@ foreach ($assemblyName in $requiredAssemblies) {
 
 # JObject 本身实现 IEnumerable，在 Windows PowerShell 5.1 赋值时会被自动展开。
 # 使用不具备枚举语义的强类型信封，确保协议字段和原始 payload 都完整保留。
-$requestTypeDefinition = "using Newtonsoft.Json.Linq; public sealed class AdapterHostRequest { public string Operation { get; set; } public int RequestId { get; set; } public JToken Payload { get; set; } }"
-Add-Type -TypeDefinition $requestTypeDefinition `
-    -ReferencedAssemblies (Join-Path $resolvedPackageRoot "Newtonsoft.Json.dll")
+$hostTypeDefinition = @"
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using SchedulerStandardInterface.Interface;
+using System.Threading;
+
+public sealed class AdapterHostRequest
+{
+    public string Operation { get; set; }
+    public int RequestId { get; set; }
+    public JToken Payload { get; set; }
+}
+
+public sealed class AdapterHostCallbackBuffer
+{
+    private readonly object syncRoot = new object();
+    private string outputJson;
+    private string deadlocksJson;
+    private int outputCount;
+
+    public AdapterHostCallbackBuffer()
+    {
+        Completed = new ManualResetEventSlim(false);
+    }
+
+    public ManualResetEventSlim Completed { get; private set; }
+
+    public string OutputJson
+    {
+        get { lock (syncRoot) { return outputJson; } }
+    }
+
+    public string DeadlocksJson
+    {
+        get { lock (syncRoot) { return deadlocksJson; } }
+    }
+
+    public int OutputCount
+    {
+        get { lock (syncRoot) { return outputCount; } }
+    }
+
+    public void Reset()
+    {
+        lock (syncRoot)
+        {
+            outputJson = null;
+            deadlocksJson = null;
+            outputCount = 0;
+            Completed.Reset();
+        }
+    }
+
+    public void HandleOutput(object sender, OutputEventArgs eventArgs)
+    {
+        lock (syncRoot)
+        {
+            outputJson = JsonConvert.SerializeObject(eventArgs.OutputParams);
+            outputCount++;
+        }
+        Completed.Set();
+    }
+
+    public void HandleDeadLock(object sender, DeadLockEventArgs eventArgs)
+    {
+        lock (syncRoot)
+        {
+            deadlocksJson = JsonConvert.SerializeObject(eventArgs.DeadLockInfo);
+        }
+        Completed.Set();
+    }
+}
+"@
+Add-Type -TypeDefinition $hostTypeDefinition `
+    -ReferencedAssemblies @(
+        (Join-Path $resolvedPackageRoot "Newtonsoft.Json.dll"),
+        (Join-Path $resolvedPackageRoot "SchedulerStandardInterface.dll")
+    )
 $adapterHostRequestType = "AdapterHostRequest" -as [type]
 
 $jsonSettings = [Newtonsoft.Json.JsonSerializerSettings]::new()
 $jsonSettings.Converters.Add([Adapter4Scheduler.SchedulerInterfaceConverter]::new())
 $scheduler = [Adapter4Scheduler.Scheduler]::GetIns()
-$script:outputs = [System.Collections.Generic.List[object]]::new()
-$script:deadlocks = [System.Collections.Generic.List[object]]::new()
-$outputHandler = [SchedulerStandardInterface.Interface.OnOutput] {
-    param($sender, $eventArgs)
-    $script:outputs.Add($eventArgs.OutputParams)
-}
-$deadlockHandler = [SchedulerStandardInterface.Interface.OnDeadLock] {
-    param($sender, $eventArgs)
-    $script:deadlocks.Add($eventArgs.DeadLockInfo)
-}
+$callbackBuffer = [AdapterHostCallbackBuffer]::new()
+$outputHandler = [System.Delegate]::CreateDelegate(
+    [SchedulerStandardInterface.Interface.OnOutput],
+    $callbackBuffer,
+    "HandleOutput"
+)
+$deadlockHandler = [System.Delegate]::CreateDelegate(
+    [SchedulerStandardInterface.Interface.OnDeadLock],
+    $callbackBuffer,
+    "HandleDeadLock"
+)
 $scheduler.add_OutputHandler($outputHandler)
 $scheduler.add_DeadLockHandler($deadlockHandler)
 
@@ -94,8 +174,7 @@ try {
                     Write-AdapterResponse @{ ok = $true }
                 }
                 "update" {
-                    $script:outputs.Clear()
-                    $script:deadlocks.Clear()
+                    $callbackBuffer.Reset()
                     $update = [Newtonsoft.Json.JsonConvert]::DeserializeObject(
                         $payloadJson,
                         [SchedulerStandardInterface.Interface.IUpdateParams],
@@ -103,21 +182,23 @@ try {
                     )
                     $requestId = $request.RequestId
                     $scheduler.StartSchedule($requestId, $update)
-                    if ($script:outputs.Count -gt 0) {
-                        $outputJson = [Newtonsoft.Json.JsonConvert]::SerializeObject(
-                            $script:outputs[$script:outputs.Count - 1]
-                        )
+                    # IScheduler 通过事件异步交付结果；StartSchedule 返回不代表调度完成。
+                    # Host 在此等待，由 Python 侧统一的请求超时负责终止失联进程。
+                    $callbackBuffer.Completed.Wait()
+                    if ($callbackBuffer.OutputCount -gt 0) {
                         Write-AdapterResponse @{
                             ok = $true
-                            outputJson = $outputJson
-                            outputCount = $script:outputs.Count
+                            outputJson = $callbackBuffer.OutputJson
+                            outputCount = $callbackBuffer.OutputCount
                         }
                     }
-                    elseif ($script:deadlocks.Count -gt 0) {
+                    elseif (-not [string]::IsNullOrEmpty($callbackBuffer.DeadlocksJson)) {
                         Write-AdapterResponse @{
                             ok = $false
                             error = "Adapter 触发 DeadLock"
-                            deadlocks = @($script:deadlocks)
+                            deadlocks = [Newtonsoft.Json.Linq.JToken]::Parse(
+                                $callbackBuffer.DeadlocksJson
+                            )
                         }
                     }
                     else {

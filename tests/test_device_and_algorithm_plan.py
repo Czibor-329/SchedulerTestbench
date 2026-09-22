@@ -784,7 +784,7 @@ class ConfigEditorDeviceTests(unittest.TestCase):
             {
                 "MoveList": [{
                     "MoveID": 1, "MoveType": 9,
-                    "StartTime": 100.0, "EndTime": 120.0, "ModuleName": "PM1",
+                    "StartTime": 5.0, "EndTime": 15.0, "ModuleName": "PM1",
                 }],
                 "Feedback": [],
             },
@@ -810,6 +810,10 @@ class ConfigEditorDeviceTests(unittest.TestCase):
             patch.object(config_server, "algorithm_init") as init_entry,
             patch.object(
                 config_server,
+                "algorithm_update_move_states",
+            ) as move_state_entry,
+            patch.object(
+                config_server,
                 "algorithm_update",
                 side_effect=external_outputs,
             ) as update_entry,
@@ -818,10 +822,21 @@ class ConfigEditorDeviceTests(unittest.TestCase):
 
         init_entry.assert_called_once()
         self.assertEqual(3, update_entry.call_count)
+        self.assertEqual([{
+            "MoveID": 1,
+            "MoveState": 0,
+            "StartTime": 5.0,
+            "EndTime": -1,
+        }], move_state_entry.call_args_list[0].args[0])
         second_update = update_entry.call_args_list[1].args[0]
         third_update = update_entry.call_args_list[2].args[0]
-        self.assertEqual([1], second_update["RemoveList"])
-        self.assertEqual([], second_update["MoveStates"])
+        self.assertEqual([], second_update["RemoveList"])
+        self.assertEqual([{
+            "MoveID": 1,
+            "MoveState": 0,
+            "StartTime": 5.0,
+            "EndTime": -1,
+        }], second_update["MoveStates"])
         self.assertEqual(2, len(second_update["Materials"]))
         self.assertEqual(2, len(second_update["ProcessJobs"]))
         self.assertEqual(2, len(second_update["ControlJobs"]))
@@ -835,6 +850,15 @@ class ConfigEditorDeviceTests(unittest.TestCase):
         )
         self.assertEqual(3, len(result["updates"]))
         self.assertEqual(2, len(result["output"]["RecomputePoints"]))
+        self.assertAlmostEqual(
+            sum(round_summary["elapsedMs"] for round_summary in result["rounds"]),
+            result["algorithmElapsedMs"],
+        )
+        self.assertGreaterEqual(
+            result["recomputeWindowElapsedMs"],
+            result["algorithmElapsedMs"],
+        )
+        self.assertEqual(result["algorithmElapsedMs"], result["cpuTimeMs"])
 
     def test_standard_algorithm_recompute_returns_dummy_route_from_previous_output(self) -> None:
         """平台应在调用下一轮 update 前回填上一轮返回的 DummyReturnInfo。"""

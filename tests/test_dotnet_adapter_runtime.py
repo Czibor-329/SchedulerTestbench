@@ -1,6 +1,10 @@
 """Adapter Host 长连接协议的轻量单元测试。"""
 
+import threading
+from collections import deque
 from unittest.mock import Mock
+
+import pytest
 
 from app.backend.algorithms.dotnet_adapter_runtime import DotNetAdapterRuntime
 
@@ -31,3 +35,25 @@ def test_update_move_states_skips_empty_batch() -> None:
     runtime.update_move_states([])
 
     runtime._request.assert_not_called()
+
+
+def test_request_reports_host_diagnostics_when_input_pipe_is_closed() -> None:
+    """Host 启动失败时应暴露原始诊断，不能只返回 Windows Errno。"""
+    runtime = object.__new__(DotNetAdapterRuntime)
+    runtime._closed = False
+    runtime._request_lock = threading.Lock()
+    runtime._diagnostic_lines = deque(
+        ["Access to the path 'PowerShell/logs' is denied"],
+        maxlen=50,
+    )
+    runtime._reader = Mock()
+    runtime._process = Mock()
+    runtime._process.poll.return_value = None
+    runtime._process.stdin.write.side_effect = OSError(22, "Invalid argument")
+
+    with pytest.raises(RuntimeError) as error_info:
+        runtime._request("init", payload={})
+
+    assert "Adapter Host 输入管道已关闭" in str(error_info.value)
+    assert "PowerShell/logs" in str(error_info.value)
+    runtime._reader.join.assert_called_once_with(timeout=1)

@@ -4115,7 +4115,7 @@ export function renderSchedulePerformance(performance: SchedulePerformance): str
     <section class="result-card overview-card">
       <div class="performance-summary">
         ${kpiCard("产能", performance.throughputPerHour > 0 ? performance.throughputPerHour.toFixed(1) : "—", performance.throughputPerHour > 0 ? "片/h" : "", performance.throughputSampleCount ? `居中 ${performance.throughputSampleCount} 片稳态样本` : escapeHtml(performance.throughputReason || "样本不足，完工片数必须大于 150"), "is-primary")}
-        ${kpiCard("平均重算时间", Number.isFinite(performance.averageRecomputeTimeMs) ? Number(performance.averageRecomputeTimeMs).toFixed(1) : "—", Number.isFinite(performance.averageRecomputeTimeMs) ? "ms" : "", performance.recomputeCount ? `CPU Time / ${performance.recomputeCount} 次重算` : "没有重算轮次")}
+          ${kpiCard("平均重算时间", Number.isFinite(performance.averageRecomputeTimeMs) ? Number(performance.averageRecomputeTimeMs).toFixed(1) : "—", Number.isFinite(performance.averageRecomputeTimeMs) ? "ms" : "", performance.recomputeCount ? `首次发送至末次输出 / ${performance.recomputeCount} 次重算` : "没有调度轮次")}
         ${kpiCard("瓶颈利用率", bottleneckUtilization !== null ? formatPercent(bottleneckUtilization) : "—", "", bottleneckDetail)}
         ${kpiCard("LoadLock 利用效率", loadLockEfficiency.cycleCount ? loadLockEfficiency.wafersPerCycle.toFixed(2) : "—", loadLockEfficiency.cycleCount ? "片/周期" : "", loadLockEfficiency.cycleCount ? `${loadLockEfficiency.cycleCount} 个完整周期 · 满载 ${formatPercent(loadLockEfficiency.fullLoadCycleRatio)} · 空载 ${formatPercent(loadLockEfficiency.emptyLoadCycleRatio)}` : "没有完整的抽气—充气周期")}
       </div>

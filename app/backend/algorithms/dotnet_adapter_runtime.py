@@ -124,8 +124,22 @@ class DotNetAdapterRuntime:
             stdin = self._process.stdin
             if stdin is None:
                 raise RuntimeError("Adapter Host 标准输入不可用")
-            stdin.write(json.dumps(request, ensure_ascii=False, separators=(",", ":")) + "\n")
-            stdin.flush()
+            try:
+                stdin.write(
+                    json.dumps(
+                        request,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ) + "\n"
+                )
+                stdin.flush()
+            except OSError as error:
+                # Host 启动失败时，Windows 可能先把关闭的管道表现为 Errno 22/32；
+                # 等待读取线程收完 PowerShell/.NET 诊断后再包装为可定位的异常。
+                self._reader.join(timeout=1)
+                raise RuntimeError(
+                    self._failure_message("Adapter Host 输入管道已关闭")
+                ) from error
             try:
                 response = self._responses.get(timeout=self.timeout_seconds)
             except queue.Empty as error:

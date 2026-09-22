@@ -115,7 +115,12 @@ class BackendAnalysisTests(unittest.TestCase):
             device,
             "full",
             context,
-            {"cpuTimeMs": 900.0, "recomputeCount": 4},
+            {
+                "cpuTimeMs": 900.0,
+                "algorithmElapsedMs": 800.0,
+                "recomputeWindowElapsedMs": 1200.0,
+                "recomputeCount": 4,
+            },
         )
 
         self.assertEqual(0, unavailable["throughputPerHour"])
@@ -126,9 +131,10 @@ class BackendAnalysisTests(unittest.TestCase):
         self.assertEqual(141, len(available["throughputTimeline"]["rollingByWindow"]["10"]))
         self.assertAlmostEqual(360.0, available["throughputTimeline"]["cumulative"][0]["throughputPerHour"])
         self.assertAlmostEqual(360.0, available["throughputTimeline"]["rollingByWindow"]["2"][0]["throughputPerHour"])
-        self.assertEqual(900.0, available["cpuTimeMs"])
+        self.assertEqual(800.0, available["cpuTimeMs"])
+        self.assertEqual(1200.0, available["recomputeWindowElapsedMs"])
         self.assertEqual(4, available["recomputeCount"])
-        self.assertEqual(225.0, available["averageRecomputeTimeMs"])
+        self.assertEqual(300.0, available["averageRecomputeTimeMs"])
 
     def test_production_throughput_uses_loadport_returns_not_recipe_or_process_moves(self) -> None:
         """产能只按回到 LoadPort 的时刻计算，不因 Recipe 或加工动作缺失而拒绝。"""

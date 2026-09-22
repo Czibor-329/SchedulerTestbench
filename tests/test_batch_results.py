@@ -21,6 +21,8 @@ def test_success_exposes_average_recompute_time_for_result_card() -> None:
         {
             "output": {"MoveList": []},
             "cpuTimeMs": 12.0,
+            "algorithmElapsedMs": 30.0,
+            "recomputeWindowElapsedMs": 45.0,
             "totalElapsedMs": 15.0,
             "updates": [{}, {}, {}],
             "reproductionLog": [],
@@ -33,4 +35,7 @@ def test_success_exposes_average_recompute_time_for_result_card() -> None:
     )
 
     assert item["recomputeCount"] == 3
-    assert item["averageRecomputeTimeMs"] == 4.0
+    assert item["algorithmElapsedMs"] == 30.0
+    assert item["recomputeWindowElapsedMs"] == 45.0
+    assert item["cpuTimeMs"] == 30.0
+    assert item["averageRecomputeTimeMs"] == 15.0

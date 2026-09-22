@@ -111,8 +111,9 @@ def _execute_standard_algorithm(
         f"设备：{plan.get('deviceName') or 'selected init'}",
         f"策略：{strategy}；调用：{entry_name}；总轮数：{round_count}",
     ]
+    first_update_sent_at: Optional[float] = None
+    last_output_received_at: Optional[float] = None
     with session_context:
-        round_started = time.perf_counter()
         _raise_if_single_run_cancelled()
         _report_run_event("init", "init", "running")
         try:
@@ -123,14 +124,18 @@ def _execute_standard_algorithm(
             raise
         _report_run_event("init", "init", "succeeded")
         _report_run_event("update-1", "update #1", "running")
+        round_started = time.perf_counter()
+        first_update_sent_at = round_started
         try:
             raw_output = run_update(prepared_first_update)
+            output_received_at = time.perf_counter()
+            last_output_received_at = output_received_at
             _raise_if_single_run_cancelled()
         except Exception as error:
             _report_run_event("update-1", "update #1", "failed", str(error))
             raise
         _report_run_event("update-1", "update #1", "succeeded")
-        elapsed_ms = (time.perf_counter() - round_started) * 1000.0
+        elapsed_ms = (output_received_at - round_started) * 1000.0
         output = _alg_output_info(raw_output)
         _report_run_event("output-1", "收到 output #1", "succeeded")
         _raise_deadlock_feedback(
@@ -212,7 +217,7 @@ def _execute_standard_algorithm(
             completed_cycles: Sequence[CJobCycleRuntime] = (),
         ) -> Tuple[set[Any], set[str]]:
             """执行一次定时或补片重算，并更新当前算法代次。"""
-            nonlocal output
+            nonlocal output, last_output_received_at
             notifications = advance_platform_move_list_to_update(
                 runtime,
                 requested_time,
@@ -301,11 +306,7 @@ def _execute_standard_algorithm(
                 (
                     notifications
                     if builtin_strategy is not None
-                    else (
-                        []
-                        if algorithm_uses_dotnet_adapter()
-                        else _running_move_states(notifications)
-                    )
+                    else _running_move_states(notifications)
                 ),
                 projected_state=projected_state,
                 previous_output=output,
@@ -325,6 +326,8 @@ def _execute_standard_algorithm(
             )
             try:
                 raw_output = run_update(update)
+                output_received_at = time.perf_counter()
+                last_output_received_at = output_received_at
                 _raise_if_single_run_cancelled()
             except Exception as error:  # noqa: BLE001
                 _report_run_event(
@@ -359,7 +362,7 @@ def _execute_standard_algorithm(
                 f"update #{recompute_index}",
                 "succeeded",
             )
-            elapsed_ms = (time.perf_counter() - round_started) * 1000.0
+            elapsed_ms = (output_received_at - round_started) * 1000.0
             output = _alg_output_info(raw_output)
             _report_run_event(
                 f"output-{recompute_index}",
@@ -585,6 +588,11 @@ def _execute_standard_algorithm(
             "truncated": decision_trace_truncated,
         }
     total_ms = (time.perf_counter() - started) * 1000.0
+    recompute_window_elapsed_ms = (
+        (last_output_received_at - first_update_sent_at) * 1000.0
+        if first_update_sent_at is not None and last_output_received_at is not None
+        else 0.0
+    )
     makespan = _segment_end(combined_output["MoveList"])
     logs.append(
         f"完成：总耗时 {total_ms:.1f} ms，"
@@ -595,6 +603,7 @@ def _execute_standard_algorithm(
         "strategy": strategy,
         "rounds": summaries,
         "totalElapsedMs": total_ms,
+        "recomputeWindowElapsedMs": recompute_window_elapsed_ms,
         "makespan": makespan,
         "moveCount": len(combined_output["MoveList"]),
         "validation": "passed",
@@ -817,7 +826,6 @@ def execute_plan(
     use_hongye_validation = bool(raw_plan.get("hongYeCheck", True))
     reproduction = ReproductionLog()
     reproduction.add("Input", [deepcopy(dict(raw_plan))])
-    cpu_started = time.thread_time() if hasattr(time, "thread_time") else time.process_time()
     hongye_validation: Optional[Dict[str, Any]] = None
     try:
         result = _execute_plan(raw_plan, reproduction)
@@ -878,8 +886,16 @@ def execute_plan(
             reproduction.entries,
             failure_output=prior_plan_output,
         ) from error
-    cpu_finished = time.thread_time() if hasattr(time, "thread_time") else time.process_time()
-    result["cpuTimeMs"] = max(0.0, (cpu_finished - cpu_started) * 1000.0)
+    algorithm_elapsed_ms = sum(
+        max(0.0, _finite_number(summary.get("elapsedMs"), 0.0))
+        for summary in (result.get("rounds") or [])
+        if isinstance(summary, Mapping)
+    )
+    # ``cpuTimeMs`` 是历史响应字段。Adapter 在独立进程执行后，主线程 CPU 时间
+    # 已不能代表算法耗时；保留字段名兼容前端和旧结果，写入各次算法调用墙钟耗时总和。
+    # 平均重算时间另用首个 AlgUpdate 发出到最后一个 AlgOutput 收到的连续时间窗。
+    result["algorithmElapsedMs"] = algorithm_elapsed_ms
+    result["cpuTimeMs"] = algorithm_elapsed_ms
     if hongye_validation is not None:
         result["validationDetails"] = deepcopy(hongye_validation)
     result["reproductionLog"] = deepcopy(reproduction.entries)

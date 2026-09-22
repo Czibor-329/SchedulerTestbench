@@ -2214,7 +2214,7 @@ test("KPI 总览按产能、重算、瓶颈和 LoadLock 效率展示，并将说
   assert.doesNotMatch(markup, /<span>瓶颈<\/span>[\s\S]*?<strong>PM1<\/strong>/);
   assert.doesNotMatch(markup, /performance-kpi-card[^"]*is-warning/);
   assert.match(markup, /<span>LoadLock 利用效率<\/span>/);
-  assert.match(markup, /CPU Time \/ 4 次重算/);
+  assert.match(markup, /首次发送至末次输出 \/ 4 次重算/);
   assert.doesNotMatch(markup, /<span>CPU Time<\/span>|<span>统计窗口<\/span>/);
   assert.doesNotMatch(markup, /<article class="performance-kpi-card[^"]*">[\s\S]*?<p>/);
   assert.match(markup, /居中 120 片稳态样本/);
