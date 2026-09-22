@@ -1,6 +1,6 @@
 """验证公司 AlgSchedule 的 Robot 与 Station 字段投影。"""
 
-from realtime_scheduler.backend.execution.runtime_snapshot import (
+from app.backend.execution.runtime_snapshot import (
     compact_robot_snapshots,
     compact_station_snapshots,
     expand_runtime_snapshots_for_validation,

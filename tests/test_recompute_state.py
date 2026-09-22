@@ -10,7 +10,7 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 
-from realtime_scheduler.backend.validation.move_validation import (
+from app.backend.validation.move_validation import (
     ATMOSPHERE,
     MachineState,
     MaterialState,
@@ -19,15 +19,15 @@ from realtime_scheduler.backend.validation.move_validation import (
     VACUUM,
     validate_move_list,
 )
-from realtime_scheduler.backend.execution.recompute_state import (
+from app.backend.execution.recompute_state import (
     apply_machine_state_to_update,
     merge_algorithm_update,
     restore_dummy_routes_from_algorithm_output,
 )
-from realtime_scheduler.backend.execution.algorithm_runtime import (
+from app.backend.execution.algorithm_runtime import (
     PlatformMoveListRuntime,
 )
-from realtime_scheduler.backend.execution.run_state import (
+from app.backend.execution.run_state import (
     advance_platform_move_list_to_update,
 )
 
@@ -821,16 +821,16 @@ def test_dummy_projected_to_source_with_running_move_is_still_inflight() -> None
 def test_application_does_not_implement_machine_state_snapshot_replay() -> None:
     """应用装配边界不得重新承载 MachineState 到 update 的回写实现。"""
     application_source = (
-        ROOT / "realtime_scheduler" / "backend" / "application.py"
+        ROOT / "app" / "backend" / "application.py"
     ).read_text(encoding="utf-8")
     backend_source = (
-        ROOT / "realtime_scheduler" / "backend" / "execution" / "recompute_state.py"
+        ROOT / "app" / "backend" / "execution" / "recompute_state.py"
     ).read_text(encoding="utf-8")
     run_state_source = (
-        ROOT / "realtime_scheduler" / "backend" / "execution" / "run_state.py"
+        ROOT / "app" / "backend" / "execution" / "run_state.py"
     ).read_text(encoding="utf-8")
 
     assert "def _apply_machine_state_to_update" not in application_source
     assert "def apply_machine_state_to_update" in backend_source
-    assert "from realtime_scheduler.backend.execution.run_state import *" in application_source
+    assert "from app.backend.execution.run_state import *" in application_source
     assert "apply_machine_state_to_update(" in run_state_source

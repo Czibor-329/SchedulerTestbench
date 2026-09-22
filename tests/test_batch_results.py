@@ -1,6 +1,6 @@
 """批量结果卡片所需轻量指标的响应格式测试。"""
 
-from realtime_scheduler.backend.execution.batch_results import BatchResultAssembler
+from app.backend.execution.batch_results import BatchResultAssembler
 
 
 def test_success_exposes_average_recompute_time_for_result_card() -> None:

@@ -6,10 +6,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const logic = require(
   process.env.CT_WORKSPACE_VISUALIZER_TEST_BUILD
-    || "../realtime_scheduler/frontend/workspace_visualizer_logic.js",
+    || "../app/frontend/workspace_visualizer_logic.js",
 );
 const frontendCss = fs.readFileSync(
-  path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+  path.join(__dirname, "../app/frontend/assets/config_editor.css"),
   "utf8",
 );
 
@@ -438,7 +438,7 @@ test("日志导入明确拒绝普通 MoveList 文件", () => {
 });
 
 test("回放控制保留稳定入口且动作查询默认关闭", () => {
-  const html = fs.readFileSync(path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/config_editor.html"), "utf8");
   for (const id of ["visualPlayButton", "visualSource", "visualTimeline", "visualSpeed", "visualTotalTime", "visualExportDeadlockDiagnostic", "visualWaferProgress"]) {
     assert.ok(html.includes(`id="${id}"`));
   }
@@ -449,7 +449,7 @@ test("回放控制保留稳定入口且动作查询默认关闭", () => {
 
 test("正视槽位卡片按内容收缩，不以画布高度拉长模块槽位", () => {
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
   assert.match(css, /\.topology-front-slot-card \{[^}]*height:\s*auto;[^}]*max-height:\s*var\(--topology-canvas-height, 640px\);/);
@@ -460,15 +460,15 @@ test("正视槽位卡片按内容收缩，不以画布高度拉长模块槽位",
 
 test("合法动作空间面板保持两列卡片与默认全状态视觉契约", () => {
   const html = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"),
+    path.join(__dirname, "../app/frontend/config_editor.html"),
     "utf8",
   );
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
   const source = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/config_editor.ts"),
+    path.join(__dirname, "../app/frontend/src/config_editor.ts"),
     "utf8",
   );
 
@@ -1786,7 +1786,7 @@ test("机械手清除旧坐标偏移，并按 PRE_TRANS 进度连续旋转", () 
   assert.equal(angleAt(10), angleAt(15));
 
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
   assert.match(css, /\.robot-hub-vacuum[^}]*top:\s*auto;\s*left:\s*auto;/);
@@ -1819,7 +1819,7 @@ test("机械手清除旧坐标偏移，并按 PRE_TRANS 进度连续旋转", () 
 
 test("拓扑回放的晶圆尺寸统一以机器手持片为基准", () => {
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
   const uniformToken = "width: var(--topology-wafer-size); min-width: var(--topology-wafer-size); height: var(--topology-wafer-size);";
@@ -2414,7 +2414,7 @@ test("工艺腔渲染为正八边形 shell 结构，清洁状态使用浅粉色�
   assert.match(topology, /class="equipment-card equipment-process[^"]*"[^>]*>\s*<div class="equipment-process-shell"><div class="equipment-body"/);
   assert.doesNotMatch(topology, /class="equipment-card equipment-lock[^"]*"[^>]*>\s*<div class="equipment-process-shell"/);
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
   assert.match(css, /\.reference-grid-canvas \.equipment-process \.equipment-process-shell \{[^}]*clip-path:\s*polygon\(29\.29% 0, 70\.71% 0, 100% 29\.29%, 100% 70\.71%, 70\.71% 100%, 29\.29% 100%, 0 70\.71%, 0 29\.29%\)/);
@@ -2440,7 +2440,7 @@ test("以空 ProcessMove 或清洁配方记录的清洁在拓扑回放中可见"
 
 test("瓶颈分析隐藏说明、窗口详情和统计口径可见标签", () => {
   const source = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/workspace_visualizer.ts"),
+    path.join(__dirname, "../app/frontend/src/workspace_visualizer.ts"),
     "utf8",
   );
   assert.doesNotMatch(source, /同一道工序的设备合并取平均，按平均利用率最多显示 4 行。/);
@@ -2451,19 +2451,19 @@ test("瓶颈分析隐藏说明、窗口详情和统计口径可见标签", () =>
 
 test("瓶颈分析提供目的、判定原理和最优性说明", () => {
   const workspaceSource = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/workspace_visualizer.ts"),
+    path.join(__dirname, "../app/frontend/src/workspace_visualizer.ts"),
     "utf8",
   );
   const html = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"),
+    path.join(__dirname, "../app/frontend/config_editor.html"),
     "utf8",
   );
   const editorSource = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/config_editor.ts"),
+    path.join(__dirname, "../app/frontend/src/config_editor.ts"),
     "utf8",
   );
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
 
@@ -2475,15 +2475,15 @@ test("瓶颈分析提供目的、判定原理和最优性说明", () => {
 
 test("驻留时间分析展示逐片腔室和机器手驻留，并提供说明", () => {
   const workspaceSource = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/workspace_visualizer.ts"),
+    path.join(__dirname, "../app/frontend/src/workspace_visualizer.ts"),
     "utf8",
   );
   const html = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"),
+    path.join(__dirname, "../app/frontend/config_editor.html"),
     "utf8",
   );
   const editorSource = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/config_editor.ts"),
+    path.join(__dirname, "../app/frontend/src/config_editor.ts"),
     "utf8",
   );
 

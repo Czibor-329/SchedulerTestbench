@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 ALGORITHM_ROOT = ROOT / "alg"
 DEVICE_PATH = ALGORITHM_ROOT / "dataset" / "input_data" / "s1-1c2p-reschedule.json"
-DATASET_ROOT = ROOT / "realtime_scheduler" / "data" / "datasets"
+DATASET_ROOT = ROOT / "app" / "data" / "datasets"
 
 
 def dataset_device_path(device_name: str) -> Path:

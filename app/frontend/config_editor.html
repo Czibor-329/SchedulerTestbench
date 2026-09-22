@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>调度平台</title>
+  <link rel="stylesheet" href="/assets/tabler.min.css">
+  <link rel="stylesheet" href="/assets/katex.min.css?v=1.4.4">
+  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.11">
+  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.11">
+  <link rel="stylesheet" href="/assets/tabler-adapter.css">
+</head>
+<body class="theme-light" data-bs-theme="light">
+  <a class="skip-link" href="#mainContent">跳到主要内容</a>
+  <main class="shell">
+    <aside class="primary-sidebar" aria-label="应用导航">
+      <a class="sidebar-brand" href="#" aria-label="329 调度平台首页">
+        <span class="sidebar-brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48"><path d="M10 32V19a5 5 0 0 1 5-5h7v20h-7a5 5 0 0 1-5-5v-3h12"/><path d="M28 14h5a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5h-5V14Z"/><path d="M28 24h10"/><circle cx="38" cy="12" r="3"/></svg>
+        </span>
+        <span><strong>调度平台</strong></span>
+      </a>
+      <nav class="tabs" aria-label="主要功能">
+        <button class="tab active" data-tab-target="schedule" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m5 14v-8m5 8V8m5 11V3"/><path d="m4 14 5-4 5 2 6-6"/></svg><span>运行分析</span>
+        </button>
+        <button class="tab" data-tab-target="test-management" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 4V2h6v2M8.5 12l2 2 4.5-4.5M9 17h6"/></svg><span>测试管理</span>
+        </button>
+        <div class="sidebar-subtabs" aria-label="测试管理分类" hidden>
+          <button class="sidebar-subtab active" type="button" data-management-target="cases" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 4V2h6v2M8.5 12l2 2 4.5-4.5M9 17h6"/></svg><span>用例管理</span></button>
+          <button class="sidebar-subtab" type="button" data-management-target="routes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h4a4 4 0 0 1 4 4v4M13 14v4h4"/></svg><span>路径配置</span></button>
+          <button class="sidebar-subtab" type="button" data-management-target="devices"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h3M16 16h.01"/></svg><span>设备配置</span></button>
+        </div>
+        <button class="tab" data-tab-target="playback" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg><span>回放诊断</span>
+        </button>
+        <a class="tab" href="/documentation.html" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"/><path d="M15 4v4h4M8 12h8M8 16h6"/></svg><span>使用文档</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <span class="sidebar-footer-label">系统状态</span>
+        <div class="service-pill" id="serviceState">本地服务</div>
+        <span class="frontend-version">V1.6.11</span>
+      </div>
+    </aside>
+
+    <div class="app-content" id="mainContent">
+      <div class="layout" id="pageLayout">
+      <section class="main">
+        <div class="tab-view active" data-tab-view="schedule">
+          <article class="panel run-selection-panel">
+            <div class="panel-head run-selection-panel-head">
+              <div class="run-selection-head-controls">
+                <div class="run-device-control"><div class="field"><label for="runDeviceSelect">设备</label><select id="runDeviceSelect"></select></div><div class="chips workspace-device-summary" id="deviceSummary"><span class="chip">尚未选择设备</span></div><div class="workspace-transfer-actions run-workspace-transfer-actions" aria-label="设备与测试集导入导出"><button class="btn small workspace-transfer-button" id="workspaceImportButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg><span>导入</span></button><button class="btn small workspace-transfer-button" id="workspaceExportButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0 4 4m-4-4-4 4M5 20h14"/></svg><span>导出</span></button></div><div class="field run-group-control"><label for="runGroupSelect">测试组</label><select id="runGroupSelect"></select></div></div>
+              </div>
+            </div>
+          </article>
+          <div class="run-preview-stack" id="runPreviewArea">
+          <article class="panel result-panel" id="runResultsView">
+            <div class="panel-head">
+              <div class="result-view-tabs" role="tablist" aria-label="结果视图"><button class="result-view-tab active" id="resultPreviewViewButton" type="button" data-result-view="results" role="tab" aria-selected="true">结果预览</button><button class="result-view-tab" id="analysisReportViewButton" type="button" data-result-view="analysis" role="tab" aria-selected="false" disabled>分析报告</button></div>
+              <div class="result-head-actions"><span class="result-card-run-hint">双击测试卡片可运行<br>多个测试将按顺序排队。</span><span class="result-card-detail-hint">点击测试卡片可展开详情<br>再次点击即可收起。</span><button class="btn" id="batchResultFilterButton" type="button">选择测试</button></div>
+            </div>
+            <div class="panel-body">
+              <div class="batch-results" id="batchResults"></div>
+              <div class="result-error-panel" id="resultErrorPanel" role="alert" hidden>
+                <header class="result-error-header">
+                  <span class="result-error-icon" aria-hidden="true">!</span>
+                  <div><small>RUN DIAGNOSTIC</small><strong>运行错误</strong></div>
+                  <span class="result-error-status">需要处理</span>
+                </header>
+                <div id="resultErrorDetails" class="result-error-details" hidden></div>
+                <pre id="terminal"></pre>
+              </div>
+              <div class="result-actions"><a class="btn batch-log-download" id="resultBatchLogButton" href="#" download aria-disabled="true">导出本批日志</a><a class="btn primary" id="batchGanttButton" href="#" target="_blank" aria-disabled="true">全部甘特图</a></div>
+            </div>
+          </article>
+          <section class="batch-test-details" id="batchTestDetails" aria-live="polite" hidden></section>
+          </div>
+        <div id="runAnalysisView" hidden>
+          <article class="visual-workbench">
+            <section class="test-group-analysis" id="testGroupAnalysisPanel" hidden aria-live="polite"></section>
+
+            <div class="visual-empty" id="visualEmpty">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg>
+              <strong>等待分析数据</strong>
+              <span>至少完成一项可分析测试后，点击“分析报告”配置并生成报告。单次测试请使用回放诊断。</span>
+            </div>
+
+            <div class="visual-content" id="visualContent" hidden>
+              <section class="performance-panel" aria-labelledby="performanceTitle">
+                <h2 class="visually-hidden" id="performanceTitle">资源占用与瓶颈识别</h2>
+                <div class="performance-window-stash" aria-hidden="true">
+                  <select id="performanceWindow" tabindex="-1">
+                    <option value="steady" selected>剔除启动 / 收尾</option>
+                    <option value="full">完整周期</option>
+                  </select>
+                </div>
+              </section>
+            </div>
+          </article>
+        </div>
+
+        </div>
+
+        <div class="tab-view" data-tab-view="test-management">
+          <div id="testManagementSections">
+          <section class="management-section active" data-management-view="cases">
+          <div id="testCatalogView">
+          <article class="panel workspace-panel test-catalog-controls-panel">
+            <div class="catalog-toolbar">
+              <div class="workspace-device-controls"><select id="deviceSelect" data-compact-label="设备" aria-label="设备"><option value="">尚未导入设备</option></select></div>
+              <div class="workspace-control-row catalog-group-control"><select id="testGroupSelect" data-compact-label="测试组别" aria-label="测试组别"><option value="">尚无测试组</option></select><div class="workspace-icon-actions" aria-label="测试组别操作"><button class="btn workspace-icon-button" id="newGroupButton" type="button" title="新增组别" aria-label="新增组别" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button class="btn danger workspace-icon-button" id="deleteGroupButton" type="button" title="删除组别" aria-label="删除组别" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v5m4-5v5M9 7l1-2h4l1 2M7 7l1 13h8l1-13"/></svg></button><button class="btn workspace-icon-button" id="renameGroupButton" type="button" title="重命名组别" aria-label="重命名组别" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5V20h3.5L18 9.5 14.5 6 4 16.5zM13.5 7l3.5 3.5"/></svg></button></div></div>
+              <div class="catalog-primary-actions"><button class="btn" id="importCompanyBaselineButton" type="button">导入产能 Baseline</button><input id="companyBaselineFile" type="file" accept=".csv,text/csv" hidden><button class="btn primary catalog-new-test" id="newTestButton" type="button" disabled>＋ 新建测试</button></div>
+              <div class="workspace-status sr-only" id="workspaceStatus" role="status" aria-live="polite"></div>
+            </div>
+          </article>
+          <div class="hint catalog-group-hint" id="groupActionHint"></div>
+          <div class="legacy-test-controls" hidden><select id="testCaseSelect"><option value="">请先选择设备</option></select><button id="copyTestButton" type="button"></button><button id="deleteTestButton" type="button"></button><button id="saveTestButton" type="button"></button></div>
+          <article class="panel test-catalog-list-panel" aria-label="当前测试组的测试列表">
+            <div class="test-list" id="testCatalogBody" role="list"></div>
+            <div class="empty-group-hint" id="emptyGroupHint"><span>该组暂无测试</span><button class="btn small" id="emptyGroupNewTestButton" disabled>立即新建测试</button></div>
+          </article>
+          </div>
+          <article class="panel recompute-panel" id="testEditorPanel" hidden>
+            <div class="test-editor-actions"><button class="text-back-button" id="cancelTestEditButton" type="button">← 返回用例列表</button><div class="test-editor-inline-metadata"><div class="field test-name-field"><label for="testCaseName">测试名称</label><input id="testCaseName" value="" placeholder="测试名称"></div><div class="field round-count-field"><label for="roundCount">总轮数</label><input id="roundCount" type="number" min="1" max="8" value="2"></div></div><div class="test-editor-save-actions"><button class="btn" id="discardTestButton" type="button">撤销修改</button><button class="btn primary" id="saveAndRunPageButton" type="button">保存并返回列表</button></div></div>
+            <div class="panel-body"><fieldset id="testContentFields"><div class="card-list" id="roundList"></div></fieldset></div>
+          </article>
+          </section>
+          </div>
+        </div>
+
+        <div class="tab-view" data-tab-view="playback">
+          <article class="visual-workbench playback-workbench">
+            <div class="visual-toolbar playback-toolbar-placeholder" id="visualToolbar" aria-hidden="true"></div>
+            <div class="playback-log-import">
+              <button class="btn primary playback-log-import-button" id="visualImportButton" type="button" aria-label="导入复现日志">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v5h14v-5"/></svg>
+                导入日志
+              </button>
+              <input id="visualFileInput" type="file" accept=".json,application/json" hidden>
+            </div>
+
+            <div class="visual-empty" id="visualPlaybackEmpty">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg>
+              <strong>等待回放数据</strong>
+              <span>运行一次计划，或使用右上角“导入日志”载入平台复现日志后开始回放。</span>
+            </div>
+
+            <section class="topology-playback" id="visualTopologyPlayback" hidden aria-label="回放诊断">
+              <div class="petri-console-layout">
+              <header class="replay-status-bar" aria-label="回放状态条">
+                <section class="timeline-console petri-top-playback-controls" aria-label="MoveList 时间轴控制">
+                  <div class="timeline-primary-zone">
+                    <button class="btn primary timeline-play" id="visualPlayButton" type="button" aria-label="播放回放"></button>
+                    <div class="timeline-movelist" aria-label="当前测试">
+                      <strong id="visualSource" title="—">—</strong>
+                    </div>
+                  </div>
+                  <div class="timeline-range">
+                    <input id="visualTimeline" type="range" min="0" max="0" step="0.1" value="0" aria-label="回放时间进度">
+                    <div class="timeline-scale">
+                      <time class="timeline-bound timeline-current"><b id="visualCurrentTime">0.0</b><span>s</span></time>
+                      <div class="petri-route-metrics">
+                        <span><small>进度</small><b id="visualProgressText">0%</b></span>
+                        <span><small>MOVE</small><b id="visualMoveText">0 / 0</b></span>
+                        <span><small>晶圆</small><b id="visualWaferText">0</b><i>片</i></span>
+                      </div>
+                      <time class="timeline-bound timeline-total"><b id="visualTotalTime">0.0</b><span>s</span></time>
+                    </div>
+                  </div>
+                  <div class="timeline-tools-zone">
+                    <label class="timeline-speed"><span>速度</span>
+                      <select id="visualSpeed" aria-label="回放速度">
+                        <option value="1">1×</option>
+                        <option value="2">2×</option>
+                        <option value="4" selected>4×</option>
+                        <option value="8">8×</option>
+                        <option value="16">16×</option>
+                        <option value="32">32×</option>
+                      </select>
+                    </label>
+                    <div class="topology-toolbar-actions" aria-label="回放工具">
+                      <a class="btn toolbar-gantt" id="visualOpenGantt" href="#" target="_blank" aria-label="打开甘特图" aria-disabled="true">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v14h16M8 15v-3m4 3V8m4 7v-5"/></svg>
+                        <span class="toolbar-label-full">打开甘特图</span><span class="toolbar-label-compact">甘特图</span>
+                      </a>
+                    </div>
+                  </div>
+                </section>
+                <section class="replay-kpi-section" aria-label="回放核心指标"><div id="visualReplayKpis"></div></section>
+              </header>
+                <div class="topology-canvas-area">
+                <main class="petri-center-column topology-unified-canvas" aria-label="设备拓扑与槽位画布">
+                  <aside class="topology-front-slot-card" id="visualFrontSlotOverview" aria-label="设备正视槽位"></aside>
+                  <section class="device-stage" id="visualDeviceStage" aria-label="设备拓扑状态"></section>
+                </main>
+                </div>
+              <aside class="replay-inspector-dock" aria-label="回放观察窗口">
+                <section class="replay-dock-window wafer-progress-section" data-replay-dock-window data-expanded="false">
+                  <header class="analysis-window-titlebar"><h3>晶圆进度</h3><button class="analysis-window-toggle" type="button" data-replay-dock-toggle aria-controls="visualWaferProgressDockBody" aria-expanded="false">展开</button></header>
+                  <div class="replay-dock-window-body petri-control-panel" id="visualWaferProgressDockBody" hidden>
+                    <div class="action-panel-heading"><label class="playback-switch"><input id="visualWaferProgressEnabled" type="checkbox" role="switch"> 显示晶圆进度</label></div>
+                    <div id="visualWaferProgress"></div>
+                  </div>
+                </section>
+                <section class="replay-dock-window model-evaluation-section" data-replay-dock-window data-expanded="false">
+                  <header class="analysis-window-titlebar"><h3>合法动作空间</h3><button class="analysis-window-toggle" type="button" data-replay-dock-toggle aria-controls="visualActionsDockBody" aria-expanded="false">展开</button></header>
+                  <div class="replay-dock-window-body petri-control-panel" id="visualActionsDockBody" hidden>
+                    <div class="action-panel-heading"><div class="action-panel-controls"><button class="btn small diagnostic-export" id="visualExportDeadlockDiagnostic" type="button" aria-label="导出死锁诊断包" disabled>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 19h14"/></svg>导出诊断包
+                    </button><label><input id="visualActionsEnabled" type="checkbox" role="switch"> 启用查询</label></div></div>
+                    <div class="action-filter-controls" aria-label="动作筛选">
+                      <span class="action-filter-label">显示</span>
+                      <label class="action-filter-check"><input type="checkbox" data-action-status-filter value="enabled" checked>使能动作</label>
+                      <label class="action-filter-check"><input type="checkbox" data-action-status-filter value="physical-blocked" checked>物理拦截</label>
+                      <label class="action-filter-check"><input type="checkbox" data-action-status-filter value="deadlock-blocked" checked>死锁规则拦截</label>
+                    </div>
+                    <div class="decision-lens-panel" id="visualDecisionLens" aria-live="polite"></div>
+                    <ul id="visualActiveMoves" hidden></ul>
+                  </div>
+                </section>
+              </aside>
+              </div>
+              <section class="performance-panel replay-analysis-panel" aria-label="回放结果分析">
+                <div id="visualPerformance"></div>
+              </section>
+            </section>
+          </article>
+        </div>
+
+        <div class="management-section detached-management-section" id="routeManagementSection" data-management-view="routes" hidden>
+          <aside class="route-update-card" role="note" aria-label="路径模板更新说明">
+            <div class="route-update-card-icon" aria-hidden="true">i</div>
+            <div>
+              <strong>路径模板与测试参数已分离</strong>
+              <p>这里仅维护路径使用的腔室。加工时间、QTime、驻留时间与 Clean 请在“用例管理”中编辑测试并选择模板后配置；修改测试参数不会影响模板或其他测试。</p>
+            </div>
+          </aside>
+          <article class="panel">
+            <div class="panel-head route-panel-head">
+              <div><h2>路径配置</h2></div>
+              <div class="route-panel-actions">
+                <div class="route-filter-bar" aria-label="路径分类选择">
+                  <div class="route-filter-field">
+                    <select id="routeProcessFilter" data-compact-label="工序数"></select>
+                  </div>
+                  <div class="route-filter-field">
+                    <select id="routeParallelFilter" data-compact-label="并行腔室结构"></select>
+                  </div>
+                </div>
+                <button class="btn small" data-action="add-route">＋ 路径</button>
+              </div>
+            </div>
+            <div class="panel-body"><div class="card-list" id="routeList"></div></div>
+          </article>
+        </div>
+
+        <div class="management-section detached-management-section" id="deviceManagementSection" data-management-view="devices" hidden>
+          <header class="device-config-heading">
+            <div>
+              <h1>设备配置</h1>
+            </div>
+            <div class="device-config-heading-actions">                  <button class="btn workspace-icon-button danger" id="deleteDeviceButton" type="button" title="删除当前设备" aria-label="删除当前设备" disabled>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>
+                  </button>
+<button class="btn" type="button" id="deviceImportButton">导入设备</button><button class="btn" type="button" id="deviceExportButton">导出设备</button>
+              <div class="device-config-save-state">
+                <span id="deviceConfigSelectedName">尚未选择设备</span>
+                <strong id="deviceTimingStatus" role="status" aria-live="polite">选择设备后开始配置</strong>
+              </div>
+              <button class="btn" id="resetDeviceTimingButton" type="button" disabled>撤销修改</button>
+              <button class="btn primary" id="saveDeviceTimingButton" type="button" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l2 2v14H5zM8 4v6h7V4M8 20v-6h8v6"/></svg>
+                保存修改
+              </button>
+            </div>
+          </header>
+          <div class="device-config-layout">
+            <nav class="device-config-nav" aria-label="设备配置分类">
+              <button class="device-config-nav-item active" type="button" data-device-config-section="station-time" aria-current="page">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>
+                <span><strong>设备时间</strong></span>
+              </button>
+              <button class="device-config-nav-item" type="button" data-device-config-section="robot-time">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h14M8 18v-4l4-2 3-5 3 2-3 6-3 3"/><circle cx="18" cy="7" r="2"/><path d="M6 14h4"/></svg>
+                <span><strong>机器手时间</strong></span>
+              </button>
+              <button class="device-config-nav-item" type="button" data-device-config-section="robot-slot">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="11" rx="3"/><path d="M12 3v4M8 12h.01M16 12h.01M8 18v3m8-3v3"/></svg>
+                <span><strong>机器手槽位</strong></span>
+              </button>
+              <button class="device-config-nav-item" type="button" data-device-config-section="execution-time">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h3l2-6 4 12 2-6h5"/><path d="M4 20h16"/></svg>
+                <span><strong>执行时间</strong></span>
+              </button>
+            </nav>
+            <div class="device-config-content">
+              <article class="panel device-timing-panel active" data-device-config-view="station-time">
+                <div class="panel-head device-timing-panel-head">
+                  <div>
+                    <h2>设备动作时间</h2>
+                  </div>
+                  <div class="device-config-entity-picker">
+                    <button class="device-config-step-button" id="previousDeviceStationButton" type="button" aria-label="上一个站点" disabled>‹</button>
+                    <label class="device-config-picker" for="deviceStationSelect"><span>当前站点</span><select id="deviceStationSelect"><option value="">请先选择设备</option></select></label>
+                    <button class="device-config-step-button" id="nextDeviceStationButton" type="button" aria-label="下一个站点" disabled>›</button>
+                  </div>
+                </div>
+                <div class="panel-body device-timing-body">
+                  <div id="deviceStationTimingEditor"></div>
+                </div>
+              </article>
+
+              <article class="panel device-timing-panel" data-device-config-view="robot-time" hidden>
+                <div class="panel-head device-timing-panel-head">
+                  <div>
+                    <h2>机器手动作时间</h2>
+                  </div>
+                  <div class="device-config-entity-picker">
+                    <button class="device-config-step-button" id="previousDeviceRobotButton" type="button" aria-label="上一个机器手" disabled>‹</button>
+                    <label class="device-config-picker" for="deviceRobotSelect"><span>当前机器手</span><select id="deviceRobotSelect"><option value="">请先选择设备</option></select></label>
+                    <button class="device-config-step-button" id="nextDeviceRobotButton" type="button" aria-label="下一个机器手" disabled>›</button>
+                  </div>
+                </div>
+                <div class="panel-body device-timing-body">
+                  <div id="deviceRobotTimingEditor"></div>
+                </div>
+              </article>
+
+              <article class="panel robot-slot-panel device-timing-panel" data-device-config-view="robot-slot" hidden>
+                <div class="panel-head robot-slot-panel-head">
+                  <div>
+                    <h2>机器手可用槽位</h2>
+                    <p>按设备设置单臂或双臂；切换后立即应用到当前设备下的全部测试。</p>
+                  </div>
+                  <div class="robot-slot-summary" id="robotSlotSummary">请先选择设备</div>
+                </div>
+                <div class="panel-body">
+                  <div class="robot-slot-notice">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5m0 3h.01"/><circle cx="12" cy="12" r="9"/></svg>
+                    <span>切换会同步更新 Capacity 与 ArmInfo；下次运行及批量测试会自动使用新配置。</span>
+                  </div>
+                  <div class="robot-slot-grid" id="robotSlotList"></div>
+                </div>
+              </article>
+
+              <article class="panel device-timing-panel" data-device-config-view="execution-time" hidden>
+                <div class="panel-head device-timing-panel-head">
+                  <div><h2>实际执行时间</h2><p>配置固定值，或让实际时长围绕理论值波动。</p></div>
+                </div>
+                <div class="panel-body device-timing-body">
+                  <div id="deviceExecutionTimingEditor"></div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <aside class="side" id="scheduleSide">
+        <article class="panel">
+          <div class="panel-head"><div><h2>运行策略</h2></div></div>
+          <fieldset class="panel-body" id="runStrategyFields">
+            <div class="strategy-options">
+              <div class="other-algorithm-options" id="otherAlgorithmOptions"></div>
+            </div>
+            <div id="loadlockOptions" class="grid" style="margin-top:14px">
+              <div class="field span-12"><label>LoadLock 管理器</label><select data-option="loadLockManager"><option value="petri-look">Petri-ETA 通用管理器（Heuristic 推荐）</option><option value="collective-look">集选 LOOK（压力方向优先）</option><option value="round-robin">轮询（服务次数均衡）</option><option value="dedicated-direction">方向分区（LA 进、LB 出）</option><option value="exchange-look">交换优先 LOOK（成品/生片配对）</option><option value="joint">当前策略联合选择 LA/LB（端到端模型默认）</option></select><div class="hint">上层策略决定发哪片；这里可比较 ETA、集选、轮询、方向分区和交换优先。所有 manager 只在 Petri 安全候选内绑定具体锁；双槽交换仍由门、压力和槽位互锁复核。</div></div>
+            </div>
+            <section id="heuristicSettings" class="heuristic-settings-card" aria-labelledby="heuristicSettingsTitle">
+              <div><strong id="heuristicSettingsTitle">Heuristic 设置</strong><small>LoadLock 规则与本次计划的派工权重</small></div>
+              <button class="btn small" id="openHeuristicSettingsDialogButton" type="button" aria-haspopup="dialog" aria-controls="heuristicSettingsDialog">设置</button>
+            </section>
+            <div id="searchTreeOptions" class="is-hidden" style="margin-top:14px">
+              <section class="search-tree-settings-card" aria-labelledby="search-treeSettingsTitle">
+                <strong id="search-treeSettingsTitle">Search Tree 策略价值模型</strong>
+                <button class="btn small" id="openSearchTreeOptionsDialogButton" type="button">选择模型</button>
+              </section>
+            </div>
+          </fieldset>
+          <div class="run-box">
+            <div class="run-actions">
+              <button class="btn batch" id="batchRunButton">▶ 运行所选测试</button>
+              <button class="btn run-settings-button" id="openRunSettingsButton" type="button" aria-label="运行设置" title="运行设置" aria-haspopup="dialog" aria-controls="runSettingsDialog" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1.03H3v-4h.08A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 10 3.05V3h4v.05a1.7 1.7 0 0 0 1.03 1.52 1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+              </button>
+            </div>
+            <section class="run-status-card" id="runStatusCard" aria-labelledby="runStatusTitle">
+              <div class="run-status-head"><span class="run-status-indicator" id="runStatusIndicator" aria-hidden="true"></span><strong id="runStatusTitle">系统就绪</strong><time id="runStatusElapsed">00:00.0</time></div>
+              <div class="run-status-events" id="runStatusEvents" role="status" aria-live="polite"><span class="run-status-empty">等待运行测试</span></div>
+            </section>
+          </div>
+        </article>
+      </aside>
+      </div>
+    </div>
+  </main>
+
+  <input id="deviceFile" type="file" accept=".json,.zip,.ctdata,application/json,application/zip" hidden>
+  <input id="testExchangeFile" type="file" accept=".zip,.ctdata,application/zip" hidden>
+
+  <dialog class="analysis-options-dialog" id="analysisOptionsDialog" aria-labelledby="analysisOptionsDialogTitle">
+    <form class="dialog-body analysis-options-dialog-body" id="analysisOptionsForm" method="dialog">
+      <header class="analysis-options-head">
+        <div><h3 id="analysisOptionsDialogTitle">测试组结果分析</h3><p id="analysisOptionsDescription">选择本次需要实际计算的指标。</p></div>
+        <button class="btn workspace-icon-button" id="analysisOptionsClose" type="button" aria-label="关闭结果分析设置">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <ol class="analysis-flow" aria-label="结果分析流程">
+        <li class="active" data-analysis-flow-step="1"><span>1</span><strong>选择指标</strong></li>
+        <li data-analysis-flow-step="2"><span>2</span><strong>选择测试</strong></li>
+        <li data-analysis-flow-step="3"><span>3</span><strong>开始计算</strong></li>
+      </ol>
+      <section class="analysis-options-page active" data-analysis-page="1">
+        <div class="analysis-options-section-head"><strong>计算指标</strong><small>设置会保存为个人偏好</small></div>
+        <div class="analysis-metric-options">
+          <label><input type="checkbox" checked value="throughput" data-analysis-metric>产能</label>
+          <label><input type="checkbox" checked value="average_recompute_time" data-analysis-metric>平均重算时间</label>
+          <label><input type="checkbox" checked value="company_capacity_baseline" data-analysis-metric>产能基线</label>
+          <label><input type="checkbox" checked value="company_capacity_ratio" data-analysis-metric title="算法产能除以公司产能基线">产能比</label>
+          <label><input type="checkbox" checked value="bottleneck_candidates" data-analysis-metric>瓶颈</label>
+          <label><input type="checkbox" checked value="makespan" data-analysis-metric>Makespan</label>
+          <label><input type="checkbox" checked value="validation" data-analysis-metric>校验结果</label>
+          <label><input type="checkbox" checked value="cpu_time" data-analysis-metric>算法总耗时</label>
+          <label><input type="checkbox" checked value="resource_utilization" data-analysis-metric>资源利用率</label>
+          <label><input type="checkbox" checked value="departure_interval_cv" data-analysis-metric>出站间隔 CV</label>
+          <label><input type="checkbox" checked value="process_chamber_dwell" data-analysis-metric>加工腔驻留均值</label>
+          <label><input type="checkbox" checked value="robot_wafer_dwell" data-analysis-metric>机器手驻留均值</label>
+          <label><input type="checkbox" checked value="system_residence" data-analysis-metric>系统停留均值</label>
+          <label><input type="checkbox" checked value="system_residence_cv" data-analysis-metric>系统停留 CV</label>
+          <label><input type="checkbox" checked value="loadlock_wafers_per_cycle" data-analysis-metric>LoadLock 每周期晶圆</label>
+          <label><input type="checkbox" checked value="loadlock_full_cycle_ratio" data-analysis-metric>LoadLock 满载周期率</label>
+          <label><input type="checkbox" checked value="loadlock_empty_cycle_ratio" data-analysis-metric>LoadLock 空载周期率</label>
+        </div>
+      </section>
+      <section class="analysis-options-page" data-analysis-page="2" hidden>
+        <div class="analysis-options-section-head"><strong>选择分析的测试</strong><button class="text-button" id="analysisToggleAllTests" type="button">取消全选</button></div>
+        <div class="analysis-test-options" id="analysisTestOptions"></div>
+        <div class="analysis-options-controls">
+          <label>统计窗口<select id="analysisWindowMode"><option value="steady">稳态窗口</option><option value="full">完整周期</option></select></label>
+          <label>时间预算<select id="analysisTimeBudget"><option value="30">快速 · 30 秒</option><option value="120" selected>标准 · 2 分钟</option><option value="300">完整 · 5 分钟</option></select></label>
+        </div>
+      </section>
+      <section class="analysis-options-page analysis-progress-page" data-analysis-page="3" hidden>
+        <div id="analysisDialogProgress"></div>
+      </section>
+      <div class="dialog-actions"><button class="btn small" type="button" id="analysisOptionsCancel">取消</button><button class="btn small" type="button" id="analysisPreviousButton" hidden>上一步</button><button class="btn primary small" type="button" id="analysisNextButton">下一步</button><button class="btn primary small" id="startGroupAnalysisButton" type="submit" hidden>开始分析</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="data-transfer-dialog" id="dataTransferDialog" aria-labelledby="dataTransferDialogTitle">
+    <section class="data-transfer-dialog-body">
+      <header>
+        <div><h3 id="dataTransferDialogTitle">导入数据</h3><p id="dataTransferDialogDescription">选择要导入的内容类型。</p></div>
+        <button class="btn workspace-icon-button" id="dataTransferDialogClose" type="button" aria-label="关闭导入导出窗口">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="data-transfer-options">
+        <button class="data-transfer-option" id="deviceTransferOption" type="button">
+          <span class="data-transfer-option-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9h8M8 13h5"/></svg></span>
+          <span><strong id="deviceTransferOptionTitle">导入设备</strong><small id="deviceTransferOptionDescription">导入设备包，或选择新的 init JSON。</small></span>
+          <span class="data-transfer-option-arrow" aria-hidden="true">→</span>
+        </button>
+        <button class="data-transfer-option" id="testTransferOption" type="button">
+          <span class="data-transfer-option-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7zM14 3v5h5M10 13h5M10 17h5"/></svg></span>
+          <span><strong id="testTransferOptionTitle">导入测试集</strong><small id="testTransferOptionDescription">测试集只能导入到相同设备。</small></span>
+          <span class="data-transfer-option-arrow" aria-hidden="true">→</span>
+        </button>
+      </div>
+      <div class="data-transfer-progress" id="dataTransferProgress" hidden>
+        <div class="data-transfer-progress-head"><span id="dataTransferPhase">准备中</span><output id="dataTransferPercent">0%</output></div>
+        <div class="data-transfer-progress-track" role="progressbar" aria-label="设备或测试集传输进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="dataTransferProgressBar"><span></span></div>
+      </div>
+      <div class="data-transfer-status" id="dataTransferStatus" role="status" aria-live="polite"></div>
+    </section>
+  </dialog>
+
+  <dialog id="searchTreeOptionsDialog" aria-labelledby="searchTreeOptionsDialogTitle">
+    <form class="dialog-body search-tree-options-dialog-body" id="searchTreeOptionsForm">
+      <header class="search-tree-dialog-header">
+        <div>
+          <h3 id="searchTreeOptionsDialogTitle">选择 Search Tree 模型</h3>
+          <p>前端只选择 checkpoint；搜索预算、动作数和 50 层稳定链上限由生产后端统一管理。</p>
+        </div>
+        <span class="search-tree-dialog-tag">模型</span>
+      </header>
+      <div class="search-tree-options-content">
+        <section class="search-tree-option-group search-tree-model-group" aria-labelledby="searchTreeModelGroupTitle">
+          <div class="search-tree-option-group-head">
+            <h4 id="searchTreeModelGroupTitle">策略价值模型</h4>
+            <p>未选择 checkpoint 时使用默认模型或冷启动模型。</p>
+          </div>
+          <div class="field">
+            <label for="searchTreeCheckpointPath">Checkpoint 文件</label>
+            <div class="checkpoint-picker"><input id="searchTreeCheckpointPath" type="text" readonly placeholder="未选择，使用默认模型"><label class="btn small" for="searchTreeCheckpointFile">选择文件</label><input id="searchTreeCheckpointFile" type="file" accept=".npz,.pt,.pth,.ckpt,application/octet-stream"></div>
+            <div class="search-tree-checkpoint-meta"><div class="hint" id="searchTreeCheckpointHint">选择本机 checkpoint 后将上传到本地服务，并用于后续运行。</div><button class="text-button" id="clearSearchTreeCheckpointButton" type="button">恢复默认模型</button></div>
+          </div>
+        </section>
+      </div>
+      <div class="dialog-actions"><button class="btn small" type="button" id="searchTreeOptionsDialogCancel">取消</button><button class="btn primary small" id="saveSearchTreeOptionsButton" type="submit">保存模型</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="heuristicSettingsDialog" aria-labelledby="heuristicSettingsDialogTitle">
+    <form class="dialog-body heuristic-settings-dialog-body" id="heuristicSettingsForm">
+      <header class="heuristic-dialog-header"><div><h3 id="heuristicSettingsDialogTitle">Heuristic 设置</h3><p>LoadLock 规则始终生效；启用自定义权重后，数值只作用于本次计划。</p></div><span>派工</span></header>
+      <div class="heuristic-settings-content">
+        <section class="heuristic-option-group"><h4>LoadLock</h4>
+          <div class="heuristic-loadlock-options">
+            <div class="heuristic-loadlock-row"><span class="heuristic-loadlock-label">LoadLock 方向</span><div class="heuristic-loadlock-choices"><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockDirection" type="radio" name="heuristicLoadLockDirection" value="0"><span>固定进出</span></label><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockDirection" type="radio" name="heuristicLoadLockDirection" value="1"><span>双向</span></label></div></div>
+            <div class="heuristic-loadlock-row"><span class="heuristic-loadlock-label">LoadLock 切压片数</span><div class="heuristic-loadlock-choices"><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockCapacity" type="radio" name="heuristicLoadLockCapacity" value="0"><span>1 片</span></label><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockCapacity" type="radio" name="heuristicLoadLockCapacity" value="1"><span>2 片</span></label><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockCapacity" type="radio" name="heuristicLoadLockCapacity" value="2"><span>不限制</span></label></div></div>
+            <div class="heuristic-loadlock-row"><span class="heuristic-loadlock-label">绑定进出批次</span><div class="heuristic-loadlock-choices"><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockBindBatch" type="radio" name="heuristicLoadLockBindBatch" value="0"><span>不绑定</span></label><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockBindBatch" type="radio" name="heuristicLoadLockBindBatch" value="1"><span>绑定</span></label></div></div>
+          </div>
+        </section>
+        <section class="heuristic-option-group"><label class="heuristic-weight-toggle"><input id="heuristicCustomWeightsEnabled" type="checkbox"><span><strong>启用自定义派工权重</strong><small>未启用时继续使用默认自动择优。</small></span></label>
+          <div id="heuristicWeightFields" class="heuristic-weight-grid">
+            <label>Feed 投片惩罚 <input data-heuristic-weight="feed_penalty" type="number" step="any"><small>越大越晚投片；负数会更积极投片。</small></label><label>Feed 阻塞惩罚 <input data-heuristic-weight="feed_block_penalty" type="number" min="0" step="any"><small>避免 Feed 阻塞已就绪的出片。</small></label>
+            <label>交换收益 <input data-heuristic-weight="exchange_bonus" type="number" step="any"></label><label>加工腔出片收益 <input data-heuristic-weight="process_departure_bonus" type="number" step="any"></label>
+            <label>进入加工腔收益 <input data-heuristic-weight="into_process_bonus" type="number" step="any"></label><label>排空收益 <input data-heuristic-weight="drain_bonus" type="number" step="any"></label>
+            <label>进入 Sink 收益 <input data-heuristic-weight="sink_bonus" type="number" step="any"></label><label>最早开始时间权重 <input data-heuristic-weight="earliest_start_weight" type="number" min="0" step="any"></label>
+            <label>完成时间权重 <input data-heuristic-weight="finish_time_weight" type="number" min="0" step="any"></label>
+            <label>阶段推进收益 <input data-heuristic-weight="stage_progress_bonus" type="number" min="0" step="any"></label>
+          </div>
+        </section>
+        <p class="heuristic-settings-error" id="heuristicSettingsError" role="alert"></p>
+      </div>
+      <div class="dialog-actions"><button class="btn small" id="heuristicSettingsDialogCancel" type="button">取消</button><button class="btn primary small" type="submit">保存设置</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="workspaceDialog" aria-labelledby="workspaceDialogTitle">
+    <form method="dialog" class="dialog-body" id="workspaceDialogForm">
+      <h3 id="workspaceDialogTitle">操作确认</h3>
+      <p id="workspaceDialogMessage"></p>
+      <input id="workspaceDialogInput" type="text" maxlength="80" autocomplete="off">
+      <div class="dialog-actions"><button class="btn small" type="button" id="workspaceDialogCancel">取消</button><button class="btn primary small" id="workspaceDialogConfirm" value="confirm">确认</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="run-settings-dialog" id="runSettingsDialog" aria-labelledby="runSettingsDialogTitle" aria-describedby="runSettingsDialogDescription">
+    <form class="dialog-body run-settings-dialog-body" id="runSettingsForm" method="dialog">
+      <header class="run-settings-dialog-head">
+        <div>
+          <h3 id="runSettingsDialogTitle">运行设置</h3>
+          <p id="runSettingsDialogDescription">选择本次运行使用的推进、校验、基线和批量并发策略。</p>
+        </div>
+        <button class="btn workspace-icon-button" id="runSettingsDialogClose" type="button" aria-label="关闭运行设置">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="run-settings-options">
+        <section class="run-settings-section" aria-labelledby="runSettingsBehaviorTitle">
+          <div class="run-settings-section-head"><span id="runSettingsBehaviorTitle">执行行为</span><small>控制调度推进、结果校验与基线计算</small></div>
+          <div class="run-settings-toggle-grid">
+            <label class="run-setting-option" for="hongYeCheckInput"><span class="run-setting-option-main"><input id="hongYeCheckInput" type="checkbox" checked><span>HongYe Check <em>推荐</em></span></span><small>使用 HongYe 原始日志二次校验；关闭后仍保留平台内置校验。</small></label>
+            <label class="run-setting-option" for="skipBaselineInput"><span class="run-setting-option-main"><input id="skipBaselineInput" type="checkbox" checked><span>跳过 Baseline</span></span><small>不计算 Heuristic 性能基线，可更快得到本次批量结果。</small></label>
+            <label class="run-setting-option" for="executionTimingEnabledInput"><span class="run-setting-option-main"><input id="executionTimingEnabledInput" type="checkbox"><span>时间波动模式</span></span><small>按设备“执行时间”配置修正实际 Move 时刻；关闭时使用算法原始时间，路径加工时长不变。</small></label>
+          </div>
+        </section>
+        <section class="run-settings-section" aria-labelledby="runSettingsParallelTitle">
+          <div class="run-settings-section-head"><span id="runSettingsParallelTitle">并发配额</span><small>按机器性能分配算法和校验进程</small></div>
+          <div class="run-settings-parallel-grid">
+            <label class="run-setting-option run-setting-number-option" for="batchParallelismInput"><span class="run-setting-option-main"><span>算法并行数</span><span class="run-setting-number-control"><input id="batchParallelismInput" class="run-setting-number" type="number" min="1" max="30" step="1" value="4" inputmode="numeric"><span>路</span></span></span><small>同时执行的批量算法任务数，范围 1~30。</small></label>
+            <label class="run-setting-option run-setting-number-option" for="validationParallelismInput"><span class="run-setting-option-main"><span>校验并行数</span><span class="run-setting-number-control"><input id="validationParallelismInput" class="run-setting-number" type="number" min="1" max="15" step="1" value="2" inputmode="numeric"><span>路</span></span></span><small>HongYe 校验共享配额，范围 1~15；每路约占 1~2GB 内存。</small></label>
+          </div>
+        </section>
+        <section class="run-settings-section" aria-labelledby="runSettingsCleanValidationTitle">
+          <div class="run-settings-section-head"><span id="runSettingsCleanValidationTitle">Clean 触发校验</span><small>取消勾选后仅忽略该类型的触发时机和次数；动作、物料、Recipe 与设备状态仍会校验。</small></div>
+          <div class="run-settings-toggle-grid">
+            <label class="run-setting-option" for="cleanValidationPrecleanInput"><span class="run-setting-option-main"><input id="cleanValidationPrecleanInput" type="checkbox" checked><span>PreClean</span></span></label>
+            <label class="run-setting-option" for="cleanValidationPostcleanInput"><span class="run-setting-option-main"><input id="cleanValidationPostcleanInput" type="checkbox" checked><span>PostClean</span></span></label>
+            <label class="run-setting-option" for="cleanValidationWaccleanInput"><span class="run-setting-option-main"><input id="cleanValidationWaccleanInput" type="checkbox" checked><span>WAC Clean</span></span></label>
+            <label class="run-setting-option" for="cleanValidationDummyInput"><span class="run-setting-option-main"><input id="cleanValidationDummyInput" type="checkbox" checked><span>Dummy Clean</span></span></label>
+            <label class="run-setting-option" for="cleanValidationDummywacInput"><span class="run-setting-option-main"><input id="cleanValidationDummywacInput" type="checkbox" checked><span>Dummy WAC</span></span></label>
+          </div>
+        </section>
+      </div>
+      <div class="dialog-actions"><button class="btn primary small" id="runSettingsDialogDone" type="submit">完成</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="clean-dialog" id="cleanDialog" aria-labelledby="cleanDialogTitle">
+    <form class="dialog-body clean-dialog-body" id="cleanDialogForm">
+      <h3 id="cleanDialogTitle">新增 Clean</h3>
+      <p id="cleanDialogDescription">配置 Clean 参数和适用腔室。</p>
+      <div class="clean-dialog-grid">
+        <div class="field"><label for="cleanPlacement">执行位置</label><select id="cleanPlacement"></select></div>
+        <div class="field"><label for="cleanType">清洁类别</label><select id="cleanType"></select></div>
+        <div class="field"><label for="cleanRecipeTime">清洁时间（秒）</label><input id="cleanRecipeTime" type="number" min="0" step="0.1" required></div>
+        <div class="field" id="cleanTriggerField"><label id="cleanTriggerLabel" for="cleanTriggerCount">触发次数</label><input id="cleanTriggerCount" type="number" min="1" step="1" required></div>
+        <div class="field" id="cleanDummyWaferCountField" hidden><label for="cleanDummyWaferCount">Dummy wafer 投放数量</label><input id="cleanDummyWaferCount" type="number" min="1" step="1" value="8" aria-describedby="cleanDummyWaferCountHint" required><small id="cleanDummyWaferCountHint">设置 DummyPort 库存，与 MaterialCount 独立。</small></div>
+        <div class="field" id="cleanWacTimeField"><label for="cleanWacRecipeTime">WAC 清洁长度（秒）</label><input id="cleanWacRecipeTime" type="number" min="0" step="0.1" required></div>
+        <fieldset class="clean-module-field">
+          <legend>适用腔室</legend>
+          <div class="clean-module-options" id="cleanModuleOptions"></div>
+          <small>Clean 只会出现在这里勾选的腔室，不再从整条路径自动推导。</small>
+        </fieldset>
+      </div>
+      <div class="clean-dialog-error" id="cleanDialogError" role="alert"></div>
+      <div class="dialog-actions clean-dialog-actions">
+        <button class="btn danger small" type="button" id="deleteCleanBindingButton" data-action="delete-clean-binding">移除 Clean</button>
+        <span></span>
+        <button class="btn small" type="button" id="cleanDialogCancel">取消</button>
+        <button class="btn primary small" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="pjob-route-dialog" id="pjobRouteDialog" aria-labelledby="pjobRouteDialogTitle">
+    <section class="pjob-route-dialog-body">
+      <header class="pjob-route-dialog-head">
+        <div><h3 id="pjobRouteDialogTitle">选择具体路径</h3><p id="pjobRouteDialogContext"></p></div>
+        <button class="btn icon" type="button" id="pjobRouteDialogClose" aria-label="关闭路径选择">×</button>
+      </header>
+      <div class="pjob-route-filter-grid" id="pjobRouteFilterGrid" aria-label="路径筛选">
+        <label class="pjob-route-process-filter" for="pjobRouteProcess"><span>工序数</span><select id="pjobRouteProcess" aria-label="工序数"></select></label>
+        <label class="pjob-route-process-filter" for="pjobRouteParallel"><span>并行腔室结构</span><select id="pjobRouteParallel" aria-label="并行腔室结构"></select></label>
+      </div>
+      <div class="pjob-route-card-list" id="pjobRouteCardList" aria-label="候选路径"></div>
+      <div class="pjob-route-detail" id="pjobRouteDetail" aria-label="已选路径详情"></div>
+    </section>
+  </dialog>
+
+  <dialog class="bottleneck-analysis-help-dialog" id="bottleneckAnalysisHelpDialog" aria-labelledby="bottleneckAnalysisHelpDialogTitle">
+    <section class="bottleneck-analysis-help-body">
+      <header class="bottleneck-analysis-help-head">
+        <div>
+          <h3 id="bottleneckAnalysisHelpDialogTitle">瓶颈分析说明</h3>
+          <p>帮助判断当前排程是否还有缩短空间，以及优先优化哪里。</p>
+        </div>
+        <button class="btn icon" type="button" id="bottleneckAnalysisHelpDialogClose" aria-label="关闭瓶颈分析说明">×</button>
+      </header>
+      <div class="bottleneck-analysis-help-content">
+        <section>
+          <h4>为什么不能只看 Makespan？</h4>
+          <p>Makespan（总完工时间）只能告诉我们这次排程用了多久，不能单独判断它是否已经最优，也无法指出应优先优化哪一台设备。瓶颈分析通过识别最受限的资源，判断排程还有没有可压缩的空闲时间。</p>
+        </section>
+        <section>
+          <h4>系统如何判断瓶颈？</h4>
+          <ul>
+            <li><strong>容量利用率：</strong>资源活跃时长占统计窗口的比例，是主要依据。</li>
+            <li><strong>运行连续性：</strong>最长空闲时间越短，说明资源越持续繁忙。</li>
+            <li><strong>同类相对强度：</strong>与同类资源比较，判断它是否更加紧张。</li>
+          </ul>
+          <p>瓶颈证据得分 = 容量利用率 × 82% + 运行连续性 × 12% + 同类相对强度 × 6%。分数越高，成为瓶颈的可能性越大；72 分及以上为证据较强，45–71 分为证据中等。接近最高分的资源会同时保留为候选。</p>
+        </section>
+        <section>
+          <h4>如何阅读结果？</h4>
+          <ul>
+            <li><strong>利用率：</strong>资源在统计窗口内被占用的比例；重叠活动只计算一次。</li>
+            <li><strong>占用组成：</strong>显示加工、清洁、开关门、取放/搬运、抽充气等活动的时间构成。</li>
+            <li><strong>瓶颈证据得分：</strong>综合利用率、连续性和同类比较得到的分数。</li>
+          </ul>
+        </section>
+        <section class="bottleneck-analysis-optimal-note">
+          <h4>何时可认为已达到最优？</h4>
+          <p>当首位瓶颈的容量利用率达到 <strong>99% 以上</strong>，说明它在统计窗口内几乎没有空闲。在当前设备数量、工艺时间和排程规则下，可认为当前 Makespan 已达到最优，或仅剩极小的边界压缩空间。</p>
+        </section>
+        <section>
+          <h4>统计窗口</h4>
+          <p><strong>剔除启动 / 收尾</strong> 会尽量排除启动填充和末批排空，更适合判断持续运行时的瓶颈；<strong>完整周期</strong> 则包含整次排程，适合观察全流程占用。</p>
+        </section>
+        <section>
+          <h4>为什么有些设备会合并显示？</h4>
+          <p>并行执行同一道工序的工艺腔、以及多个 LoadLock，会按容量组取平均利用率，避免因为设备数量较多而被误判为瓶颈。</p>
+        </section>
+        <p class="bottleneck-analysis-help-footnote">该结论仅适用于当前排程模型和统计窗口，不等同于设备实际 OEE。</p>
+      </div>
+    </section>
+  </dialog>
+
+  <dialog class="bottleneck-analysis-help-dialog" id="residenceAnalysisHelpDialog" aria-labelledby="residenceAnalysisHelpDialogTitle">
+    <section class="bottleneck-analysis-help-body">
+      <header class="bottleneck-analysis-help-head">
+        <div>
+          <h3 id="residenceAnalysisHelpDialogTitle">驻留时间分析说明</h3>
+          <p>帮助定位每片晶圆在系统、加工腔和机器手上的等待时间。</p>
+        </div>
+        <button class="btn icon" type="button" id="residenceAnalysisHelpDialogClose" aria-label="关闭驻留时间分析说明">×</button>
+      </header>
+      <div class="bottleneck-analysis-help-content">
+        <section>
+          <h4>三种驻留时间分别表示什么？</h4>
+          <ul>
+            <li><strong>系统驻留：</strong>晶圆离开 LoadPort 到返回 LoadPort 的总历时，反映整片晶圆的周期时间。</li>
+            <li><strong>腔室驻留：</strong>每次加工结束到晶圆完全离开加工腔的等待时间；同一晶圆经过多个加工腔时会累计。</li>
+            <li><strong>机器手驻留：</strong>Pick 完成到 Place 开始期间的持片等待，已扣除显式 PreTrans 搬运时间；跨多个机器手时会累计。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>如何阅读柱状图？</h4>
+          <p>图表按口径拆分为三张：蓝色为系统驻留、紫色为腔室驻留、绿色为机器手驻留。每张图只比较同一种时间，柱上方和悬停提示都显示对应晶圆的准确秒数，橙色虚线表示当前口径平均值。</p>
+        </section>
+        <section>
+          <h4>如何用于优化？</h4>
+          <p>优先关注明显高于同批次其他晶圆的柱。腔室驻留偏高通常表示取片或下游资源衔接不足；机器手驻留偏高表示持片等待或搬运调度需要检查；系统驻留偏高则需要结合前两者及 LoadLock 时序查看全流程原因。</p>
+        </section>
+        <p class="bottleneck-analysis-help-footnote">腔室和机器手值是对应驻留段的累计时间，不应与系统驻留简单相加；系统驻留还包含加工、LoadLock 和其他搬运环节。</p>
+      </div>
+    </section>
+  </dialog>
+
+  <dialog class="bottleneck-analysis-help-dialog" id="throughputAnalysisHelpDialog" aria-labelledby="throughputAnalysisHelpDialogTitle">
+    <section class="bottleneck-analysis-help-body">
+      <header class="bottleneck-analysis-help-head">
+        <div>
+          <h3 id="throughputAnalysisHelpDialogTitle">产能分析说明</h3>
+          <p>观察晶圆持续回片时的产能建立过程与短期波动。</p>
+        </div>
+        <button class="btn icon" type="button" id="throughputAnalysisHelpDialogClose" aria-label="关闭产能分析说明">×</button>
+      </header>
+      <div class="bottleneck-analysis-help-content">
+        <section>
+          <h4>累计产能（公司口径）</h4>
+          <p>每有一片晶圆到达终点，就用“截至当前的完成片数 ÷ 当前仿真秒数 × 3600”计算一次。它展示从启动到当前时刻的整体平均产能，因此曲线通常会逐步收敛。</p>
+        </section>
+        <section>
+          <h4>滑动窗口（2–10 片）</h4>
+          <p>选择 2 至 10 片的窗口大小后，每次以相隔该数量出片事件的两个终点时间计算产能。窗口越小，越能观察短期节拍变化，也越容易出现波动；至少需要“窗口大小加一”片完工后才会出现曲线。</p>
+        </section>
+        <section>
+          <h4>如何阅读曲线？</h4>
+          <p>趋势图刻意不显示坐标轴，减少实时监控时的视觉干扰。图形使用直线连接各晶圆的产能点，每个点上方显示真实片/h；灰蓝虚线为当前显示范围平均值。悬停或键盘聚焦数据点可查看完整片序号、平均差异和完成时间。</p>
+        </section>
+        <section>
+          <h4>显示范围与交互</h4>
+          <p>可按最近 30、60、120 片，最近 10、30 分钟或全部数据切换。默认显示最近 30 片，以提高实时判断效率；悬停或键盘聚焦数据点可查看当前产能、显示范围平均值、差值和完成时间。</p>
+        </section>
+        <p class="bottleneck-analysis-help-footnote">图表使用所有已完成晶圆绘制趋势；KPI 总览中的固定样本产能仍按居中 120 片的独立口径计算。</p>
+      </div>
+    </section>
+  </dialog>
+
+  <dialog class="batch-selection-dialog" id="batchTestSelectionDialog" aria-labelledby="batchTestSelectionDialogTitle" aria-describedby="batchTestSelectionDialogContext">
+    <form class="batch-selection-dialog-body" id="batchTestSelectionForm" method="dialog">
+      <header class="batch-selection-dialog-head">
+        <div><h3 id="batchTestSelectionDialogTitle">选择批量测试</h3><p id="batchTestSelectionDialogContext">按测试组顺序选择本次需要执行的测试。</p></div>
+        <button class="btn icon" type="button" id="batchTestSelectionDialogClose" aria-label="关闭批量测试选择">×</button>
+      </header>
+      <section class="batch-selection-tools" aria-label="批量选择工具">
+        <div class="batch-selection-range">
+          <label>从第 <input id="batchSelectionRangeStart" type="number" min="1" step="1" inputmode="numeric" aria-label="范围起始序号"> 项</label>
+          <label>到第 <input id="batchSelectionRangeEnd" type="number" min="1" step="1" inputmode="numeric" aria-label="范围结束序号"> 项</label>
+          <button class="btn small" type="button" id="batchSelectionApplyRange">应用范围</button>
+        </div>
+        <div class="batch-selection-quick-actions"><button class="btn small" type="button" id="batchSelectionSelectAll">全选</button><button class="btn small" type="button" id="batchSelectionClear">清空</button></div>
+      </section>
+      <fieldset class="batch-selection-fieldset">
+        <legend class="sr-only">选择要运行的测试</legend>
+        <div class="batch-selection-list" id="batchSelectionList"></div>
+      </fieldset>
+      <footer class="batch-selection-footer">
+        <span id="batchSelectionCount" aria-live="polite">已选择 0 项</span>
+        <div class="dialog-actions"><button class="btn" type="button" id="batchTestSelectionDialogCancel">取消</button><button class="btn" type="button" id="batchSelectionRunAll">全量运行</button><button class="btn primary" type="submit" id="batchSelectionRunSelected">运行已选</button></div>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog class="batch-error-dialog" id="batchErrorDialog" aria-labelledby="batchErrorDialogTitle">
+    <section class="batch-error-dialog-body">
+      <header class="batch-error-dialog-head">
+        <div>
+          <h3 id="batchErrorDialogTitle">报错信息</h3>
+          <p id="batchErrorDialogContext"></p>
+        </div>
+        <button class="btn icon" type="button" id="batchErrorDialogClose" aria-label="关闭报错信息">×</button>
+      </header>
+      <pre id="batchErrorDialogContent" tabindex="0"></pre>
+      <div class="dialog-actions">
+        <button class="btn small" type="button" id="batchErrorDialogCopy">复制报错</button>
+        <button class="btn primary small" type="button" id="batchErrorDialogConfirm">关闭</button>
+      </div>
+    </section>
+  </dialog>
+
+
+  <dialog class="drawer-layer" id="drawerLayer" aria-label="路径 Step 详细设置">
+    <aside class="drawer" id="stepDrawer" aria-label="路径 Step 详细设置">
+      <header class="drawer-head"><div><h2 id="drawerTitle">Step 详细设置</h2><p id="drawerSubtitle"></p></div><button class="btn icon" id="closeDrawer" aria-label="关闭">✕</button></header>
+      <div class="drawer-body" id="drawerBody"></div>
+    </aside>
+  </dialog>
+
+  <script type="module" src="/assets/config_editor.js?v=1.6.11"></script>
+  <dialog id="testDraftDialog" aria-labelledby="testDraftTitle">
+    <h2 id="testDraftTitle">测试有未保存的修改</h2><p>保存后再离开，或放弃本次修改。</p>
+    <form method="dialog" class="editor-save-actions"><button class="btn" value="cancel" autofocus>继续编辑</button><button class="btn" value="discard">放弃修改</button><button class="btn primary" value="save">保存并继续</button></form>
+  </dialog>
+</body>
+</html>

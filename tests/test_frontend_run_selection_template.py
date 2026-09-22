@@ -8,7 +8,7 @@ from pathlib import Path
 
 EDITOR_PATH = (
     Path(__file__).resolve().parents[1]
-    / "realtime_scheduler"
+    / "app"
     / "frontend"
     / "config_editor.html"
 )

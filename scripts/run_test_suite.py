@@ -18,7 +18,7 @@ from typing import Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 ALGORITHM_ROOT = ROOT / "alg"
-FRONTEND_ROOT = ROOT / "realtime_scheduler" / "frontend"
+FRONTEND_ROOT = ROOT / "app" / "frontend"
 AVAILABLE_SUITES = ("platform", "algorithm", "frontend")
 
 
@@ -72,7 +72,7 @@ def _run_frontend(*, fail_fast: bool) -> int:
 
     esbuild = FRONTEND_ROOT / "node_modules" / ".bin" / "esbuild.cmd"
     if not esbuild.is_file():
-        print("前端依赖缺失，请先在 realtime_scheduler/frontend 运行 npm install。")
+        print("前端依赖缺失，请先在 app/frontend 运行 npm install。")
         return 2
     with tempfile.TemporaryDirectory(prefix="ct-frontend-tests-") as directory:
         build_root = Path(directory)

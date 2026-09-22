@@ -339,7 +339,7 @@ def run_suite(
             [
                 sys.executable,
                 "-m",
-                "realtime_scheduler.backend.main",
+                "app.backend.main",
                 "--host",
                 "127.0.0.1",
                 "--port",

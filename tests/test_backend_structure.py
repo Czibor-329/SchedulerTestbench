@@ -7,22 +7,22 @@ from pathlib import Path
 import subprocess
 import sys
 
-from realtime_scheduler.backend.execution import run_state
+from app.backend.execution import run_state
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKEND_ROOT = ROOT / "realtime_scheduler" / "backend"
+BACKEND_ROOT = ROOT / "app" / "backend"
 MAXIMUM_RUNTIME_MODULE_LINES = 2000
 FORBIDDEN_COMPATIBILITY_IMPORTS = (
-    "realtime_scheduler.server",
-    "from realtime_scheduler import server",
-    "from realtime_scheduler.plan_builder",
-    "from realtime_scheduler.recompute_state",
-    "from realtime_scheduler.move_validation",
-    "from realtime_scheduler.replay_machine",
-    "from realtime_scheduler.documentation",
-    "from realtime_scheduler.algorithm_interface",
-    "from realtime_scheduler.batch_service",
+    "app.server",
+    "from app import server",
+    "from app.plan_builder",
+    "from app.recompute_state",
+    "from app.move_validation",
+    "from app.replay_machine",
+    "from app.documentation",
+    "from app.algorithm_interface",
+    "from app.batch_service",
 )
 REMOVED_COMPATIBILITY_MODULES = (
     "algorithm_interface.py",
@@ -38,7 +38,7 @@ REMOVED_COMPATIBILITY_MODULES = (
 def test_runtime_python_modules_stay_below_line_limit() -> None:
     """所有平台运行时 Python 文件必须保持在 2000 行硬上限内。"""
     violations = []
-    for path in (ROOT / "realtime_scheduler").rglob("*.py"):
+    for path in (ROOT / "app").rglob("*.py"):
         if "frontend" in path.parts:
             continue
         line_count = len(path.read_text(encoding="utf-8-sig").splitlines())
@@ -50,7 +50,7 @@ def test_runtime_python_modules_stay_below_line_limit() -> None:
 def test_repository_does_not_import_removed_compatibility_modules() -> None:
     """仓库 Python 代码不得继续依赖已经删除的根目录兼容模块。"""
     violations = []
-    for source_root in (ROOT / "realtime_scheduler", ROOT / "scripts", ROOT / "tests"):
+    for source_root in (ROOT / "app", ROOT / "scripts", ROOT / "tests"):
         for path in source_root.rglob("*.py"):
             if path == Path(__file__).resolve():
                 continue
@@ -63,7 +63,7 @@ def test_repository_does_not_import_removed_compatibility_modules() -> None:
 
 def test_root_compatibility_modules_are_removed() -> None:
     """根包只保留包标记，后端实现与入口必须位于 backend。"""
-    package_root = ROOT / "realtime_scheduler"
+    package_root = ROOT / "app"
     existing = [name for name in REMOVED_COMPATIBILITY_MODULES if (package_root / name).exists()]
     assert existing == []
     legacy_validation_modules = list((package_root / "validation").rglob("*.py"))
@@ -72,13 +72,13 @@ def test_root_compatibility_modules_are_removed() -> None:
 
 def test_legacy_server_command_only_prints_migration_notice() -> None:
     """旧启动命令必须给出新命令提示，且不得重新成为后端兼容门面。"""
-    legacy_entry = ROOT / "realtime_scheduler" / "server.py"
+    legacy_entry = ROOT / "app" / "server.py"
     source = legacy_entry.read_text(encoding="utf-8")
     tree = ast.parse(source)
     assert all(
         not (
             isinstance(node, (ast.Import, ast.ImportFrom))
-            and "realtime_scheduler.backend" in ast.unparse(node)
+            and "app.backend" in ast.unparse(node)
         )
         for node in ast.walk(tree)
     )
@@ -92,7 +92,7 @@ def test_legacy_server_command_only_prints_migration_notice() -> None:
     )
     assert completed.returncode == 0
     assert "已不再作为服务启动入口" in completed.stdout
-    assert "python -m realtime_scheduler.backend.main --open" in completed.stdout
+    assert "python -m app.backend.main --open" in completed.stdout
 
 
 def test_workspace_modules_use_explicit_capability_names() -> None:

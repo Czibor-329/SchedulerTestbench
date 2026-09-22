@@ -10,10 +10,10 @@ import json
 import time
 from pathlib import Path
 
-from realtime_scheduler.backend.execution.algorithm_runtime import (
+from app.backend.execution.algorithm_runtime import (
     PlatformMoveListRuntime,
 )
-from realtime_scheduler.backend.execution.run_state import (
+from app.backend.execution.run_state import (
     advance_platform_move_list_to_update,
 )
 

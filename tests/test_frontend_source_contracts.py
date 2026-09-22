@@ -18,11 +18,11 @@ from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
-import realtime_scheduler.backend.application as config_server
-from realtime_scheduler.backend.algorithms.interface import discover_other_algorithms
-from realtime_scheduler.backend.execution.plan_builder import _runtime_clean, build_process_recipes
+import app.backend.application as config_server
+from app.backend.algorithms.interface import discover_other_algorithms
+from app.backend.execution.plan_builder import _runtime_clean, build_process_recipes
 from src.compiler import compile_problem
-from realtime_scheduler.backend.application import (
+from app.backend.application import (
     BuildState,
     LoggedPlanError,
     build_round_update,
@@ -42,11 +42,11 @@ from tests.support.plan_fixtures import DEVICE_PATH, job as _job, route as _rout
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EDITOR_PATH = ROOT / "realtime_scheduler" / "frontend" / "config_editor.html"
-DOCUMENTATION_PAGE_PATH = ROOT / "realtime_scheduler" / "frontend" / "documentation.html"
-EDITOR_STYLE_PATH = ROOT / "realtime_scheduler" / "frontend" / "assets" / "config_editor.css"
-EDITOR_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "config_editor.ts"
-DOCUMENTATION_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "documentation_page.ts"
+EDITOR_PATH = ROOT / "app" / "frontend" / "config_editor.html"
+DOCUMENTATION_PAGE_PATH = ROOT / "app" / "frontend" / "documentation.html"
+EDITOR_STYLE_PATH = ROOT / "app" / "frontend" / "assets" / "config_editor.css"
+EDITOR_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "config_editor.ts"
+DOCUMENTATION_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "documentation_page.ts"
 
 
 def _editor_source() -> str:
@@ -267,7 +267,7 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         self.assertIn('method: "DELETE"', html)
         self.assertIn("■ 终止调度", html)
         self.assertIn('cancelled: "已终止"', html)
-        viewer = (ROOT / "realtime_scheduler" / "frontend" / "movelist_gantt_viewer.html").read_text(encoding="utf-8")
+        viewer = (ROOT / "app" / "frontend" / "movelist_gantt_viewer.html").read_text(encoding="utf-8")
         self.assertIn('getAll("src")', viewer)
         self.assertIn("Promise.allSettled", viewer)
         self.assertNotIn('id="recipeList"', html)
@@ -275,7 +275,7 @@ class ConfigEditorFrontendTests(unittest.TestCase):
     def test_gantt_cleaning_process_uses_sky_blue(self) -> None:
         """甘特图应把无片或带清洁元数据的 ProcessMove 显示为天蓝色。"""
         viewer = (
-            ROOT / "realtime_scheduler" / "frontend" / "movelist_gantt_viewer.html"
+            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
         ).read_text(encoding="utf-8")
 
         self.assertIn('const CLEAN_PROCESS_COLOR = "#38BDF8";', viewer)
@@ -286,7 +286,7 @@ class ConfigEditorFrontendTests(unittest.TestCase):
     def test_gantt_keeps_and_renders_zero_duration_moves(self) -> None:
         """甘特图应保留零时长动作，并将其绘制为边界内可点击的最小宽度标记。"""
         viewer = (
-            ROOT / "realtime_scheduler" / "frontend" / "movelist_gantt_viewer.html"
+            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
         ).read_text(encoding="utf-8")
 
         self.assertIn("rec.end >= rec.start", viewer)
@@ -305,10 +305,10 @@ class ConfigEditorFrontendTests(unittest.TestCase):
     def test_gantt_reconstructs_recompute_log_prefix(self) -> None:
         """甘特图导入 input_data 日志时应拼回重算前已开始的动作。"""
         viewer = (
-            ROOT / "realtime_scheduler" / "frontend" / "movelist_gantt_viewer.html"
+            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
         ).read_text(encoding="utf-8")
         compare = (
-            ROOT / "realtime_scheduler" / "frontend" / "src" / "gantt_execution_compare.ts"
+            ROOT / "app" / "frontend" / "src" / "gantt_execution_compare.ts"
         ).read_text(encoding="utf-8")
 
         self.assertIn("function reconstructInputLogMoveList(entries)", viewer)
@@ -321,7 +321,7 @@ class ConfigEditorFrontendTests(unittest.TestCase):
     def test_gantt_compares_actual_move_times_with_the_plan(self) -> None:
         """甘特图应提供执行时间差异跳转、时长过滤和原计划时间提示。"""
         viewer = (
-            ROOT / "realtime_scheduler" / "frontend" / "movelist_gantt_viewer.html"
+            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
         ).read_text(encoding="utf-8")
 
         self.assertIn('src="/assets/gantt_execution_compare.js"', viewer)
@@ -403,14 +403,14 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         page = EDITOR_PATH.read_text(encoding="utf-8")
         workspace_source = (
             ROOT
-            / "realtime_scheduler"
+            / "app"
             / "frontend"
             / "src"
             / "workspace_visualizer.ts"
         ).read_text(encoding="utf-8")
         group_view_source = (
             ROOT
-            / "realtime_scheduler"
+            / "app"
             / "frontend"
             / "src"
             / "group_analysis_view.ts"
@@ -482,14 +482,14 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         """MoveList 与测试组统计应由后端统一计算，页面只能请求 API。"""
         workspace_source = (
             ROOT
-            / "realtime_scheduler"
+            / "app"
             / "frontend"
             / "src"
             / "workspace_visualizer.ts"
         ).read_text(encoding="utf-8")
         api_source = (
             ROOT
-            / "realtime_scheduler"
+            / "app"
             / "frontend"
             / "src"
             / "api_client.ts"

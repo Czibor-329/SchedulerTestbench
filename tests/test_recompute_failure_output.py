@@ -18,11 +18,11 @@ from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
-import realtime_scheduler.backend.application as config_server
-from realtime_scheduler.backend.algorithms.interface import discover_other_algorithms
-from realtime_scheduler.backend.execution.plan_builder import _runtime_clean, build_process_recipes
+import app.backend.application as config_server
+from app.backend.algorithms.interface import discover_other_algorithms
+from app.backend.execution.plan_builder import _runtime_clean, build_process_recipes
 from src.compiler import compile_problem
-from realtime_scheduler.backend.application import (
+from app.backend.application import (
     BuildState,
     LoggedPlanError,
     build_round_update,
@@ -42,11 +42,11 @@ from tests.support.plan_fixtures import DEVICE_PATH, job as _job, route as _rout
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EDITOR_PATH = ROOT / "realtime_scheduler" / "frontend" / "config_editor.html"
-DOCUMENTATION_PAGE_PATH = ROOT / "realtime_scheduler" / "frontend" / "documentation.html"
-EDITOR_STYLE_PATH = ROOT / "realtime_scheduler" / "frontend" / "assets" / "config_editor.css"
-EDITOR_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "config_editor.ts"
-DOCUMENTATION_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "documentation_page.ts"
+EDITOR_PATH = ROOT / "app" / "frontend" / "config_editor.html"
+DOCUMENTATION_PAGE_PATH = ROOT / "app" / "frontend" / "documentation.html"
+EDITOR_STYLE_PATH = ROOT / "app" / "frontend" / "assets" / "config_editor.css"
+EDITOR_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "config_editor.ts"
+DOCUMENTATION_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "documentation_page.ts"
 
 
 def _editor_source() -> str:
@@ -105,7 +105,7 @@ class RecomputeFailureOutputTests(unittest.TestCase):
     def test_gantt_viewer_marks_and_can_hide_removed_moves(self) -> None:
         """甘特图应浅色显示重算取消 Move，并提供独立开关。"""
         viewer = (
-            ROOT / "realtime_scheduler" / "frontend" / "movelist_gantt_viewer.html"
+            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
         ).read_text(encoding="utf-8")
 
         self.assertIn('id="showRemovedMovesToggle"', viewer)
@@ -114,19 +114,19 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         self.assertIn("!rec.removedByRecompute", viewer)
         self.assertIn('fillOpacity = bar.rec.removedByRecompute ? "0.24" : "1"', viewer)
 
-    def test_frontend_version_and_cache_keys_are_1_6_3(self) -> None:
+    def test_frontend_version_and_cache_keys_are_1_6_11(self) -> None:
         """前端显示版本、包版本和主资源缓存键必须同步。"""
-        frontend_root = ROOT / "realtime_scheduler" / "frontend"
+        frontend_root = ROOT / "app" / "frontend"
         template = (frontend_root / "config_editor.html").read_text(encoding="utf-8")
         package = json.loads((frontend_root / "package.json").read_text(encoding="utf-8"))
         package_lock = json.loads((frontend_root / "package-lock.json").read_text(encoding="utf-8"))
 
-        self.assertEqual("1.6.10", package["version"])
-        self.assertEqual("1.6.10", package_lock["version"])
-        self.assertEqual("1.6.10", package_lock["packages"][""]["version"])
-        self.assertIn('class="frontend-version">V1.6.10</span>', template)
-        self.assertIn('/assets/config_editor.css?v=1.6.10', template)
-        self.assertIn('/assets/config_editor.js?v=1.6.10', template)
+        self.assertEqual("1.6.11", package["version"])
+        self.assertEqual("1.6.11", package_lock["version"])
+        self.assertEqual("1.6.11", package_lock["packages"][""]["version"])
+        self.assertIn('class="frontend-version">V1.6.11</span>', template)
+        self.assertIn('/assets/config_editor.css?v=1.6.11', template)
+        self.assertIn('/assets/config_editor.js?v=1.6.11', template)
 
     def test_single_run_failure_card_does_not_duplicate_validation_issue(self) -> None:
         """状态推进校验失败只展示一条完整错误，不再重复渲染问题列表。"""
@@ -154,7 +154,7 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         self.assertIn('id="hongYeCheckInput" type="checkbox" checked', template)
         self.assertIn('id="skipBaselineInput" type="checkbox" checked', template)
         self.assertNotIn('id="skipValidationInput"', template)
-        style = (ROOT / "realtime_scheduler" / "frontend" / "assets" / "config_editor.css").read_text(encoding="utf-8")
+        style = (ROOT / "app" / "frontend" / "assets" / "config_editor.css").read_text(encoding="utf-8")
         self.assertIn("width: 34px; min-width: 34px; height: 34px", style)
         self.assertIn("top: 3px; right: 3px; width: 5px; height: 5px", style)
 

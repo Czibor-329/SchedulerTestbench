@@ -3,13 +3,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const logic = require(
   process.env.CT_WORKSPACE_VISUALIZER_TEST_BUILD
-    || '../realtime_scheduler/frontend/workspace_visualizer_logic.js',
+    || '../app/frontend/workspace_visualizer_logic.js',
 );
 const fs = require('node:fs');
 const path = require('node:path');
 /** 从唯一设备目录读取真实机械臂声明，避免夹具掩盖臂数、槽位数差异。 */
 function storedDevices() {
-  const root = path.join(__dirname, '../realtime_scheduler/data/datasets');
+  const root = path.join(__dirname, '../app/data/datasets');
   return fs.readdirSync(root).filter(name => fs.existsSync(path.join(root, name, 'device.json')))
     .map(name => JSON.parse(fs.readFileSync(path.join(root, name, 'device.json'), 'utf8').replace(/^\uFEFF/, '')));
 }

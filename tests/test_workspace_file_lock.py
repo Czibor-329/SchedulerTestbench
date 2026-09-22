@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from realtime_scheduler.backend import application as server
+from app.backend import application as server
 from tests.support.plan_fixtures import PSE300_DEVICE_PATH
 
 

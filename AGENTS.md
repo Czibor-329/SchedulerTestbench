@@ -4,7 +4,7 @@
 
 - AI 或开发者需要复现前端测试集时，统一从仓库根目录运行
   `.\venv\Scripts\python.exe scripts\run_dataset_suite.py`。该入口直接读取
-  `realtime_scheduler/data/datasets/`，默认使用平台内置 MoveList 校验器，
+  `app/data/datasets/`，默认使用平台内置 MoveList 校验器，
   不启动 HongYe，并跳过 Baseline 以缩短调试时间。
 - 先用 `--list` 查询稳定入口：
   `--list` 列设备，`--device 12kChamber --list` 列组，
@@ -44,7 +44,7 @@
 
 4. 夹具必须确定、隔离并说明语义。
    - 文件写入使用 `tmp_path`、`TemporaryDirectory` 或专用临时目录；不得修改
-     `realtime_scheduler/data/datasets/` 主数据。
+     `app/data/datasets/` 主数据。
    - 单元测试优先使用最小领域 builder；真实数据集只能用于标记为 `dataset` 的集成/验收测试，
      读取后必须复制到隔离目录。性能夹具必须固定随机种子、规模、schemaVersion 和内容哈希。
    - 不创建隐藏关键前提的万能 fixture。Machine、平台 MoveList 校验和接口 payload 使用各自
@@ -116,7 +116,7 @@
    - A feature with an independent lifecycle, state container, persistence format, external protocol, or background task belongs in a dedicated, specifically named module. For example, workspace CRUD, exchange-package encoding, and background transfer jobs must not share one catch-all service file.
    - If a change introduces a second independent responsibility, pushes a runtime file beyond 1500 lines, or makes the top-of-file responsibility description inaccurate, split the module in the same task. Runtime Python files have a hard limit of 2000 lines.
    - Update all imports, tests, architecture documentation, and entry points when moving ownership. Do not leave compatibility wrappers in the root package unless an explicit supported external compatibility contract requires them.
-   - The only current exception is `realtime_scheduler/server.py`: it may remain solely as a no-import deprecation notice for the historical startup command. It must not start the service, import backend modules, or re-export any API.
+   - The only current exception is `app/server.py`: it may remain solely as a no-import deprecation notice for the historical startup command. It must not start the service, import backend modules, or re-export any API.
 
 9. Clean names when defining or moving boundaries.
    - Module, class, function, state-container, and dependency names must state the concrete capability they own. Prefer names such as `exchange_service`, `transfer_jobs`, or `workspace_repository` over vague buckets such as `utils`, `common`, `manager`, or an ever-growing generic `service`.
@@ -133,7 +133,7 @@
 
 - Do not change the frontend package version, visible frontend version, or asset cache-busting version while implementation is still in progress.
 - Only bump the frontend version immediately before creating a user-requested commit.
-- A version bump must update `realtime_scheduler/frontend/package.json`, `package-lock.json`, `config_editor.html`, and their version assertions together in the same commit.
+- A version bump must update `app/frontend/package.json`, `package-lock.json`, `config_editor.html`, and their version assertions together in the same commit.
 
 ## Commit messages
 
@@ -142,7 +142,7 @@
 
 ## Local data format
 
-- `realtime_scheduler/data/datasets/` is the only source of truth for device and test data. Do not add a second device mirror or make runtime caches authoritative.
+- `app/data/datasets/` is the only source of truth for device and test data. Do not add a second device mirror or make runtime caches authoritative.
 - Device and test directories use stable UUIDs. Human-readable names belong in JSON metadata and the frontend, not filesystem paths.
 - A device `device.json` contains init data only (`Stations` and `Robots`). Routes, groups, and tests must remain in their separate files or directories.
 - Every persistent format change must increment `schemaVersion`, provide an idempotent migration from the previous released version, preserve a recoverable backup, and add migration fixtures and tests.

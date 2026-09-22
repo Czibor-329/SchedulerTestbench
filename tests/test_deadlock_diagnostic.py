@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from realtime_scheduler.backend.artifacts.deadlock_diagnostic import (
+from app.backend.artifacts.deadlock_diagnostic import (
     build_deadlock_diagnostic_bundle,
     serialize_deadlock_diagnostic_bundle,
 )
@@ -112,10 +112,10 @@ def test_topology_toolbar_exposes_deadlock_diagnostic_download() -> None:
     """真实页面应提供诊断包按钮，前端通过专用分析接口下载文件。"""
     repository_root = Path(__file__).resolve().parents[1]
     html = (
-        repository_root / "realtime_scheduler/frontend/config_editor.html"
+        repository_root / "app/frontend/config_editor.html"
     ).read_text(encoding="utf-8")
     client_source = (
-        repository_root / "realtime_scheduler/frontend/src/api_client.ts"
+        repository_root / "app/frontend/src/api_client.ts"
     ).read_text(encoding="utf-8")
 
     assert 'id="visualExportDeadlockDiagnostic"' in html

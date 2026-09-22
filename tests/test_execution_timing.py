@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from realtime_scheduler.backend.execution.move_timing import (
+from app.backend.execution.move_timing import (
     execution_duration,
     normalize_execution_timing,
     sample_init_execution_timing,
 )
-from realtime_scheduler.backend.validation.move_validation import (
+from app.backend.validation.move_validation import (
     materialize_module_parallel_moves,
 )
-from realtime_scheduler.backend.workspace.repository import _migrate_workspace_catalog
+from app.backend.workspace.repository import _migrate_workspace_catalog
 
 
 def _device() -> dict:
@@ -32,7 +32,7 @@ def _device() -> dict:
 @pytest.mark.parametrize("enabled", [False, True])
 def test_runtime_uses_execution_timing_as_only_materialization_switch(monkeypatch, enabled: bool) -> None:
     """首排和重算均只根据实际时间配置推进，不需要独立兼容参数。"""
-    from realtime_scheduler.backend.execution.algorithm_runtime import PlatformMoveListRuntime
+    from app.backend.execution.algorithm_runtime import PlatformMoveListRuntime
 
     calls = []
 
@@ -87,7 +87,7 @@ def test_ratio_fluctuation_is_seeded_and_within_configured_range() -> None:
 
 def test_runtime_materialization_preserves_plan_for_gantt() -> None:
     """运行时应用固定偏移后应保留原始起止时间，且不修改算法输出。"""
-    from realtime_scheduler.backend.execution.algorithm_runtime import PlatformMoveListRuntime
+    from app.backend.execution.algorithm_runtime import PlatformMoveListRuntime
 
     runtime = PlatformMoveListRuntime.__new__(PlatformMoveListRuntime)
     runtime.device = _device()
@@ -215,7 +215,7 @@ def test_v8_sampling_migration_defaults_to_per_move_and_is_idempotent() -> None:
 def test_v8_directory_upgrade_keeps_single_recoverable_backup(tmp_path) -> None:
     """v8 目录在改写之前整体备份，重复备份不会覆盖原始配置。"""
     import json
-    from realtime_scheduler.backend.workspace.repository import _backup_workspace_directory_before_upgrade
+    from app.backend.workspace.repository import _backup_workspace_directory_before_upgrade
 
     directory = tmp_path / "datasets"
     directory.mkdir()

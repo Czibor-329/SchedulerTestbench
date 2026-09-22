@@ -18,11 +18,11 @@ from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
-import realtime_scheduler.backend.application as config_server
-import realtime_scheduler.backend.algorithms.interface as algorithm_interface
-from realtime_scheduler.backend.execution.plan_builder import _runtime_clean, build_process_recipes
+import app.backend.application as config_server
+import app.backend.algorithms.interface as algorithm_interface
+from app.backend.execution.plan_builder import _runtime_clean, build_process_recipes
 from src.compiler import compile_problem
-from realtime_scheduler.backend.application import (
+from app.backend.application import (
     BuildState,
     LoggedPlanError,
     build_round_update,
@@ -42,11 +42,11 @@ from tests.support.plan_fixtures import DEVICE_PATH, PSE300_DEVICE_PATH, job as 
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EDITOR_PATH = ROOT / "realtime_scheduler" / "frontend" / "config_editor.html"
-DOCUMENTATION_PAGE_PATH = ROOT / "realtime_scheduler" / "frontend" / "documentation.html"
-EDITOR_STYLE_PATH = ROOT / "realtime_scheduler" / "frontend" / "assets" / "config_editor.css"
-EDITOR_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "config_editor.ts"
-DOCUMENTATION_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "documentation_page.ts"
+EDITOR_PATH = ROOT / "app" / "frontend" / "config_editor.html"
+DOCUMENTATION_PAGE_PATH = ROOT / "app" / "frontend" / "documentation.html"
+EDITOR_STYLE_PATH = ROOT / "app" / "frontend" / "assets" / "config_editor.css"
+EDITOR_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "config_editor.ts"
+DOCUMENTATION_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "documentation_page.ts"
 
 
 def _editor_source() -> str:
@@ -728,7 +728,7 @@ class ConfigEditorDeviceTests(unittest.TestCase):
         }
 
         with (
-            patch("realtime_scheduler.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
+            patch("app.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
             patch.object(config_server, "algorithm_session", return_value=nullcontext()),
             patch.object(config_server, "algorithm_init") as init_entry,
             patch.object(config_server, "algorithm_update", return_value=external_output) as update_entry,
@@ -787,7 +787,7 @@ class ConfigEditorDeviceTests(unittest.TestCase):
         ]
 
         with (
-            patch("realtime_scheduler.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
+            patch("app.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
             patch.object(config_server, "algorithm_session", return_value=nullcontext()),
             patch.object(config_server, "algorithm_init") as init_entry,
             patch.object(
@@ -812,7 +812,7 @@ class ConfigEditorDeviceTests(unittest.TestCase):
         self.assertEqual(3, len(third_update["ControlJobs"]))
         self.assertEqual("ATR", second_update["Stations"]["LA"]["LastItem"])
         self.assertEqual(
-            "realtime_scheduler.backend.validation.move_validation.MachineState",
+            "app.backend.validation.move_validation.MachineState",
             result["rounds"][1]["strategyDiagnostics"]["stateSource"],
         )
         self.assertEqual(3, len(result["updates"]))
@@ -885,7 +885,7 @@ class ConfigEditorDeviceTests(unittest.TestCase):
 
         original_builder = config_server.build_round_update
         with (
-            patch("realtime_scheduler.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
+            patch("app.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
             patch.object(config_server, "algorithm_session", return_value=nullcontext()),
             patch.object(config_server, "algorithm_init"),
             patch.object(config_server, "algorithm_update", side_effect=[first_output, second_output]) as update_entry,

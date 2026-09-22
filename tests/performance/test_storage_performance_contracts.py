@@ -15,8 +15,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from realtime_scheduler.backend import application as server
-from realtime_scheduler.backend.execution import batch_service
+from app.backend import application as server
+from app.backend.execution import batch_service
 from tests.performance.fixture_factory import (
     generate_current_dataset,
     load_performance_profiles,

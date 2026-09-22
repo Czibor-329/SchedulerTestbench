@@ -1,6 +1,6 @@
 """从终端运行本地设备测试集，并输出适合 AI 调试的逐项结果。
 
-脚本直接读取 ``realtime_scheduler/data/datasets`` 的单一数据源，调用与前端
+脚本直接读取 ``app/data/datasets`` 的单一数据源，调用与前端
 批量运行相同的计划构造和执行逻辑。默认使用 HongYe 校验器；传入
 ``--no-hongye-check`` 可改用平台内置 MoveList 校验器。运行结果和复现日志仍按平台
 现有规则保存。
@@ -167,8 +167,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _argument_parser().parse_args(argv)
     if not args.list and (not args.device or args.group is None):
         raise ValueError("运行测试集必须同时指定 --device 和 --group；可先用 --list 查询")
-    from realtime_scheduler.backend import application as scheduler_server
-    from realtime_scheduler.backend.execution.batch_service import (
+    from app.backend import application as scheduler_server
+    from app.backend.execution.batch_service import (
         MAXIMUM_BATCH_WORKERS,
     )
 

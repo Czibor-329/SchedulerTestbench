@@ -2,7 +2,7 @@
 import json
 from unittest.mock import Mock
 
-from realtime_scheduler.backend.api import http
+from app.backend.api import http
 
 
 def test_diagnostic_context_skips_algorithm_when_actions_disabled(monkeypatch):

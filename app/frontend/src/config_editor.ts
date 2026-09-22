@@ -1,0 +1,5914 @@
+/**
+ * 调度平台的浏览器入口。
+ * 负责既有编辑与运行 API 协作；测试草稿离开决策位于 test_draft_navigation.ts。
+ *
+ * 该文件由原有页面控制器无行为变化迁移而来；DOM 事件仍采用动态结构，
+ * 暂由构建器校验语法，新增的独立业务模块必须通过完整 TypeScript 类型检查。
+ */
+
+// @ts-nocheck
+import { createDraftChoiceDialog, resolveTestDraft } from "./test_draft_navigation";
+import * as RouteEditorLogic from "./route_editor_logic";
+import {
+  cancelTestGroupAnalysisJob,
+  createTestGroupAnalysisJob,
+  readTestGroupAnalysisJob,
+  requestJson,
+  requestScheduleAnalysis,
+  requestSearchControl,
+  requestSearchTelemetry,
+} from "./api_client";
+import { createVisualizationWorkspace, detectDeviceTopologyLayout, updateThroughputChartRange } from "./workspace_visualizer";
+import { renderTestGroupAnalysis, testGroupSummaryCsv } from "./group_analysis_view";
+import { createResultCardRunQueue } from "./result_card_run_queue";
+import { createTestCreationCoordinator } from "./test_creation_coordinator";
+import {
+  CJOB_TYPES,
+  TASK_MODES,
+  linkRouteSteps,
+  makeCJob,
+  makePJob,
+  makeRound,
+  makeStage,
+  makeVisit,
+  normalizeRound,
+  normalizeVisit,
+  stringList,
+} from "./editor_models";
+
+const { VISIT_SHARED_FIELDS, automaticTemplateName } = RouteEditorLogic;
+const visualizationWorkspace = createVisualizationWorkspace();
+const chooseTestDraft = createDraftChoiceDialog(document.getElementById("testDraftDialog") as HTMLDialogElement);
+let activeRunContext = null;
+let activeBatchContext = null;
+let batchSelectionMode: "run" | "filter" = "run";
+let resultTestFilterIds: Set<string> | null = null;
+let expandedBatchTestId = "";
+let batchTestDetailsRequestVersion = 0;
+let batchCardClickTimer = 0;
+const batchResultItemHistory = new Map<string, any>();
+let runPreparationActive = false;
+let navigationPending = false;
+let activeManagementSection = "cases";
+const batchCardAnalyses = new Map();
+const batchCardAnalysisRequests = new Map();
+let activeGroupAnalysisJobId = "";
+let analysisWizardStep = 1;
+let analysisSettingsPreferencesDirty = false;
+
+const EXPECTED_API_SCHEMA = "cjob-pjob-v3";
+const DEFAULT_SCHEDULE_OPTIONS = Object.freeze({
+  loadLockDirection: 1,
+  loadLockCapacity: 1,
+  loadLockBindBatch: 0,
+  loadLockManager: "petri-look",
+  residencyGuardSeconds: 0,
+  maximumRobotHoldingSeconds: 0,
+  maximumSystemResidenceCv: 0,
+  loadLockMacroSearchSeconds: 4,
+  loadLockMacroRollouts: 96,
+  searchTreeModelPath: "",
+  heuristicConfig: null,
+  seed: 0,
+});
+const DEFAULT_HEURISTIC_WEIGHTS = Object.freeze({
+  feed_block_penalty: 4,
+  earliest_start_weight: .35, finish_time_weight: .15, exchange_bonus: 2,
+  process_departure_bonus: 1.6, into_process_bonus: 1.5, drain_bonus: .3,
+  sink_bonus: .25, feed_penalty: -.35,
+  stage_progress_bonus: .2,
+});
+const SCHEDULE_OPTION_KEYS = new Set(Object.keys(DEFAULT_SCHEDULE_OPTIONS));
+
+/** 平台通过 MoveList 回放或 Machine 结构化现场能够确认的死锁类型。 */
+const DEADLOCK_TYPE_CATALOG = Object.freeze({
+  "DEADLOCK.SINGLE_ARM_TARGET_FULL": {
+    deadlockCode: "DLK-ROB-001",
+    title: "单臂机器手持片，目标腔室已满",
+  },
+  "DEADLOCK.DUAL_ARM_TARGETS_FULL": {
+    deadlockCode: "DLK-ROB-002",
+    title: "双臂机器手持有两片，目标腔室均已满",
+  },
+});
+
+/** 展示平台判型结论；算法只声明规划无法继续，不自行提供具体分类。 */
+function deadlockDisplay(deadlock) {
+  if (!deadlock || typeof deadlock !== "object") return null;
+  const code = String(deadlock.Code || "DEADLOCK.UNCLASSIFIED").toUpperCase();
+  const registered = DEADLOCK_TYPE_CATALOG[code];
+  if (registered) return { internalCode: code, ...registered, message: String(deadlock.Message || "") };
+  return {
+    internalCode: "DEADLOCK.UNCLASSIFIED",
+    deadlockCode: "DLK-UNK",
+    title: "当前现场不满足这两种类型，算法报告无法继续调度。",
+    message: "当前现场不满足这两种类型，算法报告无法继续调度。",
+  };
+}
+
+const CLEAN_TYPE_DEFINITIONS = [
+  { key: "preclean", label: "PreClean" },
+  { key: "postclean", label: "PostClean" },
+  { key: "wacclean", label: "WAC Clean" },
+  { key: "dummy", label: "Dummy" },
+  { key: "dummywac", label: "Dummy WAC" },
+];
+const ROUTE_CLEAN_KEYS = ["prePJobCleanRefs", "postPJobCleanRefs", "postCJobCleanRefs"];
+const PROCESSING_STATION_TYPES = new Set([
+  "processchamber",
+  "multiprocesschamber",
+  "heater",
+  "cooler",
+]);
+const FIRST_ROBOT_SLOT_ID = 1;
+const DUAL_ARM_SLOT_COUNT = 2;
+const SEARCH_TELEMETRY_POLL_MILLISECONDS = 75;
+const BATCH_STATUS_POLL_MILLISECONDS = 1000;
+const BATCH_CARD_SINGLE_CLICK_DELAY_MILLISECONDS = 500;
+const WORKSPACE_TRANSFER_POLL_MILLISECONDS = 500;
+const TEST_ORDER_COLLATOR = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
+const DEFAULT_DUMMY_WAFER_COUNT = 8;
+const STATION_ACTION_TIME_FIELDS = [
+  { key: "PickPrepareTime", label: "PickPrepareTime" },
+  { key: "PickCompleteTime", label: "PickCompleteTime" },
+  { key: "PlacePrepareTime", label: "PlacePrepareTime" },
+  { key: "PlaceCompleteTime", label: "PlaceCompleteTime" },
+  { key: "PostCompleteTime", label: "PostCompleteTime" },
+];
+const ROBOT_ACTION_TIME_FIELDS = [
+  { key: "PickTime", label: "PickTime" },
+  { key: "PlaceTime", label: "PlaceTime" },
+];
+
+const state = {
+  workspaceDevices: [], workspaceDevice: null, workspaceDeviceId: "", testCaseId: "", testCaseName: "", testCaseGroup: "", activeTestGroup: "", companyCapacityBaselines: [], serviceCompatible: false, dirty: false,
+  activeBatchId: "", batchRunning: false, batchCancelRequested: false, batchCancelSent: false, batchResult: null,
+  deviceName: "", baseDevice: null, device: null, stationNames: [], loadPorts: [], processModules: [], robotNames: [], robotScopes: {}, robotSlots: {}, robotSlotsSaving: new Set(),
+  deviceConfigSection: "station-time", deviceStationName: "", deviceRobotName: "", deviceRobotTransferAxes: {}, deviceRobotTransferSources: {}, deviceTimingDraft: null, deviceTimingDirty: false, deviceTimingSaving: false, deviceTimingStatusMessage: "选择设备后开始配置",
+  strategy: "heuristic", availableAlgorithms: [], algorithmMetadata: {}, roundCount: 2, times: [0, 70], options: { ...DEFAULT_SCHEDULE_OPTIONS },
+  cleans: [],
+  routes: [{ name: "RouteA", group: "RouteA", bufferOption: 0, prePJobCleanRefs: [], postPJobCleanRefs: [], postCJobCleanRefs: [], stages: linkRouteSteps([makeStage("LP1"), makeStage("Robot"), makeStage("PM1,PM2", true, "RouteA_Step2"), makeStage("Robot"), makeStage("LP1")]) }],
+  rounds: [makeRound(1, 0, "RouteA", "LP1"), makeRound(2, 70, "RouteA", "LP2")],
+  testRouteConfigs: {}, routeDirty: false, routeGroupingProfiles: new Map(),
+  routeEditingIndex: -1, routeEditSnapshot: null, routeEditGroupingProfile: null, routeEditIsNew: false,
+  drawer: null, cleanDialogContext: null, expandedRouteProcessGroups: new Set(), expandedRouteGroups: new Set(), expandedRoutes: new Set(), routeNameChanges: new Map(),
+  routeProcessFilter: "", routeParallelFilter: ""
+};
+const testCreationCoordinator = createTestCreationCoordinator(context => {
+  renderWorkspaceControls();
+  if (context) {
+    const action = context.mode === "copy" ? `正在复制“${context.sourceName}”` : "正在新建测试";
+    setWorkspaceStatus(`${action}，请稍候…`);
+  }
+});
+let pjobRoutePickerContext = null;
+let searchTelemetryPollToken = 0;
+let latestSearchTelemetry = null;
+let selectedSearchTelemetryId = "";
+let followLatestSearchTelemetry = true;
+let searchTelemetryRunActive = false;
+let searchTelemetryControlPending = false;
+let lastSearchTelemetryMoveCount = 0;
+let lastBatchItemsRenderSignature = "";
+let continuousDecisionEnabled = false;
+let continuousDecisionSubmittedSearchId = "";
+let playbackMode = "replay";
+let userChosenActionKey = "";
+let userChosenSearchId = "";
+let pendingModeSync = "";
+let runStatusStartedAt = 0;
+let runStatusElapsedMs = 0;
+let runStatusTimer = 0;
+let pendingSearchTreeCheckpointFile: File | null = null;
+let dataTransferMode: "import" | "export" = "import";
+/**
+ * 当前页面会话统一使用的运行配置。
+ *
+ * 测试集仍会各自保存调度参数，便于在新页面会话中恢复；但用户已选择的策略、
+ * checkpoint 和参数不能在切换测试集时被另一个测试集的旧配置覆盖。此状态只在
+ * 当前页面存活期间保留，关闭页面后会自然清除。
+ */
+let sessionSchedulingConfiguration: { strategy: string; options: Record<string, unknown> } | null = null;
+
+/** 将当前策略和调度参数设为本页面会话后续测试共用的运行配置。 */
+function retainSessionSchedulingConfiguration() {
+  sessionSchedulingConfiguration = structuredClone({
+    strategy: state.strategy,
+    options: state.options,
+  });
+}
+
+/** 从新版字段或旧版任务参数识别清洁类别。 */
+function inferCleanType(clean) {
+  const explicit = String(clean.cleanType || clean.category || "").toLowerCase().replace(/[-_\s]/g, "");
+  if (["preclean", "postclean", "wacclean", "dummy", "dummywac"].includes(explicit)) return explicit;
+  if (explicit === "dummyclean") return "dummy";
+  if (explicit === "dummywacclean") return "dummywac";
+  const signature = `${clean.taskName || ""} ${clean.name || ""}`.toLowerCase();
+  if (/dummy.*wac|wac.*dummy|prewac/.test(signature) || clean.emptyRecipeRef) return "dummywac";
+  if (Number(clean.materialCount || 0) > 0 || /dummy/.test(signature)) return "dummy";
+  if (String(clean.stateVariable || "").toLowerCase() === "processcount" || /wac/.test(signature)) return "wacclean";
+  if (/post/.test(signature)) return "postclean";
+  return "preclean";
+}
+
+/** 兼容旧 Clean，并保留弹窗需要编辑的类型、时长和适用腔室。 */
+function normalizeClean(clean) {
+  const value = { ...(clean || {}) }, cleanType = inferCleanType(value);
+  const isDummy = cleanType === "dummy" || cleanType === "dummywac";
+  const name = String(value.name || `Clean${state.cleans.length + 1}`).trim() || `Clean${state.cleans.length + 1}`;
+  value.name = name;
+  value.cleanType = cleanType;
+  value.recipeName = String(value.recipeName || value.recipeRef || `${name}-Recipe`).trim() || `${name}-Recipe`;
+  const recipeTime = Number(value.recipeTime);
+  value.recipeTime = Math.max(0, Number.isFinite(recipeTime) ? recipeTime : 0);
+  // Dummy Clean 的触发数量由接口中的 CheckConditions.MaterialCount 表示；
+  // 旧数据没有 triggerCount 时兼容读取 materialCount，避免编辑后重置为默认值。
+  const defaultTriggerCount = isDummy ? 2 : 5;
+  value.triggerCount = Math.max(1, Math.floor(Number(
+    isDummy ? (value.materialCount ?? value.triggerCount) : (value.triggerCount ?? value.lower),
+  ) || defaultTriggerCount));
+  if (isDummy) value.materialCount = value.triggerCount;
+  const dummyWaferCount = Number(value.dummyWaferCount);
+  value.dummyWaferCount = isDummy
+    ? Math.max(1, Math.floor(Number.isFinite(dummyWaferCount) ? dummyWaferCount : DEFAULT_DUMMY_WAFER_COUNT))
+    : 0;
+  const wacRecipeTime = Number(value.wacRecipeTime ?? value.emptyRecipeTime);
+  value.wacRecipeTime = Math.max(0, Number.isFinite(wacRecipeTime) ? wacRecipeTime : 20);
+  value.modules = [...new Set(stringList(value.modules))];
+  return value;
+}
+
+/** 把清洁时长格式化为 Clean 自动名称中的紧凑文本。 */
+function formatCleanSeconds(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "未设置";
+  const text = Number.isInteger(number) ? String(number) : number.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  return `${text}s`;
+}
+
+/** 根据清洁类别与时长生成稳定、可读的 Clean 名称。 */
+function automaticCleanName(clean) {
+  const value = normalizeClean(clean);
+  const labels = Object.fromEntries(CLEAN_TYPE_DEFINITIONS.map(item => [item.key, item.label]));
+  const mainDuration = formatCleanSeconds(value.recipeTime);
+  if (value.cleanType === "dummywac") {
+    return `${labels[value.cleanType]} · 单次 ${value.triggerCount}片 · 库存 ${value.dummyWaferCount}片 · 主清洁 ${mainDuration} · WAC ${formatCleanSeconds(value.wacRecipeTime)}`;
+  }
+  if (value.cleanType === "dummy") return `${labels[value.cleanType]} · 单次 ${value.triggerCount}片 · 库存 ${value.dummyWaferCount}片 · ${mainDuration}`;
+  return `${labels[value.cleanType]} · ${mainDuration}`;
+}
+
+/** 把路径中所有旧 Clean 引用替换为自动生成的新名称。 */
+function renameCleanReferences(oldName, newName) {
+  if (!oldName || oldName === newName) return;
+  const rename = value => stringList(value).map(name => name === oldName ? newName : name);
+  allTestRouteConfigs().forEach(config => {
+    ROUTE_CLEAN_KEYS.forEach(key => { config[key] = rename(config[key]); });
+    Object.values(config.stages || {}).forEach(stage => {
+      stage.beforeCleanRefs = rename(stage.beforeCleanRefs);
+      stage.afterCleanRefs = rename(stage.afterCleanRefs);
+    });
+  });
+}
+
+/** 统一新旧 Clean 名称；同类型同时间的重复项使用稳定序号区分。 */
+function synchronizeCleanNames() {
+  const occurrences = new Map();
+  let changed = false;
+  state.cleans = state.cleans.map(normalizeClean);
+  state.cleans.forEach(clean => {
+    const baseName = automaticCleanName(clean);
+    const occurrence = (occurrences.get(baseName) || 0) + 1;
+    occurrences.set(baseName, occurrence);
+    const generatedName = occurrence === 1 ? baseName : `${baseName} · #${occurrence}`;
+    const oldName = clean.name;
+    if (oldName !== generatedName) {
+      renameCleanReferences(oldName, generatedName);
+      clean.name = generatedName;
+      changed = true;
+    }
+    const recipeName = `${generatedName}-Recipe`;
+    if (clean.recipeName !== recipeName) {
+      clean.recipeName = recipeName;
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+/** 将精简编辑模型展开为调度接口使用的 Clean 模板，并保留显式适用腔室。 */
+function runtimeClean(clean) {
+  const value = normalizeClean(clean), type = value.cleanType;
+  const taskNames = { preclean: "PreClean", postclean: "PostClean", wacclean: "WacClean", dummy: "PreDummyClean", dummywac: "PreWacClean" };
+  const isWac = type === "wacclean", isDummy = type === "dummy" || type === "dummywac";
+  return {
+    ...value,
+    recipeRef: value.recipeName,
+    modules: value.modules,
+    taskName: taskNames[type],
+    stateVariable: isWac ? "ProcessCount" : "IdleTime",
+    lower: isWac ? value.triggerCount : 0,
+    upper: 9999,
+    updateStateVariables: isWac ? ["ProcessCount"] : isDummy ? ["IdleTime", "DummyCount"] : type === "preclean" ? ["IdleTime"] : [],
+    materialCount: isDummy ? value.triggerCount : 0,
+    preJudge: false,
+    emptyRecipeRef: type === "dummywac" ? `${value.recipeName}-WAC` : "",
+  };
+}
+
+/** 创建一个使用默认时长且尚未选择腔室的 Clean。 */
+function makeClean(cleanType = "preclean") {
+  const triggerCount = ["dummy", "dummywac"].includes(cleanType) ? 2 : 5;
+  return normalizeClean({
+    name: "", cleanType, recipeTime: 20, triggerCount,
+    dummyWaferCount: DEFAULT_DUMMY_WAFER_COUNT,
+    wacRecipeTime: 20, modules: [],
+  });
+}
+
+/** 判断 Step 是否使用 Robot；旧数据没有类型时按已有候选项和原有交替规则兼容。 */
+function stageUsesRobot(stage, index) {
+  const names = (stage.visits || []).map(visit => visit.stationName).filter(Boolean);
+  return stage.kind === "robot" || (names.length ? names.every(name => state.robotNames.includes(name)) : index % 2 === 1);
+}
+
+/** 深拷贝 Visit 公共参数，避免数组或对象在候选 Visit 间共享引用。 */
+function cloneVisitParameters(visit) {
+  return RouteEditorLogic.cloneVisitParameters(visit);
+}
+
+/** 判断 Route Step 是否为固定的 Src/Sink；运行时使用 CJob LoadPort 覆盖。 */
+function isFixedRouteStep(route, index) {
+  const stages = route?.stages || [];
+  return index === 0 || index === stages.length - 1;
+}
+
+/** 返回 Step 类型的简短名称；首尾固定模块分别显示为 Src 与 Sink。 */
+function stepKind(route, index) {
+  if (!route?.stages?.length) return "Station";
+  if (index === 0) return "Src";
+  if (index === route.stages.length - 1) return "Sink";
+  return stageUsesRobot(route.stages[index], index) ? "Robot" : "Station";
+}
+
+/** 统一补全 Step 的派生字段，避免 StepID、PostStepID、NeedProcess 被手工改坏。 */
+function normalizeRoute(route, normalizationChanges = null) {
+  route.stages = Array.isArray(route.stages) ? route.stages : [];
+  ROUTE_CLEAN_KEYS.forEach(key => { route[key] = stringList(route[key]); });
+  route.postCJobCleanRefs = [];
+  route.bufferOption = Math.max(0, Math.min(4, Math.trunc(Number(route.bufferOption) || 0)));
+  linkRouteSteps(route.stages);
+  route.stages.forEach((stage, index) => {
+    stage.visits = Array.isArray(stage.visits) ? stage.visits : [];
+    stage.kind = stageUsesRobot(stage, index) ? "robot" : "station";
+    stage.needProcess = stage.kind === "station" && stage.visits.some(visit => state.processModules.includes(visit.stationName));
+    const recipeName = stage.needProcess ? `${route.group || route.name || "Route"}_Step${stage.stepId}` : "";
+    const recipesChanged = RouteEditorLogic.normalizeStageProcessRecipes(stage, recipeName, normalizeVisit);
+    if (recipesChanged && normalizationChanges) normalizationChanges.changed = true;
+  });
+  return route;
+}
+
+/** 比较候选 Visit 公共参数，并返回旧数据中不一致的字段。 */
+function visitDifferenceFields(stage) {
+  return RouteEditorLogic.differenceFields(stage, normalizeVisit);
+}
+
+/** 把允许编辑的 Step 参数同步到全部候选，并强制 Recipe Time 跟随 Process Time。 */
+function synchronizeStageVisits(stage) {
+  if (!(stage.visits || []).length) return;
+  const first = normalizeVisit(stage.visits[0]);
+  const editableValues = {
+    processTime: Number(first.processTime),
+    recipeTime: Number(first.processTime),
+    qTimeLimit: Number(first.qTimeLimit),
+    residencyConstraint: Number(first.residencyConstraint),
+    beforeCleanRefs: structuredClone(stringList(first.beforeCleanRefs)),
+    afterCleanRefs: structuredClone(stringList(first.afterCleanRefs)),
+  };
+  stage.visits.forEach(visit => Object.assign(visit, structuredClone(editableValues)));
+}
+
+/** 将列表中选择的候选设备同步为一组 Visit；新增项继承第一个候选的公共参数。 */
+function setStageCandidates(routeIndex, stageIndex, names) {
+  const route = state.routes[routeIndex], stage = route.stages[stageIndex];
+  RouteEditorLogic.replaceCandidates(stage, names, makeVisit, normalizeVisit);
+  normalizeRoute(route);
+}
+
+/** 读取一个 Step 的首个候选参数，作为测试侧 Route 配置的默认值。 */
+function stageDefaultConfig(stage) {
+  const first = (stage?.visits || [])[0] ? normalizeVisit(stage.visits[0]) : makeVisit("");
+  return {
+    processTime: Number(first.processTime),
+    recipeTime: Number(first.recipeTime ?? first.processTime),
+    qTimeLimit: Number(first.qTimeLimit),
+    residencyConstraint: Number(first.residencyConstraint),
+    beforeCleanRefs: structuredClone(stringList(first.beforeCleanRefs)),
+    afterCleanRefs: structuredClone(stringList(first.afterCleanRefs)),
+    processRecipe: String(first.processRecipe || ""),
+    processType: String(first.processType || ""),
+    weight: structuredClone(first.weight ?? {}),
+    moveTimeOffset: structuredClone(first.moveTimeOffset ?? {}),
+    slotIds: String(first.slotIds || "1"),
+  };
+}
+
+/** 为一条路径模板生成测试侧默认配置；旧数据中嵌在 Route 上的时间与清洁会迁移到这里。 */
+function defaultRouteConfigForRoute(route) {
+  normalizeRoute(route);
+  return {
+    bufferOption: Math.max(0, Math.min(4, Math.trunc(Number(route.bufferOption) || 0))),
+    prePJobCleanRefs: structuredClone(stringList(route.prePJobCleanRefs)),
+    postPJobCleanRefs: structuredClone(stringList(route.postPJobCleanRefs)),
+    postCJobCleanRefs: structuredClone(stringList(route.postCJobCleanRefs)),
+    stages: Object.fromEntries((route.stages || []).map(stage => [
+      String(stage.stepId),
+      stageDefaultConfig(stage),
+    ])),
+  };
+}
+
+/** 规范化测试侧 Route 配置，确保结构与当前路径模板的 Step 对齐。 */
+function normalizeTestRouteConfigs(raw, routes) {
+  const configs = raw && typeof raw === "object" && !Array.isArray(raw) ? structuredClone(raw) : {};
+  const normalized = {};
+  for (const route of routes || []) {
+    const routeName = String(route.name || "").trim();
+    if (!routeName) continue;
+    const base = configs[routeName] || defaultRouteConfigForRoute(route);
+    const stages = {};
+    (route.stages || []).forEach(stage => {
+      const stepId = String(stage.stepId);
+      const override = base.stages?.[stepId] ? base.stages[stepId] : stageDefaultConfig(stage);
+      stages[stepId] = {
+        ...stageDefaultConfig(stage),
+        ...(override && typeof override === "object" ? override : {}),
+        processTime: Number(override?.processTime ?? stageDefaultConfig(stage).processTime),
+        recipeTime: Number(override?.processTime ?? stageDefaultConfig(stage).recipeTime),
+        qTimeLimit: Number(override?.qTimeLimit ?? stageDefaultConfig(stage).qTimeLimit),
+        residencyConstraint: Number(override?.residencyConstraint ?? stageDefaultConfig(stage).residencyConstraint),
+        beforeCleanRefs: stringList(override?.beforeCleanRefs ?? stageDefaultConfig(stage).beforeCleanRefs),
+        afterCleanRefs: stringList(override?.afterCleanRefs ?? stageDefaultConfig(stage).afterCleanRefs),
+        processRecipe: String(override?.processRecipe ?? stageDefaultConfig(stage).processRecipe),
+        processType: String(override?.processType ?? stageDefaultConfig(stage).processType),
+        weight: structuredClone(override?.weight ?? stageDefaultConfig(stage).weight),
+        moveTimeOffset: structuredClone(override?.moveTimeOffset ?? stageDefaultConfig(stage).moveTimeOffset),
+        slotIds: String(override?.slotIds ?? stageDefaultConfig(stage).slotIds),
+      };
+    });
+    normalized[routeName] = {
+      bufferOption: Math.max(0, Math.min(4, Math.trunc(Number(base.bufferOption) || 0))),
+      prePJobCleanRefs: stringList(base.prePJobCleanRefs),
+      postPJobCleanRefs: stringList(base.postPJobCleanRefs),
+      postCJobCleanRefs: stringList(base.postCJobCleanRefs),
+      stages,
+    };
+  }
+  return normalized;
+}
+
+/** 返回一个 PJob 对应的模板，并把旧版测试级参数复制为该实例的独立配置。 */
+function pjobRouteConfig(pjob, route = null) {
+  const template = route || state.routes.find(item => item.name === pjob?.routeRef);
+  if (!pjob || !template) return null;
+  const fallback = state.testRouteConfigs[template.name] || defaultRouteConfigForRoute(template);
+  const normalized = normalizeTestRouteConfigs(
+    { [template.name]: pjob.routeConfig || fallback },
+    [template],
+  )[template.name];
+  pjob.routeConfig = normalized;
+  return normalized;
+}
+
+/** 枚举测试内全部路径实例配置；旧版模板配置只作为未迁移数据的兜底。 */
+function allTestRouteConfigs() {
+  const configs = [];
+  state.rounds.forEach(round => round.cjobs.forEach(cjob => cjob.pjobs.forEach(pjob => {
+    const config = pjobRouteConfig(pjob);
+    if (config) configs.push(config);
+  })));
+  return configs.length ? configs : Object.values(state.testRouteConfigs);
+}
+
+/** 载入旧测试时为每个 PJob 建立独立配置，后续编辑不再按模板名共享引用。 */
+function normalizePJobRouteConfigs() {
+  state.rounds.forEach(round => round.cjobs.forEach(cjob => cjob.pjobs.forEach(pjob => {
+    pjobRouteConfig(pjob);
+  })));
+}
+
+/** 把 PJob 路径实例配置合并到模板，生成运行时可提交的 Route。 */
+function runtimeRouteForTemplate(route, routeConfig = null) {
+  const routeName = String(route?.name || "").trim();
+  const config = routeConfig || state.testRouteConfigs[routeName] || defaultRouteConfigForRoute(route);
+  const merged = structuredClone(route);
+  normalizeRoute(merged);
+  merged.bufferOption = Number(config.bufferOption ?? merged.bufferOption ?? 0);
+  merged.prePJobCleanRefs = stringList(config.prePJobCleanRefs);
+  merged.postPJobCleanRefs = stringList(config.postPJobCleanRefs);
+  merged.postCJobCleanRefs = stringList(config.postCJobCleanRefs);
+  (merged.stages || []).forEach(stage => {
+    const stepId = String(stage.stepId);
+    const override = config.stages?.[stepId];
+    if (!override) return;
+    (stage.visits || []).forEach(visit => {
+      visit.processTime = Number(override.processTime ?? visit.processTime ?? 20);
+      visit.recipeTime = Number(override.recipeTime ?? visit.processTime ?? 20);
+      visit.qTimeLimit = Number(override.qTimeLimit ?? visit.qTimeLimit ?? -1);
+      visit.residencyConstraint = Number(override.residencyConstraint ?? visit.residencyConstraint ?? -1);
+      visit.beforeCleanRefs = stringList(override.beforeCleanRefs ?? visit.beforeCleanRefs);
+      visit.afterCleanRefs = stringList(override.afterCleanRefs ?? visit.afterCleanRefs);
+      visit.processRecipe = String(override.processRecipe ?? visit.processRecipe ?? "");
+      visit.processType = String(override.processType ?? visit.processType ?? "");
+      visit.weight = structuredClone(override.weight ?? visit.weight ?? {});
+      visit.moveTimeOffset = structuredClone(override.moveTimeOffset ?? visit.moveTimeOffset ?? {});
+      visit.slotIds = String(override.slotIds ?? visit.slotIds ?? "1");
+    });
+    normalizeVisit(stage.visits[0]);
+    RouteEditorLogic.synchronizeVisits(stage, normalizeVisit);
+  });
+  return merged;
+}
+
+/** 返回所有路径模板合并测试配置后的运行时 Route 列表。 */
+function runtimeRoutes() {
+  return (state.routes || []).map(route => runtimeRouteForTemplate(route));
+}
+
+/** 将编辑态 Route 收敛为只包含路径拓扑的共享模板。 */
+function routeTemplateForSave(route) {
+  const template = structuredClone(route);
+  normalizeRoute(template);
+  template.bufferOption = 0;
+  ROUTE_CLEAN_KEYS.forEach(key => { template[key] = []; });
+  template.stages = (template.stages || []).map(stage => ({
+    stepId: Number(stage.stepId),
+    postStepIds: structuredClone(stage.postStepIds || []),
+    needProcess: stage.needProcess === true,
+    kind: stage.kind,
+    visits: (stage.visits || []).map(visit => ({ stationName: String(visit.stationName || "") })),
+  }));
+  return template;
+}
+
+/** 记录当前已保存结构对应的分组，编辑草稿在保存前继续停留在原分组。 */
+function captureRouteGroupingProfiles() {
+  state.routeGroupingProfiles = new Map(
+    state.routes.map(route => [route, structuredClone(routeProcessProfile(route))]),
+  );
+}
+
+/** 返回路径当前应使用的分组结构；新增路径没有快照时使用草稿结构。 */
+function routeGroupingProfile(route) {
+  return state.routeGroupingProfiles.get(route) || routeProcessProfile(route);
+}
+
+/** 对所有轮次重新计算派生字段，并同步兼容的 times 数组。 */
+function normalizeRounds() {
+  let nextTaskId = 1;
+  state.rounds = state.rounds.map((round, index) => {
+    const normalized = normalizeRound(
+      round,
+      index + 1,
+      state.times[index],
+      nextTaskId,
+      state.loadPorts,
+    );
+    nextTaskId += normalized.cjobs.length;
+    return normalized;
+  });
+  let nextMaterialId = 1;
+  state.rounds.forEach(round => round.cjobs.forEach(cjob => cjob.pjobs.forEach(pjob => {
+    pjob.matList = Array.from({ length: pjob.waferCount }, () => nextMaterialId++);
+  })));
+  state.times = state.rounds.map(round => Number(round.currentTime));
+}
+
+/** 转义动态 HTML 文本。 */
+function escapeHtml(value) { return String(value ?? "").replace(/[&<>"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char])); }
+
+/** 格式化抽屉中的只读参数。 */
+function readonlyText(value) {
+  if (value === undefined || value === null || value === "") return "—";
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+/** 绘制抽屉内统一的只读字段。 */
+function renderReadonlyField(label, value, wide = false) {
+  return `<div class="readonly-field ${wide ? "wide" : ""}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(readonlyText(value))}</strong></div>`;
+}
+
+/** 生成单选下拉选项。 */
+function optionsHtml(values, selected, emptyLabel = "请选择") {
+  return `<option value="">${escapeHtml(emptyLabel)}</option>` + values.map(value => `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+}
+
+/** 生成多选下拉选项。 */
+function multiOptionsHtml(values, selected) {
+  const chosen = new Set(stringList(selected));
+  return values.map(value => `<option value="${escapeHtml(value)}" ${chosen.has(value) ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+}
+
+/** 从 input_data 录制数组或普通 init 对象提取设备。 */
+function unwrapDevice(raw) {
+  let value = raw;
+  if (Array.isArray(value)) { const entry = value.find(item => item && String(item.Describe || "").toLowerCase() === "alginit"); if (!entry) throw new Error("设备文件中找不到 Describe=AlgInit"); value = entry.Info; }
+  if (value?.InitData) value = value.InitData;
+  if (value?.Info?.Stations) value = value.Info;
+  if (!value || typeof value !== "object" || !value.Stations || !value.Robots) throw new Error("设备文件必须包含 Stations 和 Robots");
+  return value;
+}
+
+/** 解析标准 JSON，兼容由多条顶层日志对象加逗号串联的设备录制文件。 */
+function parseDeviceFileText(text: string) {
+  try {
+    return JSON.parse(text);
+  } catch (originalError) {
+    const records = text.trim().replace(/,\s*$/, "");
+    try {
+      return JSON.parse(`[${records}]`);
+    } catch {
+      throw originalError;
+    }
+  }
+}
+
+/** 导入设备到本地工作区；相同拓扑会直接复用已有设备。 */
+async function loadDevice(file) {
+  if (!file) return;
+  if (!await settleTestDraft()) return;
+  updateDataTransferProgress({ progress: 5, message: "正在读取 init JSON" });
+  const fileText = await file.text();
+  updateDataTransferProgress({ progress: 25, message: "正在校验设备拓扑" });
+  const device = unwrapDevice(parseDeviceFileText(fileText));
+  updateDataTransferProgress({ progress: 45, message: "正在保存设备" });
+  const result = await requestJson("/api/workspaces/devices", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: file.name, device })
+  });
+  updateDataTransferProgress({ progress: 80, message: "正在刷新设备与测试集" });
+  await loadWorkspaceCatalog(result.device.id);
+  updateDataTransferProgress({ progress: 100, message: "设备导入完成" });
+  writeTerminal(`$ ${result.created ? "已导入" : "已选择已有"}设备 ${result.device.name}\n  该设备下有 ${state.workspaceDevice?.tests?.length || 0} 个测试集`);
+  document.getElementById("deviceFile").value = "";
+  (document.getElementById("dataTransferDialog") as HTMLDialogElement).close();
+}
+
+/** 打开统一的设备/测试集导入导出选择窗口。 */
+function openDataTransferDialog(mode: "import" | "export") {
+  dataTransferMode = mode;
+  const importing = mode === "import";
+  document.getElementById("dataTransferDialogTitle").textContent = importing ? "导入数据" : "导出数据";
+  document.getElementById("dataTransferDialogDescription").textContent = importing
+    ? "选择导入整台设备，或把测试集加入当前相同设备。"
+    : "设备包包含设备下全部信息；测试集包只包含当前测试及所需路径。";
+  document.getElementById("deviceTransferOptionTitle").textContent = importing ? "导入设备" : "导出当前设备";
+  document.getElementById("deviceTransferOptionDescription").textContent = importing
+    ? "支持同事分享的设备包，也支持新的 init JSON。"
+    : "包含 init、路径、组别和该设备下全部测试集。";
+  document.getElementById("testTransferOptionTitle").textContent = importing ? "导入测试集" : "导出当前测试集";
+  document.getElementById("testTransferOptionDescription").textContent = importing
+    ? "只能导入到 init 完全相同的当前设备。"
+    : "接收方必须拥有 init 完全相同的设备。";
+  document.getElementById("deviceTransferOption").disabled = !importing && !state.workspaceDeviceId;
+  document.getElementById("testTransferOption").disabled = !state.workspaceDeviceId || (!importing && !state.testCaseId);
+  const status = document.getElementById("dataTransferStatus");
+  status.textContent = importing && !state.workspaceDeviceId ? "尚未选择设备时，只能导入设备。" : "";
+  status.classList.remove("error");
+  resetDataTransferProgress();
+  (document.getElementById("dataTransferDialog") as HTMLDialogElement).showModal();
+}
+
+/** 重置交换任务进度显示，并恢复可操作状态。 */
+function resetDataTransferProgress() {
+  const progress = document.getElementById("dataTransferProgress");
+  const bar = document.getElementById("dataTransferProgressBar");
+  progress.hidden = true;
+  bar.setAttribute("aria-valuenow", "0");
+  bar.firstElementChild.style.width = "0%";
+  document.getElementById("dataTransferPercent").textContent = "0%";
+  document.getElementById("dataTransferPhase").textContent = "准备中";
+  setDataTransferBusy(false);
+}
+
+/** 设置交换任务的可见进度、阶段和屏幕阅读器可读状态。 */
+function updateDataTransferProgress(transfer) {
+  const progress = Math.max(0, Math.min(100, Number(transfer?.progress) || 0));
+  const bar = document.getElementById("dataTransferProgressBar");
+  document.getElementById("dataTransferProgress").hidden = false;
+  bar.setAttribute("aria-valuenow", String(progress));
+  bar.firstElementChild.style.width = `${progress}%`;
+  document.getElementById("dataTransferPercent").textContent = `${progress}%`;
+  document.getElementById("dataTransferPhase").textContent = String(transfer?.message || transfer?.phase || "处理中");
+}
+
+/** 交换任务运行期间锁定两个选项和关闭按钮，避免重复提交或中断状态。 */
+function setDataTransferBusy(busy) {
+  document.getElementById("deviceTransferOption").disabled = busy || (dataTransferMode === "export" && !state.workspaceDeviceId);
+  document.getElementById("testTransferOption").disabled = busy || !state.workspaceDeviceId || (dataTransferMode === "export" && !state.testCaseId);
+  document.getElementById("dataTransferDialogClose").disabled = busy;
+  document.getElementById("dataTransferDialog").classList.toggle("is-busy", busy);
+}
+
+/** 使用 XMLHttpRequest 上传交换包，以便显示浏览器上传百分比。 */
+function uploadWorkspaceTransferContent(transferId: string, file: File) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `/api/workspace-transfers/${encodeURIComponent(transferId)}/content`);
+    request.setRequestHeader("Content-Type", "application/zip");
+    request.setRequestHeader("X-Data-Filename", encodeURIComponent(file.name));
+    request.upload.onprogress = event => {
+      if (event.lengthComputable) updateDataTransferProgress({ progress: Math.round(event.loaded / event.total * 20), message: "正在上传交换包" });
+    };
+    request.onerror = () => reject(new Error("交换包上传失败"));
+    request.onload = () => {
+      let result = {};
+      try { result = JSON.parse(request.responseText || "{}"); } catch { /* 由统一错误提示处理 */ }
+      if (request.status < 200 || request.status >= 300 || result?.ok === false) reject(new Error(result?.error || `服务返回 ${request.status}`));
+      else resolve();
+    };
+    request.send(file);
+  });
+}
+
+/** 创建交换任务、上传内容（导入）并轮询直至完成。 */
+async function runWorkspaceTransfer(kind: "device" | "test", file?: File) {
+  if (dataTransferMode === "export") {
+    if (!state.workspaceDeviceId) throw new Error("请先选择设备");
+    if (!await settleTestDraft()) return;
+    if (state.deviceTimingDirty) await saveDeviceTiming();
+    if (kind === "test" && !state.testCaseId) throw new Error("请先选择测试集");
+  }
+  const payload = {
+    direction: dataTransferMode,
+    kind,
+    ...(kind === "test" && state.workspaceDeviceId ? { deviceId: state.workspaceDeviceId } : {}),
+    ...(dataTransferMode === "export" && kind === "device" && state.workspaceDeviceId ? { deviceId: state.workspaceDeviceId } : {}),
+    ...(dataTransferMode === "export" && kind === "test" && state.testCaseId ? { testId: state.testCaseId } : {}),
+  };
+  const created = await requestJson("/api/workspace-transfers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const transferId = created.transfer?.id;
+  if (!transferId) throw new Error("服务未返回交换任务编号");
+  updateDataTransferProgress(created.transfer);
+  if (dataTransferMode === "import") {
+    if (!file) throw new Error("请选择交换文件");
+    await uploadWorkspaceTransferContent(String(transferId), file);
+  }
+  let transfer = created.transfer;
+  while (!["completed", "failed"].includes(String(transfer.status))) {
+    await new Promise(resolve => window.setTimeout(resolve, WORKSPACE_TRANSFER_POLL_MILLISECONDS));
+    transfer = (await requestJson(`/api/workspace-transfers/${encodeURIComponent(String(transferId))}`, { cache: "no-store" })).transfer;
+    updateDataTransferProgress(transfer);
+  }
+  if (transfer.status === "failed") throw new Error(transfer.message || "交换任务失败");
+  if (dataTransferMode === "export") {
+    updateDataTransferProgress({ ...transfer, message: "正在下载交换包" });
+    await downloadWorkspaceArchive(`/api/workspace-transfers/${encodeURIComponent(String(transferId))}/download`);
+    (document.getElementById("dataTransferDialog") as HTMLDialogElement).close();
+    setWorkspaceStatus(kind === "device" ? "已导出当前设备" : "已导出当前测试集", "saved");
+  } else {
+    const result = transfer.result || {};
+    if (kind === "device" && result.device?.id) {
+      await loadWorkspaceCatalog(result.device.id);
+      setWorkspaceStatus(`已导入设备“${result.device.name}”及 ${result.importedTests || 0} 个测试集`, "saved");
+    } else if (kind === "test" && result.test?.id) {
+      await loadWorkspaceCatalog(state.workspaceDeviceId, result.test.id);
+      setWorkspaceStatus(result.created ? `已导入测试集“${result.test.name}”` : `测试集“${result.test.name}”已存在`, "saved");
+    }
+    (document.getElementById("dataTransferDialog") as HTMLDialogElement).close();
+  }
+}
+
+/** 下载交换包，并在服务端拒绝时显示真实业务错误。 */
+async function downloadWorkspaceArchive(url: string) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result?.error || `服务返回 ${response.status}`);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] || "ct-data.zip";
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+/** 根据弹窗模式执行设备或测试集操作。 */
+async function chooseDataTransfer(kind: "device" | "test") {
+  const status = document.getElementById("dataTransferStatus");
+  status.textContent = "";
+  status.classList.remove("error");
+  try {
+    if (dataTransferMode === "export") {
+      setDataTransferBusy(true);
+      await runWorkspaceTransfer(kind);
+      return;
+    }
+    if (kind === "test" && !state.workspaceDeviceId) throw new Error("请先选择测试集所属的相同设备");
+    document.getElementById(kind === "device" ? "deviceFile" : "testExchangeFile").click();
+  } catch (error) {
+    status.textContent = error.message || "操作失败";
+    status.classList.add("error");
+    setDataTransferBusy(false);
+  }
+}
+
+/** 从 ArmInfo 收集槽位；一个物理 Arm 可以包含多个晶圆手槽。 */
+function robotAvailableSlots(robot) {
+  const slots = new Set();
+  const addSlots = (rawSlots, scalarIsCapacity = false) => {
+    let values = [];
+    if (Number.isInteger(rawSlots) && typeof rawSlots !== "boolean") {
+      values = scalarIsCapacity
+        ? Array.from({ length: Math.max(0, rawSlots) }, (_, index) => index + FIRST_ROBOT_SLOT_ID)
+        : [rawSlots];
+    } else if (Array.isArray(rawSlots)) values = rawSlots;
+    else if (rawSlots && typeof rawSlots === "object") values = Object.keys(rawSlots);
+    values.forEach(value => {
+      const slotId = Number(value);
+      if (Number.isInteger(slotId) && slotId >= FIRST_ROBOT_SLOT_ID) slots.add(slotId);
+    });
+  };
+  Object.values(robot?.ArmInfo || {}).forEach(arm => addSlots(arm?.SlotIDs));
+  if (Object.values(robot?.ArmInfo || {}).some(arm => arm && typeof arm === "object")) {
+    for (let slotId = FIRST_ROBOT_SLOT_ID; slotId < FIRST_ROBOT_SLOT_ID + DUAL_ARM_SLOT_COUNT; slotId += 1) slots.add(slotId);
+  }
+  addSlots(robot?.Capacity, true);
+  return [...(slots.size ? slots : new Set([FIRST_ROBOT_SLOT_ID]))].sort((left, right) => left - right);
+}
+
+/** 按设备原始 ArmInfo 返回物理 Arm 对应的槽位组。 */
+function robotArmSlotGroups(robot) {
+  const declaredGroups = Object.entries(robot?.ArmInfo || {}).flatMap(([armName, arm]) => {
+    if (!arm || typeof arm !== "object") return [];
+    const slotIds = [...new Set((arm.SlotIDs || []).map(Number).filter(
+      slotId => Number.isInteger(slotId) && slotId >= FIRST_ROBOT_SLOT_ID
+    ))].sort((left, right) => left - right);
+    return slotIds.length ? [{ armName, slotIds }] : [];
+  });
+  const groups = declaredGroups.length ? declaredGroups : [];
+  const coveredSlots = new Set(groups.flatMap(group => group.slotIds));
+  robotAvailableSlots(robot).filter(slotId => !coveredSlots.has(slotId)).forEach(slotId => {
+    groups.push({
+      armName: generatedRobotArmName(groups.map(group => group.armName), slotId),
+      slotIds: [slotId],
+    });
+  });
+  return groups;
+}
+
+/** 按原始 ArmInfo 中启用的 Arm 返回设备文件默认模式。 */
+function robotDefaultSlots(robot) {
+  const available = robotAvailableSlots(robot);
+  const requested = Object.values(robot?.ArmInfo || {})
+    .filter(arm => arm && typeof arm === "object" && arm.IsEnable !== false)
+    .flatMap(arm => Array.isArray(arm.SlotIDs) ? arm.SlotIDs.map(Number) : []);
+  const selected = [...new Set(requested.filter(slotId => Number.isInteger(slotId) && available.includes(slotId)))].sort((left, right) => left - right);
+  return selected.length ? selected : available.slice(0, 1);
+}
+
+/** 规范化设备级 Arm 槽位选择；缺失项沿用原始 ArmInfo 默认模式。 */
+function normalizeRobotSlotSelections(device, rawSelections = {}) {
+  const selections = rawSelections && typeof rawSelections === "object" ? rawSelections : {};
+  return Object.fromEntries(Object.entries(device?.Robots || {}).map(([robotName, robot]) => {
+    const available = robotAvailableSlots(robot);
+    const requested = Array.isArray(selections[robotName]) ? selections[robotName].map(Number) : robotDefaultSlots(robot);
+    const selected = [...new Set(requested.filter(slotId => Number.isInteger(slotId) && available.includes(slotId)))].sort((left, right) => left - right);
+    return [robotName, selected.length ? selected : available];
+  }));
+}
+
+/** 为设备文件缺少的第二个 Arm 生成稳定名称。 */
+function generatedRobotArmName(existingNames, slotId) {
+  const occupied = new Set(existingNames.map(String));
+  const alphabeticName = `Arm${String.fromCharCode("A".charCodeAt(0) + slotId - FIRST_ROBOT_SLOT_ID)}`;
+  if (!occupied.has(alphabeticName)) return alphabeticName;
+  const numericName = `Arm${slotId}`;
+  if (!occupied.has(numericName)) return numericName;
+  let suffix = slotId;
+  while (occupied.has(`${numericName}_${suffix}`)) suffix += 1;
+  return `${numericName}_${suffix}`;
+}
+
+/** 复制一个物理 Arm，并保留该 Arm 被选择的全部 RobotSlot。 */
+function projectRobotArmToSlots(armName, sourceArm, slotIds) {
+  const arm = structuredClone(sourceArm);
+  arm.Name = armName;
+  arm.IsEnable = true;
+  const selected = [...new Set(slotIds.map(Number))].sort((left, right) => left - right);
+  arm.SlotIDs = selected;
+  Object.entries(arm.SlotsStationMap || {}).forEach(([stationName, stationSlots]) => {
+    if (!stationSlots || typeof stationSlots !== "object") return;
+    const entries = Object.entries(stationSlots);
+    if (!entries.length) return;
+    const fallback = entries[0][1];
+    arm.SlotsStationMap[stationName] = Object.fromEntries(selected.map(slotId => [
+      String(slotId), structuredClone(stationSlots[String(slotId)] ?? fallback)
+    ]));
+  });
+  return arm;
+}
+
+/** 把 Arm 槽位选择同步到前端运行时设备，后端保存时会执行同样的投影和校验。 */
+function configuredDeviceForRobotSlots(baseDevice, rawSelections) {
+  const device = structuredClone(baseDevice);
+  const selections = normalizeRobotSlotSelections(device, rawSelections);
+  Object.entries(device?.Robots || {}).forEach(([robotName, robot]) => {
+    const selected = selections[robotName];
+    robot.Capacity = selected.length;
+    const sourceArms = Object.entries(robot.ArmInfo || {}).filter(([, arm]) => arm && typeof arm === "object");
+    if (!sourceArms.length) return;
+    const projectedArms = {}, unmatchedSlots = new Set(selected);
+    sourceArms.forEach(([armName, sourceArm]) => {
+      const retainedSlots = (sourceArm.SlotIDs || []).map(Number).filter(slotId => unmatchedSlots.has(slotId));
+      if (!retainedSlots.length) return;
+      projectedArms[armName] = projectRobotArmToSlots(armName, sourceArm, retainedSlots);
+      retainedSlots.forEach(slotId => unmatchedSlots.delete(slotId));
+    });
+    [...unmatchedSlots].sort((left, right) => left - right).forEach(slotId => {
+      const armName = generatedRobotArmName(
+        [...Object.keys(robot.ArmInfo || {}), ...Object.keys(projectedArms)], slotId
+      );
+      projectedArms[armName] = projectRobotArmToSlots(armName, sourceArms[0][1], [slotId]);
+    });
+    robot.ArmInfo = projectedArms;
+  });
+  return { device, selections };
+}
+
+/** 应用设备拓扑，并建立 Route/Visit 可选模块集合。 */
+function applyDeviceTopology(device, deviceName, rawRobotSlots = {}) {
+  state.baseDevice = structuredClone(device);
+  const configured = configuredDeviceForRobotSlots(state.baseDevice, rawRobotSlots);
+  state.device = configured.device; state.robotSlots = configured.selections;
+  const stations = Object.entries(state.device.Stations);
+  const natural = (left, right) => left.localeCompare(right, undefined, { numeric: true });
+  state.deviceName = deviceName;
+  state.stationNames = stations.map(([name]) => name).sort(natural);
+  state.loadPorts = stations.filter(([, item]) => String(item.Type || "").toLowerCase() === "loadport").map(([name]) => name).sort(natural);
+  state.processModules = stations
+    .filter(([, item]) => PROCESSING_STATION_TYPES.has(String(item.Type || "").trim().toLowerCase()))
+    .map(([name]) => name)
+    .sort(natural);
+  state.robotNames = Object.keys(state.device.Robots).sort(natural);
+  state.robotScopes = Object.fromEntries(Object.entries(state.device.Robots).map(([name, robot]) => [name, [...new Set(Object.values(robot.ArmInfo || {}).filter(arm => arm.IsEnable !== false).flatMap(arm => arm.AccessibleStations || []))]]));
+  if (!activeRunContext && !state.batchResult) visualizationWorkspace.setDevice(state.device);
+  if (!state.loadPorts.length || !state.processModules.length) throw new Error("设备必须包含 LoadPort 和 ProcessChamber");
+}
+
+/** 从设备拓扑提取页面允许修改的计时字段，避免把容量、状态等运行数据混入保存请求。 */
+function buildDeviceTimingDraft(device) {
+  const draft = { stations: {}, robots: {} };
+  Object.entries(device?.Stations || {}).forEach(([stationName, station]) => {
+    const timing = {};
+    [...STATION_ACTION_TIME_FIELDS, { key: "AlignmentTime" }].forEach(({ key }) => {
+      if (station?.[key] && typeof station[key] === "object" && !Array.isArray(station[key])) {
+        timing[key] = structuredClone(station[key]);
+      }
+    });
+    if (Array.isArray(station?.PrePrepareTime)) {
+      timing.PrePrepareTime = station.PrePrepareTime.map(row => Number(row?.Time) || 0);
+    }
+    draft.stations[stationName] = timing;
+  });
+  Object.entries(device?.Robots || {}).forEach(([robotName, robot]) => {
+    const timing = {};
+    ROBOT_ACTION_TIME_FIELDS.forEach(({ key }) => {
+      if (robot?.[key] && typeof robot[key] === "object" && !Array.isArray(robot[key])) {
+        timing[key] = structuredClone(robot[key]);
+      }
+    });
+    if (Array.isArray(robot?.PrepTransTime)) {
+      timing.PrepTransTime = robot.PrepTransTime.map(row => Number(row?.Time) || 0);
+    }
+    draft.robots[robotName] = timing;
+  });
+  const configuredExecution = device?.ExecutionTiming && typeof device.ExecutionTiming === "object"
+    ? device.ExecutionTiming
+    : {};
+  const overlayTiming = (defaults, configured) => Object.fromEntries(Object.entries(defaults).map(([itemName, fields]) => [
+    itemName,
+    Object.fromEntries(Object.entries(fields).map(([fieldName, values]) => {
+      const configuredValues = configured?.[itemName]?.[fieldName];
+      if (Array.isArray(values)) {
+        return [fieldName, values.map((value, index) => Number.isFinite(Number(configuredValues?.[index])) ? Number(configuredValues[index]) : value)];
+      }
+      return [fieldName, Object.fromEntries(Object.entries(values).map(([key, value]) => [
+        key,
+        Number.isFinite(Number(configuredValues?.[key])) ? Number(configuredValues[key]) : value,
+      ]))];
+    })),
+  ]));
+  const rawFluctuation = configuredExecution.fluctuation || {};
+  draft.execution = {
+    mode: configuredExecution.mode === "fluctuation" ? "fluctuation" : "fixed",
+    fluctuation: {
+      kind: rawFluctuation.kind === "offset" ? "offset" : "ratio",
+      samplingMode: rawFluctuation.samplingMode === "per-init" ? "per-init" : "per-move",
+      ratio: Math.max(0, Math.min(1, Number(rawFluctuation.ratio) || 0)),
+      minimumOffsetSeconds: Number.isFinite(Number(rawFluctuation.minimumOffsetSeconds)) ? Number(rawFluctuation.minimumOffsetSeconds) : 0,
+      maximumOffsetSeconds: Number.isFinite(Number(rawFluctuation.maximumOffsetSeconds)) ? Number(rawFluctuation.maximumOffsetSeconds) : 0,
+    },
+    stations: overlayTiming(draft.stations, configuredExecution.stations),
+    robots: overlayTiming(draft.robots, configuredExecution.robots),
+  };
+  return draft;
+}
+
+/** 读取一个理论时间输入所对应的固定执行秒数。 */
+function configuredExecutionTime(dataset) {
+  const section = dataset["device-timing-target"]?.startsWith("station") ? "stations" : "robots";
+  const fields = state.deviceTimingDraft?.execution?.[section]?.[dataset["device-name"]];
+  if (!fields) return 0;
+  return dataset["device-timing-target"]?.endsWith("map")
+    ? fields[dataset["timing-field"]]?.[dataset["timing-key"]] ?? 0
+    : fields[dataset["timing-field"]]?.[Number(dataset["timing-index"])] ?? 0;
+}
+
+/** 生成理论/固定执行时间输入组，波动模式下固定值保留但不可编辑。 */
+function deviceTimeInput(value, label, dataset) {
+  const attributes = Object.entries(dataset)
+    .map(([name, item]) => `data-${name}="${escapeHtml(item)}"`)
+    .join(" ");
+  const numericValue = Number(value);
+  const executionValue = Number(configuredExecutionTime(dataset));
+  const executionDisabled = state.deviceTimingDraft?.execution?.mode === "fluctuation" ? " disabled" : "";
+  const executionAttributes = attributes.replaceAll("data-device-timing-target", "data-device-execution-target");
+  return `<span class="device-time-pair"><label><small>理论</small><span class="device-time-input"><input type="number" min="0" step="any" inputmode="decimal" required value="${Number.isFinite(numericValue) ? numericValue : 0}" aria-label="${escapeHtml(label)}（理论）" ${attributes}><span>s</span></span></label><label><small>执行</small><span class="device-time-input"><input type="number" min="0" step="any" inputmode="decimal" required value="${Number.isFinite(executionValue) ? executionValue : 0}" aria-label="${escapeHtml(label)}（固定执行）" ${executionAttributes}${executionDisabled}><span>s</span></span></label></span>`;
+}
+
+/** 绘制设备实际执行时间模式；固定值在各动作表中与理论值并列编辑。 */
+function renderExecutionTimingConfiguration() {
+  const container = document.getElementById("deviceExecutionTimingEditor");
+  const execution = state.deviceTimingDraft?.execution;
+  if (!container || !execution) {
+    if (container) container.innerHTML = `<div class="device-config-empty"><strong>暂无执行时间配置</strong><span>请先选择设备。</span></div>`;
+    return;
+  }
+  const fluctuating = execution.mode === "fluctuation";
+  const offset = execution.fluctuation.kind === "offset";
+  container.innerHTML = `
+    <section class="execution-timing-card">
+      <header><div><h3>实际动作时长</h3><p>算法始终使用理论时间；平台状态机只在运行设置启用后应用这里的执行时间。</p></div></header>
+      <div class="execution-mode-grid" role="radiogroup" aria-label="执行时间模式">
+        <label class="run-setting-option"><span class="run-setting-option-main"><input type="radio" name="executionTimingMode" value="fixed" ${fluctuating ? "" : "checked"}><span>固定执行值</span></span><small>使用设备时间和机器手时间表中并列的“执行”值。</small></label>
+        <label class="run-setting-option"><span class="run-setting-option-main"><input type="radio" name="executionTimingMode" value="fluctuation" ${fluctuating ? "checked" : ""}><span>理论值随机波动</span></span><small>仅 init 设备动作时间参与波动，路径加工时长保持不变；按 seed 生成可复现样本。</small></label>
+      </div>
+      <div class="execution-fluctuation-fields" ${fluctuating ? "" : "hidden"}>
+        <label class="field"><span>波动方式</span><select id="executionFluctuationKind"><option value="ratio" ${offset ? "" : "selected"}>比例（±）</option><option value="offset" ${offset ? "selected" : ""}>最小/最大偏移</option></select></label>
+        <label class="field" ${offset ? "hidden" : ""}><span>波动比例</span><input id="executionFluctuationRatio" type="number" min="0" max="100" step="0.1" value="${(execution.fluctuation.ratio * 100).toFixed(1)}"><small>例如 10 表示理论时长的 ±10%。</small></label>
+        <label class="field" ${offset ? "hidden" : ""}><span>抽样口径</span><select id="executionSamplingMode"><option value="per-move" ${execution.fluctuation.samplingMode === "per-init" ? "" : "selected"}>每个 Move 重新随机</option><option value="per-init" ${execution.fluctuation.samplingMode === "per-init" ? "selected" : ""}>每个 init 时间项初次随机后固定</option></select><small>固定抽样在本次运行及后续重算中复用，同 seed 可复现。</small></label>
+        <label class="field" ${offset ? "" : "hidden"}><span>最小波动（秒）</span><input id="executionMinimumOffset" type="number" step="any" value="${execution.fluctuation.minimumOffsetSeconds}"></label>
+        <label class="field" ${offset ? "" : "hidden"}><span>最大波动（秒）</span><input id="executionMaximumOffset" type="number" step="any" value="${execution.fluctuation.maximumOffsetSeconds}"></label>
+      </div>
+      <div class="device-time-inline-empty">固定模式的具体执行值位于“设备时间”和“机器手时间”表格，每个理论值右侧均有对应执行值。</div>
+    </section>`;
+}
+
+/** 根据当前设备、脏状态和保存状态刷新设备配置页头部反馈与操作按钮。 */
+function renderDeviceConfigHeader() {
+  const hasDevice = Boolean(state.workspaceDeviceId && state.baseDevice);
+  document.getElementById("deviceConfigSelectedName").textContent = hasDevice
+    ? displayDeviceName(state.deviceName)
+    : "尚未选择设备";
+  const status = document.getElementById("deviceTimingStatus");
+  status.textContent = state.deviceTimingSaving
+    ? "正在保存时间参数…"
+    : state.deviceTimingDirty
+      ? "有尚未保存的时间修改"
+      : state.deviceTimingStatusMessage;
+  status.classList.toggle("is-dirty", state.deviceTimingDirty);
+  status.classList.toggle("is-saving", state.deviceTimingSaving);
+  document.getElementById("resetDeviceTimingButton").disabled = !hasDevice || !state.deviceTimingDirty || state.deviceTimingSaving;
+  document.getElementById("saveDeviceTimingButton").disabled = !hasDevice || !state.deviceTimingDirty || state.deviceTimingSaving;
+}
+
+/** 刷新站点和机器手选择器，使配置对象切换后仍保持可用的当前项。 */
+function renderDeviceTimingSelectors() {
+  const stationSelect = document.getElementById("deviceStationSelect");
+  const robotSelect = document.getElementById("deviceRobotSelect");
+  if (!state.stationNames.includes(state.deviceStationName)) state.deviceStationName = state.stationNames[0] || "";
+  if (!state.robotNames.includes(state.deviceRobotName)) state.deviceRobotName = state.robotNames[0] || "";
+  stationSelect.innerHTML = state.stationNames.length
+    ? state.stationNames.map(name => `<option value="${escapeHtml(name)}" ${name === state.deviceStationName ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")
+    : `<option value="">请先选择设备</option>`;
+  robotSelect.innerHTML = state.robotNames.length
+    ? state.robotNames.map(name => `<option value="${escapeHtml(name)}" ${name === state.deviceRobotName ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")
+    : `<option value="">请先选择设备</option>`;
+  stationSelect.disabled = !state.stationNames.length;
+  robotSelect.disabled = !state.robotNames.length;
+  const stationIndex = state.stationNames.indexOf(state.deviceStationName);
+  const robotIndex = state.robotNames.indexOf(state.deviceRobotName);
+  document.getElementById("previousDeviceStationButton").disabled = stationIndex <= 0;
+  document.getElementById("nextDeviceStationButton").disabled = stationIndex < 0 || stationIndex >= state.stationNames.length - 1;
+  document.getElementById("previousDeviceRobotButton").disabled = robotIndex <= 0;
+  document.getElementById("nextDeviceRobotButton").disabled = robotIndex < 0 || robotIndex >= state.robotNames.length - 1;
+}
+
+/** 按页面当前顺序切换站点或机器手，减少大型设备中反复展开下拉框的操作。 */
+function stepDeviceTimingSelection(kind, offset) {
+  const stationSelection = kind === "station";
+  const names = stationSelection ? state.stationNames : state.robotNames;
+  const currentName = stationSelection ? state.deviceStationName : state.deviceRobotName;
+  const nextIndex = names.indexOf(currentName) + offset;
+  if (nextIndex < 0 || nextIndex >= names.length) return;
+  if (stationSelection) {
+    state.deviceStationName = names[nextIndex];
+    renderDeviceTimingConfiguration();
+    return;
+  }
+  state.deviceRobotName = names[nextIndex];
+  renderDeviceTimingConfiguration();
+}
+
+/** 绘制当前站点的动作时间表和 LoadLock/Aligner 等专项状态切换时间。 */
+function renderDeviceStationTiming() {
+  const container = document.getElementById("deviceStationTimingEditor");
+  const stationName = state.deviceStationName;
+  const station = state.baseDevice?.Stations?.[stationName];
+  const timing = state.deviceTimingDraft?.stations?.[stationName];
+  if (!station || !timing) {
+    container.innerHTML = `<div class="device-config-empty"><strong>暂无可配置站点</strong><span>选择或导入设备后，可在这里校准站点动作时间。</span></div>`;
+    return;
+  }
+
+  const actionControllers = [...new Set(STATION_ACTION_TIME_FIELDS.flatMap(
+    ({ key }) => Object.keys(timing[key] || {}),
+  ))].sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+  const actionRows = actionControllers.map(controller => `
+    <tr>
+      <th scope="row"><strong>${escapeHtml(controller)}</strong></th>
+      ${STATION_ACTION_TIME_FIELDS.map(({ key, label }) => {
+        if (!Object.prototype.hasOwnProperty.call(timing[key] || {}, controller)) return `<td><span class="device-time-unavailable">—</span></td>`;
+        return `<td>${deviceTimeInput(timing[key][controller], `${stationName} ${controller} ${label}`, {
+          "device-timing-target": "station-map",
+          "device-name": stationName,
+          "timing-field": key,
+          "timing-key": controller,
+        })}</td>`;
+      }).join("")}
+    </tr>
+  `).join("");
+
+  const alignmentEntries = Object.entries(timing.AlignmentTime || {});
+  const prePrepareRows = Array.isArray(station.PrePrepareTime) ? station.PrePrepareTime : [];
+  const specialRows = [
+    ...alignmentEntries.map(([slotId, value]) => `
+      <div class="device-transition-row">
+        <span class="device-transition-kind">AlignmentTime</span>
+        <strong>Slot ${escapeHtml(slotId)}</strong>
+        <span class="device-transition-route">key=${escapeHtml(slotId)}</span>
+        ${deviceTimeInput(value, `${stationName} Slot ${slotId} 对准时间`, {
+          "device-timing-target": "station-map",
+          "device-name": stationName,
+          "timing-field": "AlignmentTime",
+          "timing-key": slotId,
+        })}
+      </div>
+    `),
+    ...prePrepareRows.map((row, index) => `
+      <div class="device-transition-row">
+        <span class="device-transition-kind">PrePrepareTime</span>
+        <strong>${escapeHtml(row?.LastItem || "—")} <i aria-hidden="true">→</i> ${escapeHtml(row?.CurrentItem || "—")}</strong>
+        <span class="device-transition-route">${escapeHtml(row?.PrePrepareType || "PrePrepareType")}</span>
+        ${deviceTimeInput(timing.PrePrepareTime?.[index] ?? row?.Time ?? 0, `${stationName} ${row?.PrePrepareType || "状态切换"}`, {
+          "device-timing-target": "station-sequence",
+          "device-name": stationName,
+          "timing-field": "PrePrepareTime",
+          "timing-index": index,
+        })}
+      </div>
+    `),
+  ];
+  container.innerHTML = `
+    <section class="device-time-section" aria-labelledby="stationActionTimingTitle">
+      <header><h3 id="stationActionTimingTitle">Station action fields</h3></header>
+      ${actionRows ? `<div class="device-time-table-wrap"><table class="device-time-table"><thead><tr><th>Robot</th>${STATION_ACTION_TIME_FIELDS.map(({ label }) => `<th><code>${label}</code></th>`).join("")}</tr></thead><tbody>${actionRows}</tbody></table></div>` : `<div class="device-time-inline-empty">无可编辑字段</div>`}
+    </section>
+    <section class="device-time-section" aria-labelledby="stationTransitionTimingTitle">
+      <header><h3 id="stationTransitionTimingTitle">Station-specific fields</h3></header>
+      ${specialRows.length ? `<div class="device-transition-list">${specialRows.join("")}</div>` : `<div class="device-time-inline-empty">无可编辑字段</div>`}
+    </section>`;
+}
+
+/** 绘制当前机器手的取放片时间和按起点筛选的站点间移动时间。 */
+function renderDeviceRobotTiming() {
+  const container = document.getElementById("deviceRobotTimingEditor");
+  const robotName = state.deviceRobotName;
+  const robot = state.baseDevice?.Robots?.[robotName];
+  const timing = state.deviceTimingDraft?.robots?.[robotName];
+  if (!robot || !timing) {
+    container.innerHTML = `<div class="device-config-empty"><strong>暂无可配置机器手</strong><span>当前设备没有声明机器手时间参数。</span></div>`;
+    return;
+  }
+
+  const actionStations = [...new Set(ROBOT_ACTION_TIME_FIELDS.flatMap(
+    ({ key }) => Object.keys(timing[key] || {}),
+  ))].sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+  const actionRows = actionStations.map(stationName => `
+    <tr><th scope="row"><strong>${escapeHtml(stationName)}</strong></th>${ROBOT_ACTION_TIME_FIELDS.map(({ key, label }) => {
+      if (!Object.prototype.hasOwnProperty.call(timing[key] || {}, stationName)) return `<td><span class="device-time-unavailable">—</span></td>`;
+      return `<td>${deviceTimeInput(timing[key][stationName], `${robotName} 在 ${stationName} 的${label}时间`, {
+        "device-timing-target": "robot-map",
+        "device-name": robotName,
+        "timing-field": key,
+        "timing-key": stationName,
+      })}</td>`;
+    }).join("")}</tr>
+  `).join("");
+
+  const transferRows = Array.isArray(robot.PrepTransTime) ? robot.PrepTransTime : [];
+  const selectedAxis = state.deviceRobotTransferAxes[robotName] === "dest" ? "dest" : "src";
+  const selectedField = selectedAxis === "src" ? "SrcStation" : "DestStation";
+  const counterpartField = selectedAxis === "src" ? "DestStation" : "SrcStation";
+  const selectableStations = [...new Set(transferRows.map(row => String(row?.[selectedField] || "")).filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+  const selectionKey = `${robotName}:${selectedAxis}`;
+  let selectedStation = state.deviceRobotTransferSources[selectionKey];
+  if (!selectableStations.includes(selectedStation)) selectedStation = selectableStations[0] || "";
+  state.deviceRobotTransferSources[selectionKey] = selectedStation;
+  const visibleTransfers = transferRows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => String(row?.[selectedField] || "") === selectedStation);
+  const transfersByCounterpart = new Map();
+  visibleTransfers.forEach(item => {
+    const counterpart = String(item.row?.[counterpartField] || "");
+    if (!transfersByCounterpart.has(counterpart)) transfersByCounterpart.set(counterpart, { 0: [], 1: [] });
+    const type = Number(item.row?.TransType) === 1 ? 1 : 0;
+    transfersByCounterpart.get(counterpart)[type].push(item);
+  });
+  const transferMatrixRows = [...transfersByCounterpart.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, undefined, { numeric: true }))
+    .map(([destination, byType]) => `
+      <tr>
+        <th scope="row"><strong>${escapeHtml(destination || "—")}</strong></th>
+        ${[0, 1].map(type => {
+          const entries = byType[type];
+          if (!entries.length) return `<td><span class="device-time-unavailable">—</span></td>`;
+          return `<td>${entries.map(({ row, index }) => deviceTimeInput(
+            timing.PrepTransTime?.[index] ?? row?.Time ?? 0,
+            `${robotName} ${row?.SrcStation || "—"} → ${row?.DestStation || "—"} ${type === 1 ? "OnLoad" : "NoLoad"} Time`,
+            {
+              "device-timing-target": "robot-sequence",
+              "device-name": robotName,
+              "timing-field": "PrepTransTime",
+              "timing-index": index,
+            },
+          )).join("")}</td>`;
+        }).join("")}
+      </tr>
+    `).join("");
+
+  container.innerHTML = `
+    <section class="device-time-section robot-action-section" aria-labelledby="robotActionTimingTitle">
+      <header><h3 id="robotActionTimingTitle">Robot action fields</h3></header>
+      ${actionRows ? `<div class="device-time-table-wrap"><table class="device-time-table compact"><thead><tr><th>Station</th>${ROBOT_ACTION_TIME_FIELDS.map(({ label }) => `<th><code>${label}</code></th>`).join("")}</tr></thead><tbody>${actionRows}</tbody></table></div>` : `<div class="device-time-inline-empty">无可编辑字段</div>`}
+    </section>
+    <section class="device-time-section" aria-labelledby="robotTransferTimingTitle">
+      <header class="device-transfer-head">
+        <h3 id="robotTransferTimingTitle">PrepTransTime</h3>
+        <div class="device-transfer-filters">
+          <label><span>Field</span><select data-robot-transfer-axis="${escapeHtml(robotName)}"><option value="src" ${selectedAxis === "src" ? "selected" : ""}>SrcStation</option><option value="dest" ${selectedAxis === "dest" ? "selected" : ""}>DestStation</option></select></label>
+          <label><span>Station</span><select data-robot-transfer-station="${escapeHtml(robotName)}" ${selectableStations.length ? "" : "disabled"}>${selectableStations.length ? selectableStations.map(stationName => `<option value="${escapeHtml(stationName)}" ${stationName === selectedStation ? "selected" : ""}>${escapeHtml(stationName)}</option>`).join("") : `<option>无移动规则</option>`}</select></label>
+        </div>
+      </header>
+      ${transferMatrixRows ? `
+        <div class="device-transfer-fill" data-robot-transfer-fill-toolbar>
+          <label><span>批量 Time</span><span class="device-time-input"><input type="number" min="0" step="any" inputmode="decimal" data-robot-transfer-fill-value aria-label="批量填写 PrepTransTime"><span>s</span></span></label>
+          <button class="btn small" type="button" data-robot-transfer-fill="0">填入 NoLoad</button>
+          <button class="btn small" type="button" data-robot-transfer-fill="1">填入 OnLoad</button>
+          <button class="btn small" type="button" data-robot-transfer-fill="all">填入全部</button>
+        </div>
+        <div class="device-time-table-wrap"><table class="device-time-table transfer"><thead><tr><th>${counterpartField}</th><th><code>Time</code> · NoLoad <small>TransType=0</small></th><th><code>Time</code> · OnLoad <small>TransType=1</small></th></tr></thead><tbody>${transferMatrixRows}</tbody></table></div>` : `<div class="device-time-inline-empty">当前 ${selectedField} 无可编辑字段</div>`}
+    </section>`;
+}
+
+/** 将一个秒数批量写入当前机器手、当前选中轴（SrcStation/DestStation）下所选站点的 NoLoad、OnLoad 或全部移动规则。 */
+function fillRobotTransferTimes(button) {
+  const toolbar = button.closest("[data-robot-transfer-fill-toolbar]");
+  const input = toolbar?.querySelector("[data-robot-transfer-fill-value]");
+  const value = Number(input?.value);
+  const valid = input && input.value.trim() !== "" && Number.isFinite(value) && value >= 0;
+  if (!valid) {
+    input?.setCustomValidity("请输入大于或等于 0 的有限秒数");
+    input?.reportValidity();
+    return;
+  }
+  input.setCustomValidity("");
+  const robotName = state.deviceRobotName;
+  const selectedAxis = state.deviceRobotTransferAxes[robotName] === "dest" ? "dest" : "src";
+  const selectedField = selectedAxis === "src" ? "SrcStation" : "DestStation";
+  const selectedStation = state.deviceRobotTransferSources[`${robotName}:${selectedAxis}`];
+  const scope = button.dataset.robotTransferFill;
+  const robot = state.baseDevice?.Robots?.[robotName];
+  const draft = state.deviceTimingDraft?.robots?.[robotName];
+  if (!robot || !draft || !Array.isArray(robot.PrepTransTime) || !Array.isArray(draft.PrepTransTime)) return;
+  robot.PrepTransTime.forEach((row, index) => {
+    const matchesStation = String(row?.[selectedField] || "") === selectedStation;
+    const matchesType = scope === "all" || Number(row?.TransType) === Number(scope);
+    if (matchesStation && matchesType) draft.PrepTransTime[index] = value;
+  });
+  markDeviceTimingDirty();
+  renderDeviceRobotTiming();
+}
+
+/** 刷新设备配置分类、表单与保存状态；仅显示当前分类以控制高密度表格的认知负担。 */
+function renderDeviceTimingConfiguration() {
+  renderDeviceConfigHeader();
+  renderDeviceTimingSelectors();
+  document.querySelectorAll("[data-device-config-section]").forEach(button => {
+    const active = button.dataset.deviceConfigSection === state.deviceConfigSection;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
+  });
+  document.querySelectorAll("[data-device-config-view]").forEach(view => {
+    const active = view.dataset.deviceConfigView === state.deviceConfigSection;
+    view.hidden = !active;
+    view.classList.toggle("active", active);
+  });
+  if (state.deviceConfigSection === "station-time") renderDeviceStationTiming();
+  if (state.deviceConfigSection === "robot-time") renderDeviceRobotTiming();
+  if (state.deviceConfigSection === "robot-slot") renderRobotSlots();
+  if (state.deviceConfigSection === "execution-time") renderExecutionTimingConfiguration();
+}
+
+/** 从当前设备重新建立时间草稿，既用于设备切换，也用于撤销尚未保存的修改。 */
+function resetDeviceTimingDraft(message = "当前设备时间参数已加载") {
+  state.deviceTimingDraft = state.baseDevice ? buildDeviceTimingDraft(state.baseDevice) : null;
+  state.deviceTimingDirty = false;
+  state.deviceTimingSaving = false;
+  state.deviceTimingStatusMessage = state.baseDevice ? message : "选择设备后开始配置";
+  renderDeviceTimingConfiguration();
+}
+
+/** 标记设备时间草稿已改变，并立即更新页头保存反馈。 */
+function markDeviceTimingDirty() {
+  if (!state.deviceTimingDraft || !state.workspaceDeviceId) return;
+  state.deviceTimingDirty = true;
+  state.deviceTimingStatusMessage = "有尚未保存的时间修改";
+  renderDeviceConfigHeader();
+}
+
+/** 把一个时间输入写回草稿；负数或非数字保留为无效状态并阻止后续保存。 */
+function updateDeviceTimingFromControl(control) {
+  const value = Number(control.value);
+  const valid = control.value.trim() !== "" && Number.isFinite(value) && value >= 0;
+  control.setCustomValidity(valid ? "" : "请输入大于或等于 0 的有限秒数");
+  control.classList.toggle("is-invalid", !valid);
+  const targetName = control.dataset.deviceExecutionTarget ? "deviceExecutionTarget" : "deviceTimingTarget";
+  const target = control.dataset[targetName];
+  const section = target?.startsWith("station") ? "stations" : "robots";
+  const root = targetName === "deviceExecutionTarget" ? state.deviceTimingDraft?.execution : state.deviceTimingDraft;
+  const item = root?.[section]?.[control.dataset.deviceName];
+  if (!item) return;
+  if (target?.endsWith("map")) {
+    item[control.dataset.timingField][control.dataset.timingKey] = valid ? value : Number.NaN;
+  } else {
+    item[control.dataset.timingField][Number(control.dataset.timingIndex)] = valid ? value : Number.NaN;
+  }
+  markDeviceTimingDirty();
+}
+
+/** 校验草稿中的每个秒数，确保保存请求不会包含 NaN、Infinity 或负数。 */
+function validateDeviceTimingDraft() {
+  let invalidLabel = "";
+  const timingSections = {
+    stations: state.deviceTimingDraft?.stations || {},
+    robots: state.deviceTimingDraft?.robots || {},
+    executionStations: state.deviceTimingDraft?.execution?.stations || {},
+    executionRobots: state.deviceTimingDraft?.execution?.robots || {},
+  };
+  Object.entries(timingSections).some(([sectionName, items]) => Object.entries(items).some(([itemName, fields]) => Object.entries(fields).some(([fieldName, values]) => {
+    const rows = Array.isArray(values) ? values.map((value, index) => [index, value]) : Object.entries(values || {});
+    const invalid = rows.find(([, value]) => !Number.isFinite(Number(value)) || Number(value) < 0);
+    if (!invalid) return false;
+    invalidLabel = `${sectionName}.${itemName}.${fieldName}.${invalid[0]}`;
+    return true;
+  })));
+  if (invalidLabel) throw new Error(`${invalidLabel} 必须是大于或等于 0 的有限秒数`);
+  const fluctuation = state.deviceTimingDraft?.execution?.fluctuation;
+  if (fluctuation?.minimumOffsetSeconds > fluctuation?.maximumOffsetSeconds) throw new Error("执行时间最小波动不能大于最大波动");
+}
+
+/** 保存当前设备的全部时间草稿，并用服务端返回的拓扑刷新排程与可视化数据。 */
+async function saveDeviceTiming() {
+  if (!state.deviceTimingDirty || state.deviceTimingSaving || !state.workspaceDeviceId) return;
+  validateDeviceTimingDraft();
+  state.deviceTimingSaving = true;
+  renderDeviceConfigHeader();
+  try {
+    const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/device-timing`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ timing: state.deviceTimingDraft }),
+    });
+    state.workspaceDevice.device = structuredClone(result.device);
+    applyDeviceTopology(result.device, state.deviceName, state.robotSlots);
+
+    resetDeviceTimingDraft("时间参数已保存并应用到全部测试");
+    setWorkspaceStatus("设备时间参数已保存", "saved");
+  } catch (error) {
+    state.deviceTimingSaving = false;
+    state.deviceTimingStatusMessage = `保存失败：${error.message}`;
+    renderDeviceConfigHeader();
+    throw error;
+  }
+}
+
+/** 切换设备配置分类，保留未保存草稿并只重绘目标编辑器。 */
+function switchDeviceConfigSection(sectionName) {
+  if (!document.querySelector(`[data-device-config-view="${sectionName}"]`)) return;
+  state.deviceConfigSection = sectionName;
+  renderDeviceTimingConfiguration();
+}
+
+/** 在 Station—Robot 可达图中寻找 LoadPort 到 PM 的最短路径。 */
+function shortestDevicePath(source, destination) {
+  const queue = [[`S:${source}`]], visited = new Set(queue[0]);
+  while (queue.length) {
+    const path = queue.shift(), node = path.at(-1);
+    if (node === `S:${destination}`) return path.map(item => item.slice(2));
+    const [kind, name] = node.split(":");
+    const neighbours = kind === "S" ? state.robotNames.filter(robot => (state.robotScopes[robot] || []).includes(name)).map(robot => `R:${robot}`) : (state.robotScopes[name] || []).map(station => `S:${station}`);
+    neighbours.forEach(next => { if (!visited.has(next)) { visited.add(next); queue.push([...path, next]); } });
+  }
+  return [];
+}
+
+/** 用设备可达关系生成完整的往返 Route。 */
+function defaultRouteStages(routeName) {
+  const port = state.loadPorts[0] || "", modules = state.processModules.slice(0, 2), outward = shortestDevicePath(port, modules[0]);
+  if (outward.length < 3) return linkRouteSteps([makeStage(port), makeStage(state.robotNames[0] || ""), makeStage(modules, true, `${routeName}_Step2`), makeStage(state.robotNames[0] || ""), makeStage(port)]);
+  outward[outward.length - 1] = modules;
+  const full = [...outward, ...outward.slice(0, -1).reverse()];
+  return linkRouteSteps(full.map((name, index) => makeStage(name, index === outward.length - 1, index === outward.length - 1 ? `${routeName}_Step${index}` : "")));
+}
+
+/** 为当前设备创建一套可直接编辑的默认测试集；Route/Clean 归设备共享。 */
+function makeDefaultTestCase(name = "默认测试集") {
+  if (!state.routes.length) {
+    const routeName = "RouteA";
+    state.routes.push({ name: routeName, group: routeName, bufferOption: 0, prePJobCleanRefs: [], postPJobCleanRefs: [], postCJobCleanRefs: [], stages: defaultRouteStages(routeName) });
+  }
+  const routeName = state.routes[0]?.name || "";
+  return {
+    name, group: state.activeTestGroup || "", strategy: "heuristic", roundCount: 2, times: [0, 70],
+    options: { ...DEFAULT_SCHEDULE_OPTIONS },
+    cleans: [], routes: state.routes.map(routeTemplateForSave),
+    routeConfigs: normalizeTestRouteConfigs({}, state.routes),
+    rounds: [
+      makeRound(1, 0, routeName, state.loadPorts[0] || ""),
+      makeRound(2, 70, routeName, state.loadPorts[1] || state.loadPorts[0] || "")
+    ]
+  };
+}
+
+/** 显示小型输入或确认弹窗，并在打开时把焦点交给可操作控件。 */
+function showWorkspaceDialog({ title, message, value = "", needsInput = false, dangerous = false }) {
+  const dialog = document.getElementById("workspaceDialog"), input = document.getElementById("workspaceDialogInput"), confirm = document.getElementById("workspaceDialogConfirm");
+  document.getElementById("workspaceDialogTitle").textContent = title;
+  document.getElementById("workspaceDialogMessage").textContent = message;
+  input.hidden = !needsInput; input.required = needsInput; input.value = value;
+  confirm.textContent = dangerous ? "确认删除" : "确认";
+  confirm.classList.toggle("danger", dangerous); confirm.classList.toggle("primary", !dangerous);
+  dialog.showModal();
+  window.setTimeout(() => (needsInput ? input : confirm).focus(), 0);
+  return new Promise(resolve => dialog.addEventListener("close", () => {
+    resolve(dialog.returnValue === "confirm" ? (needsInput ? input.value.trim() : true) : null);
+  }, { once: true }));
+}
+
+const compactSelectMenus = new WeakMap();
+
+/** 返回关联菜单，即使菜单为了避免裁剪而临时挂载在页面根节点。 */
+function compactSelectMenu(wrapper) {
+  return compactSelectMenus.get(wrapper) || wrapper.querySelector(".compact-select-menu");
+}
+
+/** 关闭单个下拉菜单，并将浮层归还到原控件，避免留下孤立菜单。 */
+function closeCompactSelect(wrapper) {
+  const trigger = wrapper.querySelector(".compact-select-trigger");
+  const menu = compactSelectMenu(wrapper);
+  wrapper.classList.remove("is-open");
+  trigger.setAttribute("aria-expanded", "false");
+  menu.hidden = true;
+  menu.removeAttribute("style");
+  if (menu.parentElement !== wrapper) wrapper.append(menu);
+}
+
+/** 关闭除指定控件外的紧凑下拉菜单。 */
+function closeCompactSelects(exceptSelect = null) {
+  document.querySelectorAll(".compact-select.is-open").forEach(wrapper => {
+    if (wrapper.querySelector("select") !== exceptSelect) closeCompactSelect(wrapper);
+  });
+}
+
+/** 返回首页和重算任务中需要使用统一样式的单选下拉框。 */
+function compactSelectTargets() {
+  return document.querySelectorAll("select[data-compact-label], #roundList select:not([multiple])");
+}
+
+/** 读取原生下拉框在视觉控件和无障碍标签中使用的名称。 */
+function compactSelectLabel(select) {
+  return select.dataset.compactLabel
+    || select.getAttribute("aria-label")
+    || select.closest(".field")?.querySelector("label")?.textContent?.trim()
+    || "请选择";
+}
+
+/** 根据原生 select 的当前选项同步紧凑下拉框的按钮与菜单内容。 */
+function refreshCompactSelect(select) {
+  const wrapper = select.parentElement;
+  if (!wrapper?.classList.contains("compact-select")) return;
+  const trigger = wrapper.querySelector(".compact-select-trigger");
+  const menu = compactSelectMenu(wrapper);
+  const selectedOption = select.selectedOptions[0] || select.options[0];
+  trigger.disabled = select.disabled;
+  trigger.setAttribute("aria-label", `${compactSelectLabel(select)}：${selectedOption?.textContent?.trim() || "未选择"}`);
+  trigger.querySelector(".compact-select-value").textContent = selectedOption?.textContent?.trim() || "未选择";
+  menu.innerHTML = Array.from(select.options).map((option, index) => `<button class="compact-select-option" type="button" role="option" data-option-index="${index}" aria-selected="${option.selected}" ${option.disabled ? "disabled" : ""} ${option.hidden ? "hidden" : ""}>${escapeHtml(option.textContent?.trim() || "未命名选项")}</button>`).join("");
+}
+
+/** 为首页主选择器建立带标签、选中状态和键盘焦点的浅色下拉交互。 */
+function initializeCompactSelects() {
+  compactSelectTargets().forEach(select => {
+    if (select.parentElement?.classList.contains("compact-select")) return;
+    const wrapper = document.createElement("div");
+    const trigger = document.createElement("button");
+    const menu = document.createElement("div");
+    wrapper.className = "compact-select";
+    trigger.className = "compact-select-trigger";
+    trigger.type = "button";
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.innerHTML = `<span class="compact-select-label">${escapeHtml(compactSelectLabel(select))}</span><span class="compact-select-value"></span><i class="compact-select-chevron" aria-hidden="true"></i>`;
+    menu.className = "compact-select-menu";
+    menu.setAttribute("role", "listbox");
+    menu.setAttribute("aria-label", compactSelectLabel(select));
+    menu.hidden = true;
+    select.before(wrapper);
+    wrapper.append(select, trigger, menu);
+    compactSelectMenus.set(wrapper, menu);
+    const setOpen = open => {
+      if (!open) {
+        closeCompactSelect(wrapper);
+        return;
+      }
+      closeCompactSelects(select);
+      const triggerBounds = trigger.getBoundingClientRect();
+      (select.closest("dialog") || document.body).append(menu);
+      menu.hidden = false;
+      menu.style.position = "fixed";
+      menu.style.top = `${triggerBounds.bottom + 6}px`;
+      menu.style.left = `${triggerBounds.left}px`;
+      menu.style.width = `${triggerBounds.width}px`;
+      wrapper.classList.add("is-open");
+      trigger.setAttribute("aria-expanded", "true");
+      window.setTimeout(() => menu.querySelector("[aria-selected='true']")?.focus(), 0);
+    };
+    trigger.addEventListener("click", () => !select.disabled && setOpen(!wrapper.classList.contains("is-open")));
+    trigger.addEventListener("keydown", event => {
+      if (event.key === "Escape") setOpen(false);
+      if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) {
+        event.preventDefault();
+        setOpen(true);
+      }
+    });
+    menu.addEventListener("click", event => {
+      const optionButton = event.target.closest("[data-option-index]");
+      if (!optionButton || optionButton.disabled) return;
+      select.selectedIndex = Number(optionButton.dataset.optionIndex);
+      setOpen(false);
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    refreshCompactSelect(select);
+  });
+  if (!document.body.dataset.compactSelectCloseHandler) {
+    document.body.dataset.compactSelectCloseHandler = "true";
+    document.addEventListener("click", event => {
+      if (!event.target.closest(".compact-select, .compact-select-menu")) closeCompactSelects();
+    });
+  }
+}
+
+/** 显示设备名时去掉常见的 .json 后缀，空值回退为“未命名设备”。 */
+function displayDeviceName(name) {
+  return String(name || "未命名设备").replace(/\.json$/i, "");
+}
+
+/** 更新设备、测试集下拉框和保存状态相关按钮。 */
+function renderWorkspaceControls() {
+  const deviceSelect = document.getElementById("deviceSelect"), tests = state.workspaceDevice?.tests || [];
+  deviceSelect.innerHTML = state.workspaceDevices.length ? state.workspaceDevices.map(device => `<option value="${escapeHtml(device.id)}" ${device.id === state.workspaceDeviceId ? "selected" : ""}>${escapeHtml(displayDeviceName(device.name))}</option>`).join("") : `<option value="">尚未导入设备</option>`;
+  const natural = (left, right) => left.localeCompare(right, undefined, { numeric: true });
+  const ungroupedTests = tests.some(test => !String(test.group || "").trim());
+  // “未分组”只在迁移前遗留测试实际存在时显示，避免给每台设备留下空的默认组。
+  const groups = [...new Set([
+    ...(ungroupedTests ? [""] : []),
+    ...(state.workspaceDevice?.testGroups || []).map(group => String(group || "").trim()).filter(Boolean),
+    ...tests.map(test => String(test.group || "").trim()).filter(Boolean),
+  ])].sort((left, right) => (!left) - (!right) || natural(left, right));
+  const selectedGroup = groups.includes(state.activeTestGroup) ? state.activeTestGroup : (groups[0] || "");
+  state.activeTestGroup = selectedGroup;
+  const groupSelect = document.getElementById("testGroupSelect");
+  groupSelect.innerHTML = groups.length ? groups.map(group => `<option value="${escapeHtml(group)}" title="${escapeHtml(group || "未分组")}" ${group === selectedGroup ? "selected" : ""}>${escapeHtml(group || "未分组")}</option>`).join("") : `<option value="">尚无测试组</option>`;
+  groupSelect.title = selectedGroup || (groups.length ? "未分组" : "尚无测试组");
+  groupSelect.disabled = !state.workspaceDeviceId || !groups.length;
+  const testSelect = document.getElementById("testCaseSelect");
+  const visibleTests = tests.filter(test => String(test.group || "").trim() === selectedGroup).sort((left, right) => natural(left.name, right.name));
+  testSelect.innerHTML = visibleTests.length ? visibleTests.map(test => `<option value="${escapeHtml(test.id)}" title="${escapeHtml(test.name)}" ${test.id === state.testCaseId ? "selected" : ""}>${escapeHtml(test.name)}</option>`).join("") : `<option value="">该组暂无测试</option>`;
+  testSelect.title = visibleTests.find(test => test.id === state.testCaseId)?.name || "该组暂无测试";
+  testSelect.disabled = !visibleTests.length;
+  const hasTest = Boolean(state.testCaseId);
+  const nameInput = document.getElementById("testCaseName"); nameInput.disabled = !hasTest; nameInput.value = state.testCaseName || ""; nameInput.title = state.testCaseName || "";
+  const testCreationPending = testCreationCoordinator.isPending;
+  document.getElementById("newTestButton").disabled = !state.workspaceDeviceId || testCreationPending;
+  document.getElementById("newGroupButton").disabled = !state.workspaceDeviceId;
+  document.getElementById("deleteDeviceButton").disabled = !state.workspaceDeviceId;
+  const isDefaultGroup = !selectedGroup;
+  const hasGroupTests = tests.some(test => String(test.group || "").trim() === selectedGroup);
+  document.getElementById("renameGroupButton").disabled = !state.workspaceDeviceId || isDefaultGroup;
+  document.getElementById("deleteGroupButton").disabled = !state.workspaceDeviceId || (isDefaultGroup && !hasGroupTests);
+  document.getElementById("deleteGroupButton").title = isDefaultGroup ? "删除“未分组”中的全部测试" : "删除当前测试组别";
+  document.getElementById("groupActionHint").textContent = isDefaultGroup && state.workspaceDeviceId ? "“未分组”不可重命名；有测试时可以删除其中全部测试。" : "";
+  document.getElementById("copyTestButton").disabled = !hasTest || testCreationPending;
+  document.getElementById("saveTestButton").disabled = !hasTest;
+  document.getElementById("deleteTestButton").disabled = tests.length <= 1;
+  const batchDisabled = runPreparationActive || (state.batchRunning && state.batchCancelRequested) || !state.serviceCompatible || !visibleTests.length;
+  document.getElementById("batchRunButton").disabled = batchDisabled;
+  document.getElementById("batchResultFilterButton").disabled = !visibleTests.length;
+  const emptyHint = document.getElementById("emptyGroupHint");
+  emptyHint.classList.toggle("visible", Boolean(state.workspaceDeviceId) && !visibleTests.length);
+  document.getElementById("emptyGroupNewTestButton").disabled = !state.workspaceDeviceId || testCreationPending;
+  const deviceType = {
+    single: "单腔非级联",
+    dual: "双腔非级联",
+    cascade: "级联",
+  }[detectDeviceTopologyLayout(state.device)];
+  document.getElementById("deviceSummary").innerHTML = state.device ? `<span class="chip good">${escapeHtml(deviceType)}</span>` : `<span class="chip">尚未选择设备</span>`;
+  const busy = runPreparationActive || state.batchRunning;
+  document.getElementById("runStrategyFields").disabled = busy;
+  document.getElementById("openRunSettingsButton").disabled = busy;
+  for (const [sourceId, targetId] of [["deviceSelect", "runDeviceSelect"], ["testGroupSelect", "runGroupSelect"]]) {
+    const source = document.getElementById(sourceId) as HTMLSelectElement;
+    const target = document.getElementById(targetId) as HTMLSelectElement;
+    target.innerHTML = source.innerHTML; target.value = source.value; target.disabled = source.disabled || busy;
+  }
+  document.getElementById("testContentFields").disabled = !hasTest;
+  if (!hasTest) document.getElementById("roundList").innerHTML = '<p class="hint">选择或新建测试后开始编辑。</p>';
+  document.getElementById("roundCount").disabled = !hasTest;
+  document.getElementById("saveAndRunPageButton").disabled = !hasTest;
+  document.getElementById("discardTestButton").disabled = !hasTest || !state.dirty;
+  document.querySelectorAll('[data-tab-target="test-management"], [data-tab-target="device-config"], [data-tab-target="route"]').forEach(button => {
+    button.disabled = busy; button.title = busy ? "运行结束后可编辑配置" : "";
+  });
+  renderTestCatalog(visibleTests);
+  compactSelectTargets().forEach(refreshCompactSelect);
+}
+
+/** 绘制当前测试组的只读目录卡片；名称居左、操作居右，编辑入口与内容表单保持分离。 */
+function companyCapacityBaselineFor(deviceName, testName) {
+  const key = `${String(deviceName || "").trim().toLocaleLowerCase()}\u0000${String(testName || "").trim().toLocaleLowerCase()}`;
+  const row = state.companyCapacityBaselines.find(item => `${String(item.deviceName || "").trim().toLocaleLowerCase()}\u0000${String(item.testName || "").trim().toLocaleLowerCase()}` === key);
+  const value = Number(row?.baselineWph);
+  return Number.isFinite(value) ? value : null;
+}
+
+function renderTestCatalog(tests) {
+  const body = document.getElementById("testCatalogBody");
+  if (!body) return;
+  const pending = testCreationCoordinator.pending;
+  const disabled = pending ? "disabled" : "";
+  const rows = tests.map(test => {
+    const copyLabel = pending?.mode === "copy" && pending.sourceTestId === test.id ? "复制中…" : "复制";
+    const baseline = companyCapacityBaselineFor(state.workspaceDevice?.name, test.name);
+    const baselineLabel = Number.isFinite(baseline) ? `<span class="test-list-baseline">Baseline ${baseline.toFixed(1)} 片/h</span>` : "";
+    return `<div class="test-list-row" data-test-row="${escapeHtml(test.id)}" role="listitem">
+      <div class="test-list-name"><strong>${escapeHtml(test.name || "未命名测试")}</strong>${baselineLabel}</div>
+      <div class="test-row-actions"><button class="btn small primary" type="button" data-test-action="edit" data-test-id="${escapeHtml(test.id)}" ${disabled}>编辑</button><button class="btn small" type="button" data-test-action="copy" data-test-id="${escapeHtml(test.id)}" ${disabled}>${copyLabel}</button><button class="btn small danger" type="button" data-test-action="delete" data-test-id="${escapeHtml(test.id)}" ${state.workspaceDevice?.tests?.length <= 1 || pending ? "disabled" : ""}>删除</button></div>
+    </div>`;
+  }).join("");
+  const pendingRow = pending ? `<div class="test-list-row test-list-row-pending" role="status">
+    <span class="test-creation-spinner" aria-hidden="true"></span>
+    <strong>${pending.mode === "copy" ? `正在复制“${escapeHtml(pending.sourceName)}”` : "正在新建测试"}，请稍候…</strong>
+  </div>` : "";
+  body.innerHTML = rows + pendingRow;
+  body.setAttribute("aria-busy", String(Boolean(pending)));
+}
+
+/** 上传公司产能 CSV，并刷新当前用例卡片的 Baseline 显示。 */
+async function importCompanyCapacityBaseline(file: File) {
+  const response = await fetch("/api/company-capacity-baselines/import", {
+    method: "POST", headers: { "Content-Type": "text/csv" }, body: file,
+  });
+  const result = await response.json();
+  if (!response.ok || result?.ok === false) throw new Error(result?.error || "Baseline 导入失败");
+  state.companyCapacityBaselines = await loadCompanyCapacityBaselines();
+  renderWorkspaceControls();
+  setWorkspaceStatus(`已导入 ${result.rowCount} 条产能 Baseline`, "saved");
+}
+
+/** 读取独立的公司产能快照，供用例卡片按设备和名称精确匹配。 */
+async function loadCompanyCapacityBaselines() {
+  const result = await requestJson("/api/company-capacity-baselines");
+  return Array.isArray(result.baselines) ? result.baselines : [];
+}
+
+/** 进入用例编辑态；目录选择和表格暂时收起。 */
+function showTestEditor() {
+  document.getElementById("testCatalogView").hidden = true;
+  document.getElementById("testEditorPanel").hidden = false;
+  renderRounds();
+  document.getElementById("testCaseName").focus();
+}
+
+/** 返回用例列表；调用方须先处理未保存草稿。 */
+function showTestCatalog() {
+  closeStepDrawer(); closePJobRoutePicker(false);
+  document.getElementById("testEditorPanel").hidden = true;
+  document.getElementById("testCatalogView").hidden = false;
+  renderWorkspaceControls();
+}
+
+/** 切换测试管理的三个页签，并在离开编辑区前解决草稿。 */
+async function switchManagementSection(section) {
+  if (!["cases", "routes", "devices"].includes(section) || section === activeManagementSection) return;
+  if (!await settleTestDraft()) return;
+  if (activeManagementSection === "routes" && state.routeDirty) {
+    document.getElementById("testDraftTitle").textContent = "路径模板有未保存的修改";
+    try {
+      if (!await resolveTestDraft(true, chooseTestDraft, saveRoutes, async () => discardRouteChanges())) return;
+    } finally { document.getElementById("testDraftTitle").textContent = "测试有未保存的修改"; }
+  }
+  activeManagementSection = section;
+  document.querySelectorAll("[data-management-target]").forEach(button => {
+    const selected = button.dataset.managementTarget === section;
+    button.classList.toggle("active", selected);
+    if (selected) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
+  });
+  document.querySelectorAll("[data-management-view]").forEach(view => {
+    const selected = view.dataset.managementView === section;
+    view.classList.toggle("active", selected); view.hidden = !selected;
+  });
+  if (section === "devices") renderDeviceTimingConfiguration();
+  if (section === "cases") showTestCatalog();
+}
+
+/** 显示当前测试集是否已经持久化。 */
+function setWorkspaceStatus(message, kind = "") {
+  const status = document.getElementById("workspaceStatus"); status.textContent = message; status.className = `workspace-status sr-only ${kind}`.trim();
+}
+
+/** 编辑修订号用于防止保存过程覆盖之后发生的新编辑。 */
+let testEditRevision = 0;
+let testSaveInFlight: Promise<boolean> | null = null;
+
+/** 还原服务端已保存的当前测试，不修改已有运行结果。 */
+async function discardTestDraft() {
+  if (!state.testCaseId) return;
+  const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${state.testCaseId}`);
+  applyTestCase(result.test);
+}
+
+/** 在离开或更换测试之前明确解决草稿；取消时恢复选择控件。 */
+async function settleTestDraft() {
+  const allowed = await resolveTestDraft(state.dirty, chooseTestDraft, () => saveCurrentTest(false), discardTestDraft);
+  if (!allowed) renderWorkspaceControls();
+  return allowed && !state.dirty;
+}
+
+/** 标记当前测试集有尚未保存的编辑。 */
+function markTestDirty() {
+  if (!state.testCaseId) return;
+  testEditRevision += 1;
+  state.dirty = true; setWorkspaceStatus(`“${state.testCaseName}”有未保存修改`, "dirty");
+  document.getElementById("discardTestButton").disabled = false;
+
+}
+
+/** 标记路径模板有尚未保存的编辑；路径模板只在用户点击保存后写回设备共享库。 */
+function markRoutesDirty() {
+  state.routeDirty = true;
+  setWorkspaceStatus("当前路径模板有未保存修改，请在模板旁点击“保存”", "dirty");
+}
+
+/** 清理上一测试集的结果链接和批量状态，避免把旧结果误认为当前结果。 */
+function resetRunResult() {
+  setRunResultView("results");
+  visualizationWorkspace.clear();
+  state.batchResult = null; activeBatchContext = null;
+  batchCardAnalyses.clear();
+  batchCardAnalysisRequests.clear();
+  document.getElementById("testGroupAnalysisPanel").hidden = true;
+  document.getElementById("testGroupAnalysisPanel").innerHTML = "";
+  document.getElementById("batchResults").innerHTML = "";
+  closeBatchTestDetails();
+  updateAnalysisReportAvailability();
+  updateBatchLogDownload({});
+  resetBatchGanttLink();
+  resetSearchTelemetryView();
+  writeTerminal("$ 测试集已就绪，等待运行…");
+}
+
+/** 清空搜索轮询和历史视图，避免切换测试后误看上一结果。 */
+function resetSearchTelemetryView() {
+  searchTelemetryPollToken += 1;
+  latestSearchTelemetry = null;
+  selectedSearchTelemetryId = "";
+  followLatestSearchTelemetry = true;
+  searchTelemetryRunActive = false;
+  searchTelemetryControlPending = false;
+  lastSearchTelemetryMoveCount = 0;
+  continuousDecisionEnabled = false;
+  continuousDecisionSubmittedSearchId = "";
+  userChosenActionKey = "";
+  userChosenSearchId = "";
+}
+
+/** 把搜索数值格式化为稳定的有限小数。 */
+function formatSearchTelemetryNumber(value, digits = 2) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(digits) : "—";
+}
+
+/** 返回有限搜索终止原因的中文说明。 */
+function searchTelemetryStopReason(reason) {
+  return {
+    time_budget: "时间预算",
+    simulation_budget: "模拟次数预算",
+    node_budget: "节点预算",
+  }[String(reason || "")] || "搜索中";
+}
+
+/** 把一次 Alpha 决策的稳定动作链渲染成三张可展开候选卡片。 */
+function renderSearchActionChains(chains, decisionIndex, recommendedKey, maximumVisits) {
+  return `<section class="decision-candidate-section search-action-section" aria-labelledby="searchCandidatesTitle">
+    <header>
+      <strong id="searchCandidatesTitle">决策 #${decisionIndex}</strong>
+      <span>${chains.length} 条可选稳定动作链</span>
+    </header>
+    <ol>
+      ${chains.map((chain, index) => {
+        const visits = Number(chain?.visits) || 0;
+        const visitPercent = Math.max(0, Math.min(100, visits / maximumVisits * 100));
+        const isRecommended = String(chain?.actionKey || "") === recommendedKey;
+        const tags = isRecommended ? '<span class="decision-tag is-recommendation">推荐</span>' : "";
+        const description = String(chain?.description || "稳定动作链");
+        const steps = Array.isArray(chain?.steps) ? chain.steps : [];
+        return `<li class="decision-candidate search-action-candidate search-action-chain ${isRecommended ? "is-selected" : ""}">
+          <div class="decision-candidate-rank" aria-label="第 ${index + 1} 名">${index + 1}</div>
+          <div class="decision-candidate-main">
+            <div class="decision-candidate-title"><strong title="${escapeHtml(description)}">${escapeHtml(description)}</strong>${tags}</div>
+            <div class="decision-candidate-detail search-pnq" aria-label="搜索评估指标">
+              <span title="策略先验 P"><small>P 先验</small><strong>${formatSearchTelemetryNumber(chain?.prior, 4)}</strong></span>
+              <span title="访问次数 N"><small>N 访问</small><strong>${visits}</strong></span>
+              <span title="平均价值 Q"><small>Q 价值</small><strong>${formatSearchTelemetryNumber(chain?.value, 4)}</strong></span>
+            </div>
+            <ol class="search-chain-steps" aria-label="动作链步骤">
+              ${steps.map((step, stepIndex) => `<li><b>${stepIndex + 1}</b><span title="${escapeHtml(step?.description || "动作")}">${escapeHtml(step?.description || "动作")}</span><small>${Number(step?.primitiveCount) || 1} 步</small></li>`).join("")}
+            </ol>
+          </div>
+          <div class="decision-candidate-preference" aria-label="推荐比例 ${visitPercent.toFixed(0)}%"><small>推荐比例</small><strong>${visitPercent.toFixed(0)}%</strong></div>
+        </li>`;
+      }).join("")}
+    </ol>
+  </section>`;
+}
+
+/** 绘制某一次决策的三条可提交稳定动作链。 */
+function renderSearchTelemetryDecision(snapshot) {
+  const chains = Array.isArray(snapshot?.actionChains) ? snapshot.actionChains.slice(0, 3) : [];
+  const recommendedKey = String(snapshot?.selectedActionKey || "");
+  const decisionIndex = Number(snapshot?.decisionIndex || 0) + 1;
+  const maximumVisits = Math.max(1, ...chains.map(chain => Number(chain?.visits) || 0));
+  document.getElementById("visualDecisionLens").innerHTML = chains.length
+    ? renderSearchActionChains(
+      chains,
+      decisionIndex,
+      recommendedKey,
+      maximumVisits,
+    )
+    : `<div class="decision-empty"><strong>正在构造稳定动作链…</strong><p>只有在 50 层内回到 Robot 全部空手状态的链才会出现。</p></div>`;
+
+  const variationPanel = document.getElementById("searchTelemetryVariationPanel");
+  variationPanel.hidden = true;
+  document.getElementById("searchTelemetryVariation").innerHTML = "";
+}
+
+/** 按回放/步进模式同步搜索控制按钮的可见与可用状态。 */
+function updateSearchTelemetryControls(snapshot) {
+  const executionMode = String(snapshot?.executionMode || "continuous");
+  const stepMode = playbackMode === "step";
+  const disabled = !searchTelemetryRunActive || searchTelemetryControlPending;
+  const pauseButton = document.getElementById("searchTelemetryPauseButton");
+  const stepButton = document.getElementById("searchTelemetryStepButton");
+  const continueButton = document.getElementById("searchTelemetryContinueButton");
+  const followButton = document.getElementById("searchTelemetryFollowRecommendationButton");
+  const continuousButton = document.getElementById("searchTelemetryContinuousDecisionButton");
+  const continuousActive = continuousDecisionEnabled && searchTelemetryRunActive && stepMode;
+  // 回放模式显示暂停/单步/连续；步进模式显示单次执行和持续决策。
+  pauseButton.hidden = stepMode;
+  stepButton.hidden = stepMode;
+  continueButton.hidden = stepMode;
+  followButton.hidden = !stepMode;
+  continuousButton.hidden = !stepMode;
+  pauseButton.disabled = disabled;
+  stepButton.disabled = disabled;
+  continueButton.disabled = disabled;
+  const canFollowRecommendation = (
+    !disabled
+    && stepMode
+    && executionMode === "paused"
+    && snapshot?.status === "waiting-choice"
+    && Boolean(snapshot?.selectedActionKey)
+  );
+  // 持续决策开启后保留停止入口；关闭时只在当前推荐动作可提交时允许启动。
+  followButton.disabled = !canFollowRecommendation || continuousActive;
+  continuousButton.disabled = !stepMode || !searchTelemetryRunActive || (!continuousActive && !canFollowRecommendation);
+  continuousButton.textContent = continuousActive ? "停止持续决策" : "持续决策";
+  continuousButton.title = continuousActive
+    ? "完成当前在途选择后停止，不再自动执行下一轮推荐"
+    : "持续执行每一轮搜索的模型推荐动作";
+  continuousButton.setAttribute("aria-pressed", String(continuousActive));
+  continuousButton.classList.toggle("is-active", continuousActive);
+  pauseButton.classList.toggle("is-active", !disabled && !stepMode && executionMode === "paused");
+  continueButton.classList.toggle("is-active", !disabled && !stepMode && executionMode === "continuous");
+}
+
+/** 用已提交 MoveList 和所选根决策时刻同步拓扑画布。 */
+function syncSearchTelemetryPlayback(snapshot, selectedDecision) {
+  const committedMoves = Array.isArray(snapshot?.committedMoves)
+    ? snapshot.committedMoves
+    : [];
+  const movesChanged = Boolean(
+    committedMoves.length
+    && committedMoves.length !== lastSearchTelemetryMoveCount
+  );
+  const animateLatestStep = (
+    movesChanged
+    && playbackMode === "step"
+    && followLatestSearchTelemetry
+  );
+  if (movesChanged) {
+    visualizationWorkspace.updateLiveMoves(
+      committedMoves,
+      followLatestSearchTelemetry,
+      animateLatestStep,
+    );
+    lastSearchTelemetryMoveCount = committedMoves.length;
+  }
+  const replayTime = Number(selectedDecision?.replayTime);
+  if (!animateLatestStep && Number.isFinite(replayTime) && replayTime >= 0) {
+    visualizationWorkspace.seekTo(replayTime);
+  }
+}
+
+/** 步进模式下用户点选某个根动作并提交。 */
+async function chooseSearchAction(actionKey, automatic = false) {
+  if (!searchTelemetryRunActive || playbackMode !== "step") return;
+  if (searchTelemetryControlPending) return;
+  // 只在后端确实等待用户选择时提交，避免搜索中的误点被静默预选。
+  if (latestSearchTelemetry?.status !== "waiting-choice") return;
+  const key = String(actionKey || "");
+  if (!key) return;
+  searchTelemetryControlPending = true;
+  userChosenActionKey = key;
+  userChosenSearchId = String(latestSearchTelemetry?.searchId || "");
+  if (latestSearchTelemetry) renderSearchTelemetry(latestSearchTelemetry);
+  updateSearchTelemetryControls(latestSearchTelemetry);
+  try {
+    const result = await requestSearchControl("choose", key);
+    if (result?.telemetry) renderSearchTelemetry(result.telemetry);
+  } catch (error) {
+    if (automatic) {
+      continuousDecisionEnabled = false;
+      continuousDecisionSubmittedSearchId = "";
+    }
+    const status = document.getElementById("searchTelemetryStatus");
+    status.textContent = automatic
+      ? `持续决策已停止：${error.message || "提交推荐失败"}`
+      : `提交选择失败：${error.message || "未知错误"}`;
+    status.classList.remove("is-searching", "is-paused");
+  } finally {
+    searchTelemetryControlPending = false;
+    flushPendingModeSync();
+    updateSearchTelemetryControls(latestSearchTelemetry);
+    maybeContinueModelDecision(latestSearchTelemetry);
+  }
+}
+
+/** 步进模式下直接提交模型推荐动作。 */
+function followSearchRecommendation() {
+  const key = String(latestSearchTelemetry?.selectedActionKey || "");
+  if (!key) return;
+  void chooseSearchAction(key);
+}
+
+/** 在控制请求结束后补发被跳过的模式切换命令，保持前后端执行模式一致。 */
+async function flushPendingModeSync() {
+  const mode = pendingModeSync;
+  if (!mode) return;
+  pendingModeSync = "";
+  await setPlaybackMode(mode);
+}
+
+/** 已移除模式切换控件；搜索始终以连续模式启动。 */
+function renderPlaybackModeSwitch() {}
+
+/** 当持续决策开启时，为当前根决策恰好提交一次模型推荐动作。 */
+function maybeContinueModelDecision(snapshot) {
+  if (!continuousDecisionEnabled || !searchTelemetryRunActive || playbackMode !== "step") return;
+  if (searchTelemetryControlPending || snapshot?.status !== "waiting-choice") return;
+  const searchId = String(snapshot?.searchId || "");
+  const actionKey = String(snapshot?.selectedActionKey || "");
+  if (!searchId || !actionKey || searchId === continuousDecisionSubmittedSearchId) return;
+  continuousDecisionSubmittedSearchId = searchId;
+  void chooseSearchAction(actionKey, true);
+}
+
+/** 开启或停止持续决策；停止不会撤销已经提交的当前动作。 */
+function toggleContinuousDecision() {
+  if (!searchTelemetryRunActive || playbackMode !== "step") return;
+  continuousDecisionEnabled = !continuousDecisionEnabled;
+  continuousDecisionSubmittedSearchId = "";
+  followLatestSearchTelemetry = true;
+  selectedSearchTelemetryId = "";
+  if (latestSearchTelemetry) renderSearchTelemetry(latestSearchTelemetry);
+  else updateSearchTelemetryControls(null);
+}
+
+async function setPlaybackMode(mode) {
+  if (mode !== "step" && mode !== "replay") return;
+  playbackMode = mode;
+  if (mode !== "step") {
+    continuousDecisionEnabled = false;
+    continuousDecisionSubmittedSearchId = "";
+  }
+  renderPlaybackModeSwitch();
+  if (searchTelemetryRunActive && !searchTelemetryControlPending) {
+    try {
+      const result = await requestSearchControl(mode === "step" ? "step-mode" : "replay-mode");
+      if (result?.telemetry) renderSearchTelemetry(result.telemetry);
+    } catch (error) {
+      const status = document.getElementById("searchTelemetryStatus");
+      status.textContent = `切换模式失败：${error.message || "未知错误"}`;
+      status.classList.remove("is-searching", "is-paused");
+    }
+  } else if (searchTelemetryRunActive) {
+    // 控制请求在途：记下待补发的模式，请求结束后由 flushPendingModeSync 补发。
+    pendingModeSync = mode;
+  }
+  if (latestSearchTelemetry) renderSearchTelemetry(latestSearchTelemetry);
+}
+
+/** 向服务端发送根决策暂停、单步或连续求解命令。 */
+async function controlSearchTelemetry(command) {
+  if (!searchTelemetryRunActive || searchTelemetryControlPending) return;
+  searchTelemetryControlPending = true;
+  if (command !== "pause") {
+    followLatestSearchTelemetry = true;
+    selectedSearchTelemetryId = "";
+  }
+  updateSearchTelemetryControls(latestSearchTelemetry);
+  try {
+    const result = await requestSearchControl(command);
+    if (result?.telemetry) renderSearchTelemetry(result.telemetry);
+  } catch (error) {
+    const status = document.getElementById("searchTelemetryStatus");
+    status.textContent = `求解控制失败：${error.message || "未知错误"}`;
+    status.classList.remove("is-searching", "is-paused");
+  } finally {
+    searchTelemetryControlPending = false;
+    flushPendingModeSync();
+    updateSearchTelemetryControls(latestSearchTelemetry);
+  }
+}
+
+/** 合并实时帧与已完成历史，并保持用户手动选择的旧决策。 */
+function renderSearchTelemetry(snapshot) {
+  if (!snapshot || snapshot.unchanged) return;
+  if (snapshot.algorithm !== "search-tree" && latestSearchTelemetry) return;
+  latestSearchTelemetry = snapshot;
+  const panel = document.getElementById("searchTelemetryPanel");
+  panel.hidden = false;
+  const status = document.getElementById("searchTelemetryStatus");
+  if (snapshot.algorithm !== "search-tree") {
+    status.textContent = "正在初始化搜索器…";
+    status.classList.add("is-searching");
+    status.classList.remove("is-paused");
+    updateSearchTelemetryControls(snapshot);
+    return;
+  }
+  const decisions = Array.isArray(snapshot.history) ? [...snapshot.history] : [];
+  if (snapshot.searchId && decisions.at(-1)?.searchId !== snapshot.searchId) decisions.push(snapshot);
+  const latestDecision = decisions.at(-1) || snapshot;
+  if (followLatestSearchTelemetry || !decisions.some(item => item.searchId === selectedSearchTelemetryId)) {
+    selectedSearchTelemetryId = String(latestDecision.searchId || "");
+  }
+  const selector = document.getElementById("searchTelemetryDecisionSelect");
+  selector.innerHTML = decisions.map(item => {
+    const suffix = item.status === "searching" ? "搜索中" : `${Number(item.simulations) || 0} 次`;
+    return `<option value="${escapeHtml(item.searchId || "")}">#${Number(item.decisionIndex || 0) + 1} · ${suffix}</option>`;
+  }).join("");
+  selector.value = selectedSearchTelemetryId;
+  const selected = decisions.find(item => item.searchId === selectedSearchTelemetryId) || latestDecision;
+  const searching = snapshot?.status === "searching";
+  const waiting = snapshot?.status === "waiting-step";
+  const waitingChoice = snapshot?.status === "waiting-choice";
+  const cancelled = snapshot?.status === "cancelled";
+  status.textContent = cancelled
+    ? "运行已取消"
+    : waitingChoice
+      ? playbackMode === "step"
+        ? continuousDecisionEnabled
+          ? "持续决策中 · 正在执行模型推荐"
+          : "搜索完成 · 请选择要执行的动作"
+        : "求解已暂停 · 等待放行"
+      : waiting
+        ? "求解已暂停 · 可单步放行一个根决策，或继续连续求解"
+        : searching
+          ? `${continuousDecisionEnabled && playbackMode === "step" ? "持续决策中 · " : ""}正在进行非对称树搜索 · ${Number(snapshot?.simulations) || 0} 次模拟`
+          : snapshot?.status === "action-applied"
+            ? `根动作 #${Number(snapshot?.decisionIndex || 0) + 1} 已提交 · 拓扑已推进`
+            : `决策完成 · 由${searchTelemetryStopReason(selected?.stopReason)}终止`;
+  status.classList.toggle("is-searching", searching);
+  status.classList.toggle("is-paused", waiting || waitingChoice);
+  updateSearchTelemetryControls(snapshot);
+  renderSearchTelemetryDecision(selected);
+  syncSearchTelemetryPlayback(snapshot, selected);
+  maybeContinueModelDecision(snapshot);
+}
+
+/** 在独立 HTTP 线程上轮询搜索快照，不阻塞同步调度请求。 */
+async function pollSearchTelemetry(token) {
+  let revision = null;
+  while (token === searchTelemetryPollToken) {
+    try {
+      const snapshot = await requestSearchTelemetry(revision);
+      if (token !== searchTelemetryPollToken) break;
+      if (Number.isFinite(Number(snapshot?.revision))) revision = Number(snapshot.revision);
+      renderSearchTelemetry(snapshot);
+    } catch (error) {
+      if (!latestSearchTelemetry && token === searchTelemetryPollToken) {
+        const status = document.getElementById("searchTelemetryStatus");
+        status.textContent = `遥测暂不可用：${error.message || "未知错误"}`;
+        status.classList.remove("is-searching");
+      }
+    }
+    await new Promise(resolve => window.setTimeout(resolve, SEARCH_TELEMETRY_POLL_MILLISECONDS));
+  }
+}
+
+/** 开始本次 Search Tree 运行的实时搜索轮询。 */
+function startSearchTelemetryPolling() {
+  resetSearchTelemetryView();
+  searchTelemetryRunActive = true;
+  // 搜索面板接管右侧“合法动作空间”渲染，避免回放帧覆盖候选列表。
+  visualizationWorkspace.setExternalDecisionLensOwner(true);
+  const panel = document.getElementById("searchTelemetryPanel");
+  panel.hidden = false;
+  const status = document.getElementById("searchTelemetryStatus");
+  status.textContent = "正在初始化搜索器…";
+  status.classList.add("is-searching");
+  updateSearchTelemetryControls({ executionMode: playbackMode === "step" ? "paused" : "continuous" });
+  const token = ++searchTelemetryPollToken;
+  void pollSearchTelemetry(token);
+}
+
+/** 停止轮询，并用服务端随结果返回的完整历史覆盖最后一帧。 */
+function stopSearchTelemetryPolling(finalSnapshot = null) {
+  searchTelemetryPollToken += 1;
+  searchTelemetryRunActive = false;
+  continuousDecisionEnabled = false;
+  continuousDecisionSubmittedSearchId = "";
+  visualizationWorkspace.setExternalDecisionLensOwner(false);
+  if (finalSnapshot) renderSearchTelemetry(finalSnapshot);
+  const status = document.getElementById("searchTelemetryStatus");
+  if (!finalSnapshot && latestSearchTelemetry?.algorithm === "search-tree") {
+    status.classList.remove("is-searching");
+  }
+  updateSearchTelemetryControls(finalSnapshot || latestSearchTelemetry);
+}
+
+/** 将持久化测试集载入页面编辑状态。 */
+function applyTestCase(testCase) {
+  const value = structuredClone(testCase);
+  state.routeNameChanges.clear();
+  state.testCaseId = value.id; state.testCaseName = value.name; state.testCaseGroup = String(value.group || ""); state.activeTestGroup = state.testCaseGroup;
+  const requestedStrategy = String(value.strategy || "heuristic");
+  state.strategy = requestedStrategy.trim() || "heuristic";
+  state.roundCount = Math.max(1, Number(value.roundCount) || 1); state.times = Array.isArray(value.times) ? value.times : [0];
+  const persistedOptions = value.options && typeof value.options === "object" ? value.options : {};
+  state.options = {
+    ...DEFAULT_SCHEDULE_OPTIONS,
+    ...Object.fromEntries(
+      Object.entries(persistedOptions).filter(([key]) => SCHEDULE_OPTION_KEYS.has(key))
+    ),
+  };
+  state.options.loadLockManager = state.options.loadLockManager || "petri-look";
+  const heuristicLoadLockOptionRanges = {
+    loadLockDirection: [0, 1], loadLockCapacity: [0, 1, 2], loadLockBindBatch: [0, 1],
+  };
+  for (const [key, allowedValues] of Object.entries(heuristicLoadLockOptionRanges)) {
+    const optionValue = Number(state.options[key]);
+    state.options[key] = allowedValues.includes(optionValue) ? optionValue : DEFAULT_SCHEDULE_OPTIONS[key];
+  }
+  delete state.options.loadLockExchange;
+  for (const key of ["residencyGuardSeconds", "maximumRobotHoldingSeconds", "maximumSystemResidenceCv"]) {
+    const objectiveValue = Number(state.options[key]);
+    state.options[key] = Number.isFinite(objectiveValue) && objectiveValue >= 0 ? objectiveValue : 0;
+  }
+  const macroSearchSeconds = Number(state.options.loadLockMacroSearchSeconds);
+  state.options.loadLockMacroSearchSeconds = Number.isFinite(macroSearchSeconds) && macroSearchSeconds >= 0 ? macroSearchSeconds : 4;
+  const macroRollouts = Number(state.options.loadLockMacroRollouts);
+  state.options.loadLockMacroRollouts = Number.isFinite(macroRollouts) && macroRollouts >= 0 ? Math.floor(macroRollouts) : 96;
+  // 首次载入以测试集配置建立会话基线；之后切换测试时沿用用户最近主动确认的运行配置。
+  if (sessionSchedulingConfiguration) {
+    state.strategy = sessionSchedulingConfiguration.strategy;
+    state.options = structuredClone(sessionSchedulingConfiguration.options);
+  } else {
+    retainSessionSchedulingConfiguration();
+  }
+  // v2：Route/Clean 来自设备共享库；仅在加载尚未迁移的旧数据时使用测试集副本兜底。
+  if (!state.routes.length && Array.isArray(value.routes)) state.routes = value.routes;
+  state.cleans = Array.isArray(value.cleans)
+    ? value.cleans.map(normalizeClean)
+    : (state.workspaceDevice?.cleans || []).map(normalizeClean);
+  state.routes.forEach(route => normalizeRoute(route));
+  captureRouteGroupingProfiles();
+  state.expandedRouteProcessGroups.clear(); state.expandedRouteGroups.clear(); state.expandedRoutes.clear();
+  state.routeProcessFilter = ""; state.routeParallelFilter = "";
+  state.rounds = Array.isArray(value.rounds) ? value.rounds : [];
+  state.testRouteConfigs = normalizeTestRouteConfigs(value.routeConfigs, state.routes);
+  while (state.times.length < state.roundCount) state.times.push((Number(state.times.at(-1)) || 0) + 70);
+  while (state.rounds.length < state.roundCount) {
+    const index = state.rounds.length;
+    state.rounds.push(makeRound(index + 1, state.times[index], state.routes[0]?.name || "", state.loadPorts[index] || state.loadPorts[0] || ""));
+  }
+  state.times.length = state.roundCount; state.rounds.length = state.roundCount; state.times[0] = 0;
+  normalizeRounds(); normalizePJobRouteConfigs(); state.drawer = null; state.routeDirty = false; state.routeNameChanges.clear();
+  state.routeEditingIndex = -1; state.routeEditSnapshot = null; state.routeEditGroupingProfile = null; state.routeEditIsNew = false;
+  if (!activeRunContext && !state.batchResult) {
+    const visualizationPlan = runtimePJobRouteInstances();
+    visualizationWorkspace.setAnalysisConfiguration(visualizationPlan.routes, visualizationPlan.rounds);
+    visualizationWorkspace.setReplayPlan(buildPayload());
+  }
+  state.dirty = false;
+  document.getElementById("roundCount").value = state.roundCount;
+  document.querySelectorAll('input[name="strategy"]').forEach(input => { input.checked = input.value === state.strategy; });
+  document.querySelectorAll("[data-option]").forEach(input => {
+    const optionValue = state.options[input.dataset.option];
+    if (input.type === "radio") input.checked = String(optionValue) === input.value;
+    else input.value = optionValue ?? input.value;
+  });
+  updateStrategyOptionVisibility();
+  document.getElementById("roundCount").disabled = false;
+  renderAll(); renderWorkspaceControls();
+  setWorkspaceStatus(`已载入“${state.testCaseName}”`, "saved");
+}
+
+/** 整理测试保存请求；路径模板不随测试保存，只在“保存路径”时写回设备共享库。 */
+function currentTestSnapshot(name = state.testCaseName) {
+  normalizeRounds();
+  synchronizeCleanNames();
+  return structuredClone({
+    name,
+    group: state.testCaseGroup,
+    strategy: state.workspaceDevice?.tests?.find(test => test.id === state.testCaseId)?.strategy || "heuristic",
+    roundCount: state.roundCount,
+    times: state.times,
+    options: state.workspaceDevice?.tests?.find(test => test.id === state.testCaseId)?.options || {},
+    cleans: state.cleans.map(runtimeClean),
+    routeConfigs: state.testRouteConfigs,
+    rounds: state.rounds,
+  });
+}
+
+/** 整理路径模板保存请求，并同步自动改名链。 */
+function routeTemplateSnapshot() {
+  synchronizeRouteNames();
+  return structuredClone({
+    routes: state.routes.map(routeTemplateForSave),
+    routeNameChanges: Object.fromEntries(state.routeNameChanges),
+  });
+}
+
+/** 保存路径模板到设备共享库；保存成功后按最新结构重新生成路径分组。 */
+async function saveRoutes() {
+  if (!state.workspaceDeviceId) throw new Error("请先选择设备");
+  if (state.batchRunning) throw new Error("批量任务运行中，请等待完成或取消后再保存路径");
+  let result;
+  try {
+    result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/routes`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(routeTemplateSnapshot()),
+    });
+  } catch (error) {
+    setWorkspaceStatus(`路径保存失败：${error.message}`, "dirty");
+    throw error;
+  }
+  state.workspaceDevice.routes = structuredClone(result.routes || state.routes);
+  state.routes = structuredClone(result.routes || state.routes);
+  state.routes.forEach(route => normalizeRoute(route));
+  state.testRouteConfigs = normalizeTestRouteConfigs(state.testRouteConfigs, state.routes);
+  captureRouteGroupingProfiles();
+  state.routeDirty = false;
+  state.routeEditingIndex = -1;
+  state.routeEditSnapshot = null;
+  state.routeEditGroupingProfile = null;
+  state.routeEditIsNew = false;
+  state.routeNameChanges.clear();
+  renderRoutes();
+  renderWorkspaceControls();
+  setWorkspaceStatus("路径模板已保存，分组已刷新", "saved");
+  return true;
+}
+
+/** 放弃尚未保存的路径模板修改，恢复设备共享库中的最新模板。 */
+function discardRouteChanges() {
+  if (!state.workspaceDevice) return;
+  state.routes = Array.isArray(state.workspaceDevice.routes)
+    ? structuredClone(state.workspaceDevice.routes)
+    : [];
+  state.routes.forEach(route => normalizeRoute(route));
+  state.testRouteConfigs = normalizeTestRouteConfigs(state.testRouteConfigs, state.routes);
+  captureRouteGroupingProfiles();
+  state.routeDirty = false;
+  state.routeEditingIndex = -1;
+  state.routeEditSnapshot = null;
+  state.routeEditGroupingProfile = null;
+  state.routeEditIsNew = false;
+  state.routeNameChanges.clear();
+  state.expandedRouteProcessGroups.clear();
+  state.expandedRouteGroups.clear();
+  state.expandedRoutes.clear();
+  renderRoutes();
+  setWorkspaceStatus("已放弃未保存的路径修改", "saved");
+}
+
+/** 进入单条模板编辑态；分组继续使用保存前快照，直到用户明确保存。 */
+function beginRouteEdit(routeIndex, isNew = false) {
+  if (!state.routes[routeIndex]) return false;
+  if (state.routeEditingIndex >= 0 && state.routeEditingIndex !== routeIndex) {
+    setWorkspaceStatus("请先保存或取消当前正在编辑的路径模板", "dirty");
+    return false;
+  }
+  state.routeEditingIndex = routeIndex;
+  state.routeEditSnapshot = isNew ? null : structuredClone(state.routes[routeIndex]);
+  state.routeEditGroupingProfile = structuredClone(routeGroupingProfile(state.routes[routeIndex]));
+  state.routeEditIsNew = isNew;
+  state.expandedRoutes.add(routeIndex);
+  renderRoutes();
+  return true;
+}
+
+/** 取消单条模板草稿，不影响其他模板。 */
+function cancelRouteEdit() {
+  const routeIndex = state.routeEditingIndex;
+  if (routeIndex < 0) return;
+  if (state.routeEditIsNew) {
+    state.routes.splice(routeIndex, 1);
+  } else if (state.routeEditSnapshot) {
+    const restored = structuredClone(state.routeEditSnapshot);
+    state.routes[routeIndex] = restored;
+    if (state.routeEditGroupingProfile) {
+      state.routeGroupingProfiles.set(restored, structuredClone(state.routeEditGroupingProfile));
+    }
+  }
+  state.routeEditingIndex = -1;
+  state.routeEditSnapshot = null;
+  state.routeEditGroupingProfile = null;
+  state.routeEditIsNew = false;
+  state.routeDirty = false;
+  state.routeNameChanges.clear();
+  state.expandedRoutes.clear();
+  renderRoutes();
+  setWorkspaceStatus("已取消路径模板修改", "saved");
+}
+
+/** 保存当前测试集；运行和切换前可静默调用。 */
+async function saveCurrentTest(silent = false) {
+  if (!state.workspaceDeviceId || !state.testCaseId) return false;
+  if (testSaveInFlight) {
+    await testSaveInFlight;
+    // 多个保存操作重叠时复用请求；若期间又有编辑，再保存最新版。
+    if (!state.dirty) return true;
+  }
+  const inputName = document.getElementById("testCaseName").value.trim();
+  if (!inputName) {
+    setWorkspaceStatus("测试名称不能为空，请输入名称后再保存", "dirty");
+    throw new Error("测试名称不能为空");
+  }
+  state.testCaseName = inputName;
+  const deviceId = state.workspaceDeviceId;
+  const testId = state.testCaseId;
+  const revision = testEditRevision;
+  const snapshot = currentTestSnapshot();
+  const pendingSave = (async () => {
+    let result;
+    try {
+      result = await requestJson(`/api/workspaces/${deviceId}/tests/${testId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(snapshot)
+      });
+    } catch (error) {
+      setWorkspaceStatus(`保存失败：${error.message}`, "dirty");
+      throw error;
+    }
+    if (state.workspaceDeviceId !== deviceId || state.testCaseId !== testId) return true;
+    const index = state.workspaceDevice.tests.findIndex(test => test.id === testId);
+    if (index >= 0) state.workspaceDevice.tests[index] = result.test;
+    if (revision === testEditRevision) {
+      state.testCaseName = result.test.name;
+      state.dirty = false;
+      state.routeNameChanges.clear();
+      renderWorkspaceControls();
+      setWorkspaceStatus(`已保存“${state.testCaseName}”`, "saved");
+    } else {
+      state.dirty = true;
+
+    }
+    return true;
+  })();
+  testSaveInFlight = pendingSave;
+  try {
+    return await pendingSave;
+  } finally {
+    if (testSaveInFlight === pendingSave) testSaveInFlight = null;
+  }
+}
+
+/** 新建空白测试集，或复制当前测试集形成独立副本。 */
+async function createTestCase(copyCurrent = false, targetGroup = state.activeTestGroup) {
+  if (!state.workspaceDeviceId) throw new Error("请先选择设备");
+  const context = {
+    mode: copyCurrent ? "copy" : "new",
+    sourceTestId: copyCurrent ? state.testCaseId : "",
+    sourceName: copyCurrent ? state.testCaseName : "",
+  };
+  return testCreationCoordinator.run(context, async () => {
+    if (!await settleTestDraft()) return null;
+    const source = copyCurrent ? currentTestSnapshot(`${state.testCaseName} 副本`) : makeDefaultTestCase(`测试集 ${(state.workspaceDevice?.tests?.length || 0) + 1}`);
+    source.group = targetGroup;
+    const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(source)
+    });
+    state.workspaceDevice.tests.push(result.test);
+    const summary = state.workspaceDevices.find(device => device.id === state.workspaceDeviceId); if (summary) summary.testCount = state.workspaceDevice.tests.length;
+    applyTestCase(result.test);
+    setWorkspaceStatus(copyCurrent ? `已复制为“${result.test.name}”` : `已新建“${result.test.name}”`, "saved");
+    return result.test;
+  });
+}
+
+/** 新建一个空测试组别，并自动切换到该组。 */
+async function createTestGroup() {
+  const group = await showWorkspaceDialog({ title: "新增测试组别", message: "请输入组别名称；新建后会自动切换到该组。", needsInput: true });
+  if (group === null) return;
+  if (!group) throw new Error("测试组别名称不能为空");
+  const exists = (state.workspaceDevice?.testGroups || []).includes(group)
+    || (state.workspaceDevice?.tests || []).some(test => String(test.group || "").trim() === group);
+  if (exists) throw new Error(`测试组别“${group}”已经存在`);
+  if (!await settleTestDraft()) return;
+  let result;
+  try {
+    result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/groups`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: group })
+    });
+  } catch (error) {
+    if (error.message === "Not found") throw new Error("本地服务版本过旧，请重启 app.backend.main 后再新建组别");
+    throw error;
+  }
+  state.workspaceDevice.testGroups = result.groups;
+  state.activeTestGroup = group; state.testCaseId = ""; state.testCaseName = ""; state.testCaseGroup = group; state.dirty = false;
+  renderWorkspaceControls();  setWorkspaceStatus(`已新建测试组别“${group}”，请在该组中新建测试`, "saved");
+}
+
+/** 重命名当前测试组别，并同步更新该组内所有测试。 */
+async function renameCurrentTestGroup() {
+  const oldName = state.activeTestGroup;
+  if (!oldName) throw new Error("默认“未分组”不能重命名");
+  const group = await showWorkspaceDialog({ title: "重命名测试组别", message: "组内测试会保留，并同步使用新组别名称。", value: oldName, needsInput: true });
+  if (group === null || group === oldName) return;
+  if (!group) throw new Error("测试组别名称不能为空");
+  if (!await settleTestDraft()) return;
+  const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/groups`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ oldName, name: group })
+  });
+  state.workspaceDevice.testGroups = result.groups; state.workspaceDevice.tests = result.tests;
+  state.activeTestGroup = group; state.testCaseGroup = group;
+  const current = result.tests.find(test => test.id === state.testCaseId);
+  if (current) applyTestCase(current); else await selectWorkspaceGroup(group);
+  setWorkspaceStatus(`已将测试组别重命名为“${group}”`, "saved");
+}
+
+/** 删除当前测试组别；若组内有测试，确认后会一并删除。 */
+async function deleteCurrentTestGroup() {
+  const group = state.activeTestGroup;
+  const testCount = (state.workspaceDevice?.tests || []).filter(test => String(test.group || "").trim() === group).length;
+  if (!group && !testCount) throw new Error("“未分组”中没有可删除的测试");
+  const impact = testCount ? `该组含有 ${testCount} 个测试，删除后这些测试将无法恢复。` : "该组为空，删除后无法恢复。";
+  const displayName = group || "未分组";
+  const confirmed = await showWorkspaceDialog({ title: "删除测试组别", message: `确定删除“${displayName}”吗？${impact}`, dangerous: true });
+  if (!confirmed) return;
+  if (!await settleTestDraft()) return;
+  const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/groups`, {
+    method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: group })
+  });
+  state.workspaceDevice.testGroups = result.groups; state.workspaceDevice.tests = result.tests;
+  const summary = state.workspaceDevices.find(device => device.id === state.workspaceDeviceId); if (summary) summary.testCount = result.tests.length;
+  const nextGroup = result.groups[0] || "";
+  state.activeTestGroup = nextGroup; state.testCaseId = ""; state.testCaseName = ""; state.testCaseGroup = nextGroup; state.dirty = false;
+  const nextTest = result.tests.find(test => String(test.group || "").trim() === nextGroup) || result.tests[0];
+  if (nextTest) {
+    const nextResult = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${nextTest.id}`);
+    applyTestCase(nextResult.test);
+  }
+  else { renderWorkspaceControls();  setWorkspaceStatus(`已删除测试组别“${displayName}”`, "saved"); }
+}
+
+/** 删除当前测试集，并优先停留在当前测试组别的下一套剩余测试。 */
+async function deleteCurrentTest() {
+  if (!state.testCaseId) return;
+  const confirmed = await showWorkspaceDialog({ title: "删除测试", message: `确定删除测试“${state.testCaseName}”吗？删除后无法恢复。`, dangerous: true });
+  if (!confirmed) return;
+  const currentGroup = state.activeTestGroup, deletedTestName = state.testCaseName;
+  const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${state.testCaseId}`, { method: "DELETE" });
+  state.workspaceDevice.tests = result.tests;
+  const summary = state.workspaceDevices.find(device => device.id === state.workspaceDeviceId); if (summary) summary.testCount = result.tests.length;
+  const nextTestInCurrentGroup = result.tests.find(test => String(test.group || "").trim() === currentGroup);
+  if (nextTestInCurrentGroup) {
+    state.dirty = false;
+    const nextResult = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${nextTestInCurrentGroup.id}`);
+    applyTestCase(nextResult.test);
+    return;
+  }
+  // 当前组已为空时仍保留该组选择，方便继续新建测试而不跳转到其他组。
+  state.activeTestGroup = currentGroup; state.testCaseId = ""; state.testCaseName = ""; state.testCaseGroup = currentGroup; state.dirty = false;
+  renderWorkspaceControls();  setWorkspaceStatus(`已删除测试“${deletedTestName}”`, "saved");
+}
+
+/** 在当前设备中切换测试集；有草稿时先由用户决定保存、放弃或取消。 */
+async function selectWorkspaceTest(testId) {
+  if (!await settleTestDraft()) return;
+  const index = state.workspaceDevice?.tests?.findIndex(test => test.id === testId) ?? -1;
+  if (index < 0) throw new Error(`测试集不存在：${testId}`);
+  const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${testId}`);
+  const testCase = result.test;
+  state.workspaceDevice.tests[index] = testCase;
+  applyTestCase(testCase);
+}
+
+/** 切换测试组别，并载入该组中的第一个测试。 */
+async function selectWorkspaceGroup(group) {
+  if (!await settleTestDraft()) return;
+  state.activeTestGroup = group;
+  const testCase = state.workspaceDevice?.tests?.find(test => String(test.group || "").trim() === group);
+  if (!testCase) {
+    state.testCaseId = ""; state.testCaseName = ""; state.testCaseGroup = group; state.dirty = false;
+    renderWorkspaceControls(); showCurrentGroupTestCards(true); setWorkspaceStatus(`测试组别“${group || "未分组"}”暂无测试`, "saved");
+    return;
+  }
+  await selectWorkspaceTest(testCase.id);
+  showCurrentGroupTestCards(true);
+}
+
+/** 读取设备与测试目录；空设备保持空状态，不通过浏览操作创建测试。 */
+async function selectWorkspaceDevice(deviceId, preferredTestId = "") {
+  const result = await requestJson(`/api/workspaces/${deviceId}`);
+  state.workspaceDevice = result.device; state.workspaceDeviceId = result.device.id;
+  state.activeTestGroup = ""; state.testCaseGroup = "";
+  applyDeviceTopology(result.device.device, result.device.name, result.device.robotSlots);
+  resetDeviceTimingDraft();
+  state.routes = Array.isArray(result.device.routes) ? structuredClone(result.device.routes) : [];
+  state.cleans = Array.isArray(result.device.cleans) ? structuredClone(result.device.cleans).map(normalizeClean) : [];
+  if (!result.device.tests.length) {
+    state.testCaseId = ""; state.testCaseName = ""; state.rounds = []; state.dirty = false;
+    renderAll(); renderWorkspaceControls(); showCurrentGroupTestCards(true);
+    setWorkspaceStatus("该设备暂无测试，请在测试管理中新建或导入", "saved");
+    return;
+  }
+  const summary = state.workspaceDevices.find(device => device.id === deviceId); if (summary) summary.testCount = state.workspaceDevice.tests.length;
+  const selected = state.workspaceDevice.tests.find(test => test.id === preferredTestId) || state.workspaceDevice.tests[0];
+  await selectWorkspaceTest(selected.id);
+  showCurrentGroupTestCards(true);
+}
+
+/** 加载设备目录，并选择指定设备或目录中的第一台设备。 */
+async function loadWorkspaceCatalog(preferredDeviceId = "", preferredTestId = "") {
+  const [result, baselines] = await Promise.all([requestJson("/api/workspaces"), loadCompanyCapacityBaselines()]); state.workspaceDevices = result.devices; state.companyCapacityBaselines = baselines;
+  const deviceId = result.devices.some(device => device.id === preferredDeviceId) ? preferredDeviceId : result.devices[0]?.id;
+  if (deviceId) await selectWorkspaceDevice(deviceId, preferredTestId); else resetWorkspaceSelection();
+}
+
+/** 目录中没有设备时清空选择状态，回到“尚未导入设备”的初始界面。 */
+function resetWorkspaceSelection() {
+  state.workspaceDevice = null; state.workspaceDeviceId = ""; state.testCaseId = ""; state.testCaseName = ""; state.testCaseGroup = ""; state.activeTestGroup = ""; state.dirty = false;
+  state.deviceName = ""; state.baseDevice = null; state.device = null; state.stationNames = []; state.loadPorts = []; state.processModules = []; state.robotNames = []; state.robotScopes = {}; state.robotSlots = {};
+  state.deviceStationName = ""; state.deviceRobotName = ""; state.deviceRobotTransferSources = {}; state.deviceTimingDraft = null; state.deviceTimingDirty = false; state.deviceTimingSaving = false; state.deviceTimingStatusMessage = "选择设备后开始配置";
+  renderWorkspaceControls();
+  renderDeviceTimingConfiguration();
+  showCurrentGroupTestCards(true);
+
+}
+
+/** 删除当前设备及其全部测试集，并刷新设备目录。 */
+async function deleteWorkspaceDevice() {
+  if (!state.workspaceDeviceId) return;
+  if (state.batchRunning) throw new Error("批量任务运行中，请等待完成或取消后再删除设备");
+  const deviceName = displayDeviceName(state.workspaceDevices.find(device => device.id === state.workspaceDeviceId)?.name || state.workspaceDevice?.name);
+  const confirmed = await showWorkspaceDialog({ title: "删除设备", message: `确定删除设备“${deviceName}”吗？其下全部测试集、路线与清洁配方将一并删除，且无法恢复。`, dangerous: true });
+  if (!confirmed) return;
+  const result = await requestJson(`/api/workspaces/devices/${state.workspaceDeviceId}`, { method: "DELETE" });
+  writeTerminal(`$ 已删除设备 ${result.deleted.name}\n  其下 ${result.deleted.testCount} 个测试集已一并移除`);
+  try {
+    await loadWorkspaceCatalog();
+    setWorkspaceStatus(`已删除设备“${result.deleted.name}”`, "saved");
+  } catch (error) {
+    // 服务端删除已生效；目录刷新失败时基于本地快照降级，避免残留已删除的设备。
+    state.workspaceDevices = state.workspaceDevices.filter(device => device.id !== result.deleted.id);
+    const nextDeviceId = state.workspaceDevices[0]?.id;
+    if (nextDeviceId) await selectWorkspaceDevice(nextDeviceId); else resetWorkspaceSelection();
+    setWorkspaceStatus(`设备已删除，但目录刷新失败：${error.message}`, "dirty");
+  }
+}
+
+/** 判断当前批次是否至少存在一项已完成且可用于生成报告的测试。 */
+function canOpenAnalysisReport() {
+  return Boolean(state.batchResult?.items?.some(item => hasBatchResultMetrics(item) && item.resultUrl));
+}
+
+/** 按批量结果状态启用分析报告入口；没有可分析结果时固定留在结果预览。 */
+function updateAnalysisReportAvailability() {
+  const button = document.getElementById("analysisReportViewButton");
+  const enabled = canOpenAnalysisReport();
+  button.disabled = !enabled;
+  button.title = enabled ? "配置或查看测试组分析报告" : "至少完成一项可分析测试后才能查看分析报告";
+  if (!enabled && !document.getElementById("runAnalysisView").hidden) setRunResultView("results");
+}
+
+/** 在首页切换结果预览与分析报告，不改变运行选择，也不触发指标计算。 */
+function setRunResultView(view) {
+  const analysis = view === "analysis";
+  if (analysis && !canOpenAnalysisReport()) return;
+  document.getElementById("runPreviewArea").hidden = analysis;
+  document.getElementById("runAnalysisView").hidden = !analysis;
+  document.querySelectorAll("[data-result-view]").forEach(button => {
+    const selected = button.dataset.resultView === view;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+}
+
+/** 切换页面；编辑草稿解决前不离开，运行中保持配置稳定但允许查看回放。 */
+async function switchTab(name) {
+  if (navigationPending) return;
+  const requestedManagementSection = name === "route" ? "routes" : name === "device-config" ? "devices" : null;
+  if (requestedManagementSection) name = "test-management";
+  if (document.querySelector("[data-tab-view].active")?.dataset.tabView === name) {
+    if (requestedManagementSection) await switchManagementSection(requestedManagementSection);
+    return;
+  }
+  if ((runPreparationActive || state.batchRunning) && !["schedule", "playback"].includes(name)) return;
+  navigationPending = true;
+  try {
+    if (!await settleTestDraft()) return;
+    if (activeManagementSection === "routes" && name !== "test-management" && state.routeDirty) {
+      document.getElementById("testDraftTitle").textContent = "路径模板有未保存的修改";
+      try {
+        if (!await resolveTestDraft(true, chooseTestDraft, saveRoutes, async () => discardRouteChanges())) return;
+      } finally { document.getElementById("testDraftTitle").textContent = "测试有未保存的修改"; }
+    }
+    document.querySelectorAll(".primary-sidebar [data-tab-target]").forEach(button => {
+      button.classList.toggle("active", button.dataset.tabTarget === name);
+      if (button.dataset.tabTarget === name) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+    document.querySelectorAll("[data-tab-view]").forEach(view => view.classList.toggle("active", view.dataset.tabView === name));
+    const managementSubtabs = document.querySelector(".sidebar-subtabs") as HTMLElement | null;
+    if (managementSubtabs) managementSubtabs.hidden = name !== "test-management";
+    document.getElementById("scheduleSide").classList.toggle("is-hidden", name !== "schedule");
+    document.getElementById("pageLayout").classList.toggle("editor-mode", name !== "schedule");
+    if (name === "test-management" && requestedManagementSection) await switchManagementSection(requestedManagementSection);
+    if (name === "test-management" && activeManagementSection === "devices") renderDeviceTimingConfiguration();
+    closeStepDrawer(); closePJobRoutePicker(false);
+    if (name === "schedule") renderAll();
+    renderWorkspaceControls();
+  } catch (error) {
+    setWorkspaceStatus(`无法离开测试：${error.message}`, "dirty");
+  } finally { navigationPending = false; }
+}
+
+/** 同步轮数、时间和每轮 CJob/PJob 容器；缩放只裁剪尾部，已有轮次保持原位。 */
+function resizeRounds(count) {
+  normalizeRounds();
+  const safe = Math.max(1, Math.min(8, Number(count) || 1)); state.roundCount = safe;
+  while (state.rounds.length < safe) {
+    const index = state.rounds.length, priorTime = Number(state.rounds.at(-1)?.currentTime || 0);
+    state.rounds.push(makeRound(index + 1, priorTime + 70, state.routes[0]?.name || "", state.loadPorts[index] || state.loadPorts[0] || ""));
+  }
+  state.rounds.length = safe; normalizeRounds(); renderRounds();
+}
+
+/** 重算时间已合并到轮次卡片，此函数仅维持旧调用点的状态同步。 */
+function renderTimes() { normalizeRounds(); }
+
+/** 返回 Route 或 RouteStep 支持的 Clean 挂载位置。 */
+function cleanPlacementDefinitions(scope) {
+  return scope === "route"
+    ? [
+        { key: "prePJobCleanRefs", label: "PJob 前", types: ["preclean", "dummy", "dummywac"] },
+        { key: "postPJobCleanRefs", label: "PJob 后", types: ["postclean"] },
+      ]
+    : [
+        // 腔室级清洁仅支持离开腔室后的 WAC；带 Dummy 晶圆的清洁必须绑定到 Route。
+        { key: "afterCleanRefs", label: "离开腔室后", types: ["wacclean"] },
+      ];
+}
+
+/** 返回当前 Route 或 RouteStep 中允许 Clean 出现的加工腔室。 */
+function cleanContextModules(scope, routeIndex, stageIndex = -1) {
+  const route = state.routes[routeIndex];
+  if (!route) return [];
+  const stages = scope === "step" ? [route.stages[stageIndex]] : route.stages;
+  return [...new Set((stages || []).flatMap(stage => (stage?.visits || [])
+    .map(visit => visit.stationName)
+    .filter(module => state.processModules.includes(module))))];
+}
+
+/** 返回当前路径弹窗或 Step 抽屉所编辑的 PJob 坐标。 */
+function activePJobRouteContext() {
+  const source = state.drawer || pjobRoutePickerContext;
+  if (!source) return null;
+  return {
+    roundIndex: Number(source.roundIndex),
+    cjobIndex: Number(source.cjobIndex),
+    pjobIndex: Number(source.pjobIndex),
+  };
+}
+
+/** 根据编辑上下文取得当前 PJob 的独立路径配置。 */
+function routeConfigForContext(route, context = null) {
+  const target = context || activePJobRouteContext();
+  const pjob = target
+    ? state.rounds[target.roundIndex]?.cjobs[target.cjobIndex]?.pjobs[target.pjobIndex]
+    : null;
+  return pjobRouteConfig(pjob, route);
+}
+
+/** 读取某一挂载位置的 Clean 引用。 */
+function cleanContextReferences(scope, routeIndex, stageIndex, placement) {
+  const route = state.routes[routeIndex];
+  if (!route) return [];
+  const config = routeConfigForContext(route);
+  if (!config) return [];
+  if (scope === "route") return stringList(config[placement]);
+  const stepId = String(route.stages[stageIndex]?.stepId);
+  return stringList(config.stages?.[stepId]?.[placement]);
+}
+
+/** 在 Route 或 RouteStep 上添加、删除一个 Clean 引用。 */
+function setCleanContextReference(context, placement, cleanName, enabled) {
+  const route = state.routes[context.routeIndex];
+  if (!route) return;
+  const update = target => {
+    const names = new Set(stringList(target[placement]));
+    if (enabled) names.add(cleanName); else names.delete(cleanName);
+    target[placement] = [...names];
+  };
+  const config = routeConfigForContext(route, context);
+  if (!config) return;
+  if (context.scope === "route") update(config);
+  else {
+    const stepId = String(route.stages[context.stageIndex]?.stepId);
+    const stageConfig = config.stages?.[stepId]
+      || (config.stages[stepId] = stageDefaultConfig(route.stages[context.stageIndex]));
+    update(stageConfig);
+  }
+}
+
+/** 统计 Clean 在全部 Route 和 RouteStep 中的引用次数。 */
+function cleanReferenceCount(cleanName) {
+  let count = 0;
+  Object.values(state.testRouteConfigs).forEach(config => {
+    ROUTE_CLEAN_KEYS.forEach(key => { if (stringList(config[key]).includes(cleanName)) count += 1; });
+    Object.values(config.stages || {}).forEach(stage => {
+      for (const key of ["beforeCleanRefs", "afterCleanRefs"]) {
+        if (stringList(stage[key]).includes(cleanName)) count += 1;
+      }
+    });
+  });
+  return count;
+}
+
+/** 绘制绑定在当前 Route 或 RouteStep 上的 Clean 列表。 */
+function renderContextCleans(scope, routeIndex, stageIndex = -1) {
+  const rows = cleanPlacementDefinitions(scope).flatMap(placement =>
+    cleanContextReferences(scope, routeIndex, stageIndex, placement.key).map(cleanName => ({
+      cleanName,
+      placement,
+      clean: state.cleans.find(item => item.name === cleanName),
+    }))
+  );
+  if (!rows.length) return `<div class="context-clean-empty">尚未配置 Clean</div>`;
+  return `<div class="context-clean-list">${rows.map(({ cleanName, placement, clean }) => {
+    const modules = stringList(clean?.modules);
+    const moduleSummary = modules.length ? modules.join(" / ") : "未选择腔室";
+    return `<div class="context-clean-item">
+      <div><strong>${escapeHtml(cleanName)}</strong><small>${escapeHtml(placement.label)} · ${escapeHtml(moduleSummary)}</small></div>
+      <div class="context-clean-actions">
+        <button class="btn small" type="button" data-action="edit-context-clean" data-clean-scope="${scope}" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-placement="${placement.key}" data-clean-name="${escapeHtml(cleanName)}">编辑</button>
+        <button class="btn danger small" type="button" data-action="remove-context-clean" data-clean-scope="${scope}" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-placement="${placement.key}" data-clean-name="${escapeHtml(cleanName)}">移除</button>
+      </div>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+/** 根据挂载位置刷新 Clean 类型选项和条件字段。 */
+function updateCleanDialogFields() {
+  const context = state.cleanDialogContext;
+  if (!context) return;
+  const placement = document.getElementById("cleanPlacement").value;
+  const definition = cleanPlacementDefinitions(context.scope).find(item => item.key === placement);
+  const typeSelect = document.getElementById("cleanType");
+  const currentType = typeSelect.value || context.draft.cleanType;
+  typeSelect.innerHTML = CLEAN_TYPE_DEFINITIONS
+    .filter(item => definition?.types.includes(item.key))
+    .map(item => `<option value="${item.key}">${escapeHtml(item.label)}</option>`)
+    .join("");
+  typeSelect.value = definition?.types.includes(currentType) ? currentType : definition?.types[0] || "";
+  const isDummyClean = ["dummy", "dummywac"].includes(typeSelect.value);
+  document.getElementById("cleanTriggerField").hidden = typeSelect.value !== "wacclean" && !isDummyClean;
+  document.getElementById("cleanTriggerLabel").textContent = isDummyClean
+    ? "单次清洁带片数（MaterialCount）"
+    : "触发次数";
+  document.getElementById("cleanDummyWaferCountField").hidden = !isDummyClean;
+  document.getElementById("cleanDummyWaferCount").disabled = !isDummyClean;
+  document.getElementById("cleanWacTimeField").hidden = typeSelect.value !== "dummywac";
+}
+
+/** 打开 Route 或 RouteStep 的 Clean 参数弹窗。 */
+function openCleanDialog(scope, routeIndex, stageIndex = -1, cleanName = "", placement = "") {
+  const existing = state.cleans.find(clean => clean.name === cleanName);
+  const definitions = cleanPlacementDefinitions(scope);
+  const selectedPlacement = definitions.some(item => item.key === placement) ? placement : definitions[0].key;
+  const draft = normalizeClean(existing || makeClean(definitions[0].types[0]));
+  state.cleanDialogContext = {
+    scope,
+    routeIndex,
+    stageIndex,
+    ...activePJobRouteContext(),
+    cleanName,
+    originalPlacement: selectedPlacement,
+    draft: structuredClone(draft),
+  };
+  document.getElementById("cleanDialogTitle").textContent = `${cleanName ? "编辑" : "新增"} ${scope === "route" ? "Job" : "RouteStep"} Clean`;
+  document.getElementById("cleanDialogDescription").textContent = scope === "route"
+    ? "Clean 只作用于当前 PJob 的所选路径，不会修改路径模板或其他 PJob。"
+    : "Clean 只作用于当前 PJob 的这个 Step，不会修改路径模板或其他 PJob。";
+  const placementSelect = document.getElementById("cleanPlacement");
+  placementSelect.innerHTML = definitions.map(item => `<option value="${item.key}">${escapeHtml(item.label)}</option>`).join("");
+  placementSelect.value = selectedPlacement;
+  document.getElementById("cleanType").innerHTML = `<option value="${draft.cleanType}">${escapeHtml(draft.cleanType)}</option>`;
+  document.getElementById("cleanRecipeTime").value = String(draft.recipeTime);
+  document.getElementById("cleanTriggerCount").value = String(draft.triggerCount);
+  document.getElementById("cleanDummyWaferCount").value = String(draft.dummyWaferCount || DEFAULT_DUMMY_WAFER_COUNT);
+  document.getElementById("cleanWacRecipeTime").value = String(draft.wacRecipeTime);
+  const selectedModules = new Set(stringList(draft.modules));
+  const moduleHost = document.getElementById("cleanModuleOptions");
+  const modules = cleanContextModules(scope, routeIndex, stageIndex);
+  moduleHost.innerHTML = modules.length
+    ? modules.map(module => `<label class="clean-module-option"><input type="checkbox" name="cleanModule" value="${escapeHtml(module)}" ${selectedModules.has(module) ? "checked" : ""}><span>${escapeHtml(module)}</span></label>`).join("")
+    : `<span class="clean-dialog-empty">当前范围没有可配置的加工腔室</span>`;
+  document.getElementById("cleanDialogError").textContent = "";
+  document.getElementById("deleteCleanBindingButton").hidden = !cleanName;
+  updateCleanDialogFields();
+  document.getElementById("cleanType").value = draft.cleanType;
+  updateCleanDialogFields();
+  document.getElementById("cleanDialog").showModal();
+}
+
+/** 保存 Clean 参数并绑定到当前 Route 或 RouteStep。 */
+function saveCleanDialog() {
+  const context = state.cleanDialogContext;
+  if (!context) return;
+  const modules = Array.from(document.querySelectorAll('#cleanModuleOptions input[name="cleanModule"]:checked'), input => input.value);
+  if (!modules.length) {
+    document.getElementById("cleanDialogError").textContent = "请至少选择一个 Clean 适用腔室。";
+    return;
+  }
+  const placement = document.getElementById("cleanPlacement").value;
+  const cleanType = document.getElementById("cleanType").value;
+  const clean = normalizeClean({
+    ...context.draft,
+    cleanType,
+    recipeTime: Number(document.getElementById("cleanRecipeTime").value),
+    triggerCount: Number(document.getElementById("cleanTriggerCount").value),
+    materialCount: ["dummy", "dummywac"].includes(cleanType)
+      ? Number(document.getElementById("cleanTriggerCount").value)
+      : context.draft.materialCount,
+    dummyWaferCount: ["dummy", "dummywac"].includes(cleanType)
+      ? Number(document.getElementById("cleanDummyWaferCount").value)
+      : 0,
+    wacRecipeTime: Number(document.getElementById("cleanWacRecipeTime").value),
+    modules,
+  });
+  if (context.cleanName) {
+    const cleanIndex = state.cleans.findIndex(item => item.name === context.cleanName);
+    if (cleanIndex < 0) return;
+    const sharedClean = cleanReferenceCount(context.cleanName) > 1;
+    if (sharedClean) {
+      setCleanContextReference(context, context.originalPlacement, context.cleanName, false);
+      clean.name = `__pjob_clean_${Date.now()}_${state.cleans.length}`;
+      state.cleans.push(clean);
+      synchronizeCleanNames();
+      setCleanContextReference(context, placement, state.cleans.at(-1).name, true);
+    } else {
+      state.cleans[cleanIndex] = clean;
+    }
+    if (!sharedClean && context.originalPlacement !== placement) {
+      setCleanContextReference(context, context.originalPlacement, context.cleanName, false);
+      setCleanContextReference(context, placement, context.cleanName, true);
+    }
+  } else {
+    state.cleans.push(clean);
+    synchronizeCleanNames();
+    const createdName = state.cleans.at(-1).name;
+    setCleanContextReference(context, placement, createdName, true);
+  }
+  synchronizeCleanNames();
+  markTestDirty();
+  document.getElementById("cleanDialog").close();
+  state.cleanDialogContext = null;
+  renderRoutes();
+  if (state.drawer) renderStepDrawer();
+  if (pjobRoutePickerContext && document.getElementById("pjobRouteDialog").open) {
+    renderPJobRouteDialogGroup(pjobRoutePickerContext.processKey, pjobRoutePickerContext.structureKey);
+  }
+}
+
+/** 从当前上下文移除 Clean；无其他引用时同时清理定义。 */
+function removeContextClean(scope, routeIndex, stageIndex, placement, cleanName) {
+  const context = { scope, routeIndex, stageIndex, ...activePJobRouteContext() };
+  setCleanContextReference(context, placement, cleanName, false);
+  if (cleanReferenceCount(cleanName) === 0) {
+    state.cleans = state.cleans.filter(clean => clean.name !== cleanName);
+  }
+  markTestDirty();
+  renderRoutes();
+  if (state.drawer) renderStepDrawer();
+  if (pjobRoutePickerContext && document.getElementById("pjobRouteDialog").open) {
+    renderPJobRouteDialogGroup(pjobRoutePickerContext.processKey, pjobRoutePickerContext.structureKey);
+  }
+}
+
+/** 返回 Step 类型的简短名称。 */
+/** 绘制紧凑候选设备选择器，避免原生多选框占用整行高度。 */
+function renderCandidatePicker(routeIndex, stageIndex, allowed, candidates) {
+  const selected = new Set(candidates);
+  const summary = candidates.length
+    ? candidates.map(name => `<span class="chip">${escapeHtml(name)}</span>`).join("")
+    : `<span class="candidate-picker-empty">选择设备</span>`;
+  return `<details class="candidate-picker" onclick="event.stopPropagation()"><summary>${summary}</summary><div class="candidate-picker-menu">${allowed.map(name => `<label class="candidate-option"><input type="checkbox" data-scope="stage-candidate-toggle" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-candidate="${escapeHtml(name)}" ${selected.has(name) ? "checked" : ""}><span>${escapeHtml(name)}</span></label>`).join("")}</div></details>`;
+}
+
+/** 更新候选选择器的摘要与 Step 状态，但不重绘整个路径列表，保持下拉常驻。 */
+function refreshCandidatePicker(control) {
+  const picker = control.closest(".candidate-picker");
+  const routeIndex = Number(control.dataset.routeIndex);
+  const stageIndex = Number(control.dataset.stageIndex);
+  const route = state.routes[routeIndex];
+  const stage = route?.stages?.[stageIndex];
+  if (!picker || !stage) return;
+  normalizeRoute(route);
+  const candidates = [...new Set((stage.visits || []).map(visit => visit.stationName).filter(Boolean))];
+  const summary = picker.querySelector("summary");
+  if (summary) {
+    summary.innerHTML = candidates.length
+      ? candidates.map(name => `<span class="chip">${escapeHtml(name)}</span>`).join("")
+      : `<span class="candidate-picker-empty">选择设备</span>`;
+  }
+  const row = control.closest("[data-step-card]");
+  if (row) {
+    const type = row.querySelector(".step-type");
+    if (type) {
+      type.className = `step-type ${stage.needProcess ? "process" : ""}`;
+      type.textContent = stepKind(route, stageIndex);
+    }
+    const needProcess = row.querySelectorAll(".route-step-readonly")[1];
+    if (needProcess) needProcess.textContent = stage.needProcess ? "true" : "false";
+  }
+}
+
+/** 绘制只读候选腔室；首尾固定模块与测试侧路径实例都使用该展示。 */
+function renderReadonlyCandidates(stage) {
+  const candidates = [...new Set((stage?.visits || []).map(visit => visit.stationName).filter(Boolean))];
+  return candidates.length
+    ? candidates.map(name => `<span class="chip">${escapeHtml(name)}</span>`).join("")
+    : `<span class="candidate-picker-empty">未选择</span>`;
+}
+
+/** 绘制 Route Step 列表；Src/Sink 固定，其余 Step 允许选择候选设备。 */
+function renderSteps(route, routeIndex) {
+  return route.stages.map((stage, stageIndex) => {
+    const candidates = [...new Set((stage.visits || []).map(visit => visit.stationName).filter(Boolean))];
+    const allowed = stageUsesRobot(stage, stageIndex) ? state.robotNames : state.stationNames;
+    const fixed = isFixedRouteStep(route, stageIndex);
+    const picker = fixed ? `<span class="chip">测试 LoadPort</span>` : renderCandidatePicker(routeIndex, stageIndex, allowed, candidates);
+    const actions = fixed
+      ? `<span class="route-step-readonly">固定模块</span>`
+      : `<div class="route-step-actions"><button class="btn icon small" title="前移" data-action="move-step-up" data-route-index="${routeIndex}" data-stage-index="${stageIndex}">↑</button><button class="btn icon small" title="后移" data-action="move-step-down" data-route-index="${routeIndex}" data-stage-index="${stageIndex}">↓</button><button class="btn danger icon small" title="删除" data-action="remove-stage" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" ${route.stages.length <= 3 ? "disabled" : ""}>×</button></div>`;
+    return `<tr data-route-template-step data-route-index="${routeIndex}" data-stage-index="${stageIndex}">
+      <td><span class="step-id-badge">${Number(stage.stepId)}</span></td>
+      <td><span class="step-type ${stage.needProcess ? "process" : ""}">${stepKind(route, stageIndex)}</span></td>
+      <td>${picker}</td>
+      <td class="route-step-readonly"><span class="step-next">${stage.postStepIds?.length ? stage.postStepIds.join(", ") : "结束"}</span></td>
+      <td class="route-step-readonly">${stage.needProcess ? "true" : "false"}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join("");
+}
+
+/** 根据加工 Step 数量和并行机器结构计算页面分组，不修改 Route.Group。 */
+function routeProcessProfile(route) {
+  normalizeRoute(route);
+  return RouteEditorLogic.processProfile(route);
+}
+
+/** 按加工路径拓扑生成模板名称；加工时间、清洁与驻留只在测试中编辑。 */
+function generatedRouteName(route) {
+  return automaticTemplateName(routeProcessProfile(route));
+}
+
+/** 记录 Route 自动改名链，并同步当前测试中引用该 Route 的 PJob 与测试侧配置。 */
+function recordRouteRename(oldName, newName) {
+  if (!oldName || oldName === newName) return;
+  let extended = false;
+  for (const [origin, current] of state.routeNameChanges) {
+    if (current === oldName) { state.routeNameChanges.set(origin, newName); extended = true; }
+  }
+  if (!extended) state.routeNameChanges.set(oldName, newName);
+  state.rounds.forEach(round => round.cjobs.forEach(cjob => cjob.pjobs.forEach(pjob => {
+    if (pjob.routeRef === oldName) pjob.routeRef = newName;
+  })));
+  if (state.testRouteConfigs[oldName] && !state.testRouteConfigs[newName]) {
+    state.testRouteConfigs[newName] = structuredClone(state.testRouteConfigs[oldName]);
+    delete state.testRouteConfigs[oldName];
+  }
+}
+
+/** 按加工路径和实际候选腔室自动生成唯一 Route 名称。 */
+function synchronizeRouteNames() {
+  const occurrences = new Map(); let changed = false;
+  state.routes.forEach(route => {
+    const baseName = generatedRouteName(route);
+    const occurrence = (occurrences.get(baseName) || 0) + 1; occurrences.set(baseName, occurrence);
+    const generatedName = occurrence === 1 ? baseName : `${baseName} (${occurrence})`;
+    if (route.name !== generatedName) {
+      recordRouteRename(route.name, generatedName); route.name = generatedName; changed = true;
+    }
+  });
+  return changed;
+}
+
+/** 生成“工序数 → 并行机器结构 → 路径”的稳定分组列表；重入路径统一进入独立分组。 */
+function groupedRoutes() {
+  const natural = (left, right) => left.localeCompare(right, undefined, { numeric: true });
+  const processGroups = new Map();
+  state.routes.forEach((route, routeIndex) => {
+    const profile = routeGroupingProfile(route);
+    const processKey = profile.isReentrant ? profile.key : String(profile.processCount);
+    const processGroup = processGroups.get(processKey) || {
+      key: processKey,
+      processCount: profile.processCount,
+      isReentrant: profile.isReentrant,
+      label: profile.processLabel,
+      routeCount: 0,
+      structures: new Map(),
+    };
+    const structure = processGroup.structures.get(profile.key) || { ...profile, routes: [] };
+    structure.routes.push({ route, routeIndex, profile });
+    processGroup.structures.set(profile.key, structure);
+    processGroup.routeCount += 1;
+    processGroups.set(processKey, processGroup);
+    if (state.expandedRoutes.has(routeIndex)) {
+      state.expandedRouteProcessGroups.add(processKey);
+      state.expandedRouteGroups.add(profile.key);
+    }
+  });
+  return [...processGroups.values()]
+    .sort((left, right) => (
+      Number(left.isReentrant) - Number(right.isReentrant)
+      || left.processCount - right.processCount
+    ))
+    .map(processGroup => ({
+      ...processGroup,
+      structures: [...processGroup.structures.values()]
+        .sort(RouteEditorLogic.compareProfiles)
+        .map(structure => ({
+          ...structure,
+          routes: structure.routes.sort((left, right) => natural(left.route.name || "", right.route.name || "")),
+        })),
+    }));
+}
+
+/** 绘制一条已展开路径模板的编辑能力；模板只负责腔室结构。 */
+function renderRouteDetails(route, index) {
+  return `<div class="route-details"><div class="edit-card-head"><strong>腔室路径</strong><div><button class="btn small" data-action="add-stage" data-index="${index}">＋ Step 组</button></div></div>
+    <div class="route-table-wrap"><table class="route-table"><thead><tr><th>StepID</th><th>类型</th><th>可选腔室 / 机器手</th><th>PostStepID</th><th>NeedProcess</th><th></th></tr></thead><tbody>${renderSteps(route, index)}</tbody></table></div></div>`;
+}
+
+/** 绘制路径筛选器与当前组合的扁平路径列表；路径页只保留工序数与并行结构两个筛选。 */
+function renderRoutes() {
+  const host = document.getElementById("routeList");
+  const processSelect = document.getElementById("routeProcessFilter");
+  const parallelSelect = document.getElementById("routeParallelFilter");
+  const processGroups = groupedRoutes();
+  const selectedProcess = processGroups.find(group => group.key === state.routeProcessFilter) || processGroups[0];
+  state.routeProcessFilter = selectedProcess?.key || "";
+  const selectedStructure = selectedProcess?.structures.find(structure => structure.key === state.routeParallelFilter) || selectedProcess?.structures[0];
+  state.routeParallelFilter = selectedStructure?.key || "";
+
+  processSelect.innerHTML = processGroups.map(group => `<option value="${escapeHtml(group.key)}">${escapeHtml(group.label)}</option>`).join("");
+  processSelect.value = state.routeProcessFilter;
+  processSelect.disabled = !processGroups.length;
+  parallelSelect.innerHTML = (selectedProcess?.structures || []).map(structure => `<option value="${escapeHtml(structure.key)}">${escapeHtml(structure.label)}</option>`).join("");
+  parallelSelect.value = state.routeParallelFilter;
+  parallelSelect.disabled = !selectedProcess?.structures.length;
+  initializeCompactSelects();
+  refreshCompactSelect(processSelect);
+  refreshCompactSelect(parallelSelect);
+
+  if (!selectedStructure) {
+    host.innerHTML = `<div class="empty">至少创建一条路径，Job 才能引用。</div>`;
+    return;
+  }
+  const routes = selectedStructure.routes.map(({ route, routeIndex }) => {
+    const routeOpen = state.routeEditingIndex === routeIndex;
+    const anotherRouteEditing = state.routeEditingIndex >= 0 && !routeOpen;
+    const compactPath = routePickerCompactPath(route, false);
+    const actions = routeOpen
+      ? `<button class="btn small" type="button" disabled>编辑</button><button class="btn primary small" type="button" data-action="save-route" data-route-index="${routeIndex}">保存</button><button class="btn small" type="button" data-action="cancel-route-edit" data-route-index="${routeIndex}">取消</button>`
+      : `<button class="btn small" type="button" data-action="edit-route" data-route-index="${routeIndex}" ${anotherRouteEditing ? "disabled" : ""}>编辑</button><button class="btn small" type="button" data-action="copy-route" data-route-index="${routeIndex}" ${anotherRouteEditing ? "disabled" : ""}>复制</button><button class="btn danger small" type="button" data-action="remove-route" data-index="${routeIndex}" ${anotherRouteEditing ? "disabled" : ""}>删除</button>`;
+    return `<article class="route-summary-card ${routeOpen ? "is-editing" : ""}"><div class="route-summary-head"><div class="route-summary-toggle">
+      <span class="route-summary-content"><span class="route-summary-primary"><span class="route-summary-id">${routePickerShortId(route)}</span><strong title="${escapeHtml(compactPath)}">${escapeHtml(compactPath)}</strong></span></span></div>
+      <div class="route-summary-actions">${actions}</div>
+    </div>${routeOpen ? renderRouteDetails(route, routeIndex) : ""}</article>`;
+  }).join("");
+  host.innerHTML = routes ? `<div class="route-flat-list">${routes}</div>` : `<div class="empty">当前筛选条件下没有匹配的路径。</div>`;
+  initializeCompactSelects();
+}
+
+/** 为组合路径生成稳定、紧凑的界面编号；完整 Route.Name 仍用于数据引用。 */
+function routePickerShortId(route) {
+  const routeIndex = state.routes.indexOf(route);
+  return routeIndex < 0 ? "R-???" : `R-${String(routeIndex + 1).padStart(3, "0")}`;
+}
+
+/** 返回 Clean 引用的类型和参数；缺少定义时仍保留原始名称。 */
+function routePickerCleanInfo(cleanName) {
+  const clean = state.cleans.find(item => item.name === cleanName);
+  return clean ? { ...normalizeClean(clean), defined: true } : { name: cleanName, cleanType: inferCleanType({ name: cleanName }), defined: false };
+}
+
+/** 把 WAC 压缩为示例中的 [wac 2|10s] 形式。 */
+function routePickerWacToken(cleanName) {
+  const clean = routePickerCleanInfo(cleanName);
+  return clean.defined ? `wac ${Number(clean.triggerCount) || 0}|${formatCleanSeconds(clean.recipeTime)}` : "wac";
+}
+
+/** 收集一个 Stage 上引用的 WAC Clean。 */
+function routePickerStageWacTokens(stage) {
+  const names = [...new Set((stage.visits || []).flatMap(visit => [
+    ...stringList(visit.beforeCleanRefs),
+    ...stringList(visit.afterCleanRefs),
+  ]))];
+  return names.filter(name => routePickerCleanInfo(name).cleanType === "wacclean").map(routePickerWacToken);
+}
+
+/** 解析当前 Route 引用的全部 Clean，供 OriginRoute 预览挂载标签。 */
+function routePickerPreviewCleans(route) {
+  return RouteEditorLogic.routeReferencedCleanNames(route).map(routePickerCleanInfo);
+}
+
+/** 生成紧凑路径文本；模板视图只显示拓扑，测试视图再显示时间与清洁。 */
+function routePickerCompactPath(route, includeTestParameters = true, sourceModule = "") {
+  normalizeRoute(route);
+  return RouteEditorLogic.compactRoutePreviewPath(route, {
+    includeTestParameters,
+    robotNames: state.robotNames,
+    cleans: includeTestParameters ? routePickerPreviewCleans(route) : [],
+  });
+}
+
+/** 用“工序数 + 候选腔室”描述一个工序结构，不暴露内部路径名。 */
+function routePickerProcessSummary(profile) {
+  const chambers = (profile?.candidatePath || []).join(" → ");
+  return { label: profile?.processLabel || "暂无工序", chambers: chambers || "未配置加工腔室" };
+}
+
+/** 把 Pre/Post/Dummy/DummyWAC 清洁压缩到单独一行。 */
+function routePickerSpecialCleanSummary(route) {
+  const names = RouteEditorLogic.routeReferencedCleanNames(route);
+  return names.map(routePickerCleanInfo).filter(clean => ["preclean", "postclean", "dummy", "dummywac"].includes(clean.cleanType)).map(clean => {
+    if (!clean.defined) return clean.name;
+    if (clean.cleanType === "dummywac") return `dummywac ${formatCleanSeconds(clean.recipeTime)}|${formatCleanSeconds(clean.wacRecipeTime)}`;
+    const label = { preclean: "pre", postclean: "post", dummy: "dummy" }[clean.cleanType] || clean.cleanType;
+    return `${label} ${formatCleanSeconds(clean.recipeTime)}`;
+  }).join(" · ");
+}
+
+/** 汇总卡片第二行使用的全部清洁信息。 */
+function routePickerCleanSummary(route) {
+  const special = routePickerSpecialCleanSummary(route);
+  const wac = [...new Set((route.stages || []).flatMap(routePickerStageWacTokens))];
+  return [special, ...wac].filter(Boolean).join(" · ") || "无";
+}
+
+/** 把 BufferOption 数值转换成路径卡片上直接可读的使用模式。 */
+function routeBufferMode(value) {
+  const index = Math.max(0, Math.min(4, Math.trunc(Number(value) || 0)));
+  const modes = [
+    { label: "No Buffer", tone: "none" },
+    { label: "强制 Buffer Out", tone: "forced" },
+    { label: "强制 Buffer In", tone: "forced" },
+    { label: "非强制 Buffer Out", tone: "optional" },
+    { label: "非强制 Buffer In", tone: "optional" },
+  ];
+  return { index, ...modes[index] };
+}
+
+/** 判断路径是否至少有一个加工 Visit 配置了给定的时间约束。 */
+function routeHasTimeConstraint(route, field) {
+  return (route.stages || []).some(stage => (stage.visits || []).some(visit => {
+    const value = Number(visit[field]);
+    return Number.isFinite(value) && value >= 0;
+  }));
+}
+
+/** 绘制与路径同行的 Buffer 和清洁状态标签。 */
+function renderRoutePropertyTags(route) {
+  const buffer = routeBufferMode(route.bufferOption);
+  const cleanSummary = routePickerCleanSummary(route);
+  const hasResidency = routeHasTimeConstraint(route, "residencyConstraint");
+  const hasQTime = routeHasTimeConstraint(route, "qTimeLimit");
+  const tags = [];
+  if (cleanSummary !== "无") tags.push(`<span class="route-property-tag clean-active" title="清洁：${escapeHtml(cleanSummary)}">${escapeHtml(cleanSummary)}</span>`);
+  if (hasResidency) tags.push(`<span class="route-property-tag constraint-active" title="驻留时间约束：已配置">驻留约束</span>`);
+  if (buffer.index > 0) tags.push(`<span class="route-property-tag buffer-${buffer.tone}" title="Buffer 使用模式 ${buffer.index}：${escapeHtml(buffer.label)}">${escapeHtml(buffer.label)}</span>`);
+  if (hasQTime) tags.push(`<span class="route-property-tag qtime-active" title="QTime：已配置">QTime</span>`);
+  return tags.length ? `<span class="route-property-tags">${tags.join("")}</span>` : "";
+}
+
+/** 绘制一张紧凑的具体路径选择卡片。 */
+function renderPJobRouteCard(route, baseline) {
+  const routeIndex = state.routes.indexOf(route), selected = route === baseline;
+  const compactPath = routePickerCompactPath(route, false);
+  return `<button type="button" class="pjob-route-card ${selected ? "selected" : ""}" data-action="select-pjob-route" data-route-index="${routeIndex}" aria-pressed="${selected}" title="${escapeHtml(compactPath)}">
+    <span class="pjob-route-card-head"><span class="pjob-route-card-id">${routePickerShortId(route)}</span><strong class="pjob-route-card-path">${escapeHtml(compactPath)}</strong>${selected ? `<span class="pjob-route-card-current">当前选择</span>` : ""}</span>
+  </button>`;
+}
+
+/** 在路径引用弹窗内显示已选模板的具体 Step；点击 Step 打开右侧抽屉编辑测试参数。 */
+function renderRouteInstanceSteps(route, pjob, loadPort = "") {
+  const routeIndex = state.routes.indexOf(route);
+  const runtimeRoute = runtimeRouteForTemplate(route, pjobRouteConfig(pjob, route));
+  if (loadPort && runtimeRoute.stages?.length) {
+    for (const stageIndex of [0, runtimeRoute.stages.length - 1]) {
+      (runtimeRoute.stages[stageIndex]?.visits || []).forEach(visit => {
+        visit.stationName = loadPort;
+      });
+    }
+  }
+  return `<table class="route-table"><thead><tr><th>StepID</th><th>类型</th><th>可选腔室 / 机器手</th><th>PostStepID</th><th>NeedProcess</th></tr></thead><tbody>${(runtimeRoute.stages || []).map((stage, stageIndex) => {
+    const fixed = isFixedRouteStep(runtimeRoute, stageIndex);
+    return `<tr ${fixed ? "" : 'data-step-card tabindex="0" role="button"'} data-route-index="${routeIndex}" data-stage-index="${stageIndex}">
+      <td><span class="step-id-badge">${Number(stage.stepId)}</span></td>
+      <td>${fixed ? `<span class="route-step-source-note">由 CJob LoadPort 决定</span>` : `<span class="step-type ${stage.needProcess ? "process" : ""}">${stepKind(route, stageIndex)}</span>`}</td>
+      <td>${fixed ? `<span class="route-step-readonly">—</span>` : renderReadonlyCandidates(stage)}</td>
+      <td class="route-step-readonly"><span class="step-next">${stage.postStepIds?.length ? stage.postStepIds.join(", ") : "结束"}</span></td>
+      <td class="route-step-readonly">${stage.needProcess ? "true" : "false"}</td>
+    </tr>`;
+  }).join("")}</tbody></table>`;
+}
+
+/** 绘制只属于当前 PJob 路径实例的 Buffer Option。 */
+function renderRouteBufferEditor(routeIndex, context) {
+  const route = state.routes[routeIndex];
+  const pjob = state.rounds[context.roundIndex]?.cjobs[context.cjobIndex]?.pjobs[context.pjobIndex];
+  const current = routeBufferMode(runtimeRouteForTemplate(route, pjobRouteConfig(pjob, route)).bufferOption).index;
+  const bufferModes = ["No Buffer", "强制 Buffer Out", "强制 Buffer In", "非强制 Buffer Out", "非强制 Buffer In"];
+  return `<section class="route-instance-buffer">
+    <label for="route-${routeIndex}-buffer-option">Buffer Option</label>
+    <select id="route-${routeIndex}-buffer-option" data-compact-label="Buffer Option" data-scope="test-route" data-route-index="${routeIndex}" data-round-index="${context.roundIndex}" data-cjob-index="${context.cjobIndex}" data-pjob-index="${context.pjobIndex}" data-key="bufferOption">${bufferModes.map((label, value) => `<option value="${value}" ${value === current ? "selected" : ""}>${value} · ${escapeHtml(label)}</option>`).join("")}</select>
+  </section>`;
+}
+
+/** 刷新弹窗中的并行结构下拉与路径卡片。 */
+function renderPJobRouteDialogGroup(processKey, structureKey) {
+  const context = pjobRoutePickerContext;
+  if (!context) return;
+  const selectedProcess = context.groups.find(group => group.key === processKey) || context.groups[0];
+  const selectedStructure = (selectedProcess?.structures || []).find(structure => structure.key === structureKey) || selectedProcess?.structures[0];
+  const pjob = state.rounds[context.roundIndex]?.cjobs[context.cjobIndex]?.pjobs[context.pjobIndex];
+  const selectedRoute = state.routes.find(route => route.name === pjob.routeRef);
+  context.processKey = selectedProcess?.key || "";
+  context.structureKey = selectedStructure?.key || "";
+  const filterGrid = document.getElementById("pjobRouteFilterGrid");
+  const cardList = document.getElementById("pjobRouteCardList");
+  const detailHost = document.getElementById("pjobRouteDetail");
+  document.querySelector(".pjob-route-dialog-body")?.classList.toggle("edit-mode", context.mode === "edit" && Boolean(selectedRoute));
+  if (context.mode === "edit" && selectedRoute) {
+    document.getElementById("pjobRouteDialogTitle").textContent = `编辑 ${pjob.jobName} 的路径`;
+    document.getElementById("pjobRouteDialogContext").textContent = "";
+    filterGrid.hidden = true;
+    cardList.hidden = true;
+    detailHost.hidden = false;
+    const routeIndex = state.routes.indexOf(selectedRoute);
+    detailHost.innerHTML = `<article class="pjob-route-edit-card">
+      <header class="pjob-route-edit-head"><button class="btn small" type="button" data-action="back-pjob-route-selection">← 返回选择模板</button><div><strong>${routePickerShortId(selectedRoute)}</strong></div></header>
+      <div class="pjob-route-instance-settings">${renderRouteBufferEditor(routeIndex, context)}${renderRouteCleanEditor(routeIndex)}</div>
+      <div class="route-table-wrap">${renderRouteInstanceSteps(selectedRoute, pjob, pjob?.loadPort)}</div>
+    </article>`;
+    initializeCompactSelects();
+    return;
+  }
+  context.mode = "select";
+  document.getElementById("pjobRouteDialogTitle").textContent = `选择 ${pjob.jobName} 的路径模板`;
+  filterGrid.hidden = false;
+  cardList.hidden = false;
+  detailHost.hidden = true;
+  detailHost.innerHTML = "";
+  const parallelSelect = document.getElementById("pjobRouteParallel");
+  parallelSelect.innerHTML = (selectedProcess?.structures || []).map(structure => (
+    `<option value="${escapeHtml(structure.key)}" ${structure.key === context.structureKey ? "selected" : ""}>${escapeHtml(structure.label)}</option>`
+  )).join("") || `<option value="">暂无结构</option>`;
+  document.getElementById("pjobRouteDialogContext").textContent = selectedStructure
+    ? `${selectedProcess.label} · ${selectedStructure.label} · ${selectedStructure.routes.length} 条候选路径`
+    : "当前工序没有可用路径";
+  cardList.innerHTML = (selectedStructure?.routes || []).length
+    ? selectedStructure.routes.map(({ route }) => renderPJobRouteCard(route, selectedRoute)).join("")
+    : `<div class="pjob-route-dialog-empty">当前工序没有可选择的路径</div>`;
+}
+
+/** 打开具体路径卡片面板，并把“工序数/并行结构”选择放在面板顶部。 */
+function openPJobRoutePicker(button) {
+  const roundIndex = Number(button.dataset.roundIndex), cjobIndex = Number(button.dataset.cjobIndex), pjobIndex = Number(button.dataset.pjobIndex);
+  const pjob = state.rounds[roundIndex]?.cjobs[cjobIndex]?.pjobs[pjobIndex];
+  if (!pjob) return;
+  const groups = groupedRoutes();
+  const selectedRoute = state.routes.find(route => route.name === pjob.routeRef);
+  const selectedProfile = selectedRoute ? routeProcessProfile(selectedRoute) : null;
+  const selectedProcess = groups.find(group => selectedProfile ? (selectedProfile.isReentrant ? group.key === selectedProfile.key : group.key === String(selectedProfile.processCount)) : false) || groups[0];
+  const selectedStructure = (selectedProcess?.structures || []).find(structure => structure.key === selectedProfile?.key) || selectedProcess?.structures[0];
+  pjobRoutePickerContext = {
+    roundIndex, cjobIndex, pjobIndex, trigger: button, groups,
+    processKey: selectedProcess?.key || "",
+    structureKey: selectedStructure?.key || "",
+    mode: selectedRoute ? "edit" : "select",
+  };
+  document.getElementById("pjobRouteDialogTitle").textContent = `选择 ${pjob.jobName} 的路径`;
+  const processSelect = document.getElementById("pjobRouteProcess");
+  processSelect.innerHTML = groups.length ? groups.map(group => (
+    `<option value="${escapeHtml(group.key)}" ${group.key === pjobRoutePickerContext.processKey ? "selected" : ""}>${escapeHtml(group.label)}</option>`
+  )).join("") : `<option value="">暂无工序</option>`;
+  renderPJobRouteDialogGroup(pjobRoutePickerContext.processKey, pjobRoutePickerContext.structureKey);
+  button.setAttribute("aria-expanded", "true");
+  const dialog = document.getElementById("pjobRouteDialog");
+  dialog.showModal();
+  window.setTimeout(() => processSelect.focus(), 0);
+}
+
+/** 关闭卡片面板；取消选择时把焦点交还给原按钮。 */
+function closePJobRoutePicker(restoreFocus = true) {
+  const context = pjobRoutePickerContext, dialog = document.getElementById("pjobRouteDialog");
+  if (dialog.open) dialog.close();
+  if (context?.trigger?.isConnected) {
+    context.trigger.setAttribute("aria-expanded", "false");
+    if (restoreFocus) context.trigger.focus();
+  }
+  pjobRoutePickerContext = null;
+  renderRounds();
+}
+
+/** 在弹窗中选择路径模板；测试侧参数保持不变，右侧详情立即切换到新模板。 */
+function selectPJobRoute(routeIndex) {
+  const context = pjobRoutePickerContext, route = state.routes[routeIndex];
+  if (!context || !route) return;
+  const pjob = state.rounds[context.roundIndex]?.cjobs[context.cjobIndex]?.pjobs[context.pjobIndex];
+  if (!pjob) return;
+  pjob.routeRef = route.name;
+  pjob.routeConfig = structuredClone(
+    state.testRouteConfigs[route.name] || defaultRouteConfigForRoute(route),
+  );
+  normalizeRounds();
+  markTestDirty();
+  closePJobRoutePicker(false);
+}
+
+/** 外部展示当前工序和具体路径；具体模板与测试参数统一在弹窗内选择和编辑。 */
+function renderPJobRoutePicker(pjob, roundIndex, cjobIndex, pjobIndex) {
+  const selectedRoute = state.routes.find(route => route.name === pjob.routeRef);
+  const runtimeRoute = selectedRoute ? runtimeRouteForTemplate(selectedRoute, pjobRouteConfig(pjob, selectedRoute)) : null;
+  const compactPath = runtimeRoute ? routePickerCompactPath(runtimeRoute, true, pjob.loadPort) : "未选择路径";
+  const common = `data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-pjob-index="${pjobIndex}"`;
+  return `<div class="pjob-route-picker">
+    <div class="pjob-route-current" title="${escapeHtml(compactPath)}"><span class="pjob-route-current-path">${escapeHtml(compactPath)}</span>${runtimeRoute ? renderRoutePropertyTags(runtimeRoute) : ""}</div>
+    <button type="button" class="pjob-route-open" data-action="open-pjob-route-picker" aria-label="选择具体路径" aria-haspopup="dialog" aria-controls="pjobRouteDialog" aria-expanded="false" ${common}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  </div>`;
+}
+
+/** 绘制重算轮次 → CJob → PJob 的三级结构。 */
+function renderRounds() {
+  normalizeRounds();
+  const host = document.getElementById("roundList");
+  if (!state.testCaseId) { host.innerHTML = '<p class="hint">选择或新建测试后开始编辑。</p>'; return; }
+  host.innerHTML = state.rounds.map((round, roundIndex) => {
+    const roundTitle = roundIndex ? `第 ${roundIndex + 1} 轮重算` : "首次排程";
+    const serialMode = round.cjobs.some(cjob => ["Pipeline", "Sequential"].includes(cjob.taskMode));
+    const cjobs = round.cjobs.map((cjob, cjobIndex) => {
+      const normalLot = cjob.jobType === "NormalLot";
+      const fieldPrefix = `round-${roundIndex}-cjob-${cjobIndex}`;
+      const occupiedLoadPorts = new Set(
+        round.cjobs
+          .filter((_item, index) => index !== cjobIndex)
+          .map(item => item.loadPort),
+      );
+      const loadPortOptions = state.loadPorts.map(loadPort => `<option value="${escapeHtml(loadPort)}" ${loadPort === cjob.loadPort ? "selected" : ""} ${occupiedLoadPorts.has(loadPort) ? "disabled" : ""}>${escapeHtml(loadPort)}</option>`).join("");
+      const pjobRows = cjob.pjobs.map((pjob, pjobIndex) => {
+        const pjobFieldPrefix = `${fieldPrefix}-pjob-${pjobIndex}`;
+        return `<div class="pjob-row">
+          <div class="pjob-identity"><span>PJob</span><strong>${escapeHtml(pjob.jobName)}</strong></div>
+          <label class="pjob-field pjob-material" for="${pjobFieldPrefix}-wafer-count"><span>Material</span><input id="${pjobFieldPrefix}-wafer-count" class="pjob-number" type="number" min="1" max="25" inputmode="numeric" data-scope="pjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-pjob-index="${pjobIndex}" data-key="waferCount" value="${Number(pjob.waferCount)}"></label>
+          <label class="pjob-field pjob-priority" for="${pjobFieldPrefix}-priority"><span>Priority</span><input id="${pjobFieldPrefix}-priority" class="pjob-number" type="number" min="1" inputmode="numeric" data-scope="pjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-pjob-index="${pjobIndex}" data-key="priority" value="${Number(pjob.priority)}"></label>
+          <div class="pjob-field pjob-origin-route"><span>OriginRoute</span>${renderPJobRoutePicker(pjob, roundIndex, cjobIndex, pjobIndex)}</div>
+          <button class="btn danger icon pjob-remove" type="button" aria-label="删除 ${escapeHtml(pjob.jobName)}" title="删除 ${escapeHtml(pjob.jobName)}" data-action="remove-pjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-pjob-index="${pjobIndex}" ${cjob.pjobs.length <= 1 ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6m4-6v6M9 7l1-2h4l1 2M7 7l1 13h8l1-13"/></svg></button>
+        </div>`;
+      }).join("");
+      return `<section class="cjob-card">
+        <header class="cjob-head">
+          <div class="cjob-title"><strong>CJob ${cjobIndex + 1}</strong><span class="cjob-task-id">TaskID ${escapeHtml(cjob.taskId)}</span></div>
+          <div class="cjob-controls">
+            <div class="field cjob-job-type"><label for="${fieldPrefix}-job-type">JobType</label><select id="${fieldPrefix}-job-type" data-scope="cjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-key="jobType">${CJOB_TYPES.map(value => `<option ${value === cjob.jobType ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+            <div class="field cjob-load-port"><label for="${fieldPrefix}-load-port">LoadPort</label><select id="${fieldPrefix}-load-port" data-scope="cjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-key="loadPort" aria-label="CJob ${cjobIndex + 1} LoadPort">${loadPortOptions}</select></div>
+            <div class="field cjob-priority ${normalLot ? "" : "disabled-field"}"><label for="${fieldPrefix}-priority">Priority</label><input id="${fieldPrefix}-priority" type="number" min="1" inputmode="numeric" data-scope="cjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-key="priority" value="${Number(cjob.priority)}" ${normalLot ? "" : "disabled"}></div>
+            <div class="field cjob-task-mode"><label for="${fieldPrefix}-task-mode">TaskMode</label><select id="${fieldPrefix}-task-mode" data-scope="cjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-key="taskMode">${TASK_MODES.map(value => `<option ${value === cjob.taskMode ? "selected" : ""} ${round.cjobs.length > 1 && ["Pipeline", "Sequential"].includes(value) ? "disabled" : ""}>${value}</option>`).join("")}</select></div>
+            <div class="field cjob-cycle"><label for="${fieldPrefix}-cycle">CJobCycle</label><input id="${fieldPrefix}-cycle" type="number" min="1" max="1000" step="1" inputmode="numeric" data-scope="cjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-key="cjobCycle" value="${Number(cjob.cjobCycle)}"></div>
+          </div>
+          <div class="round-actions cjob-actions"><button class="btn small" type="button" data-action="add-pjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>PJob</span></button><button class="btn danger small" type="button" data-action="remove-cjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" ${round.cjobs.length <= 1 ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6m4-6v6M9 7l1-2h4l1 2M7 7l1 13h8l1-13"/></svg><span>删除</span></button></div>
+        </header>
+        <div class="pjob-list">${pjobRows}</div>
+      </section>`;
+    }).join("");
+    const cjobLimitReached = state.loadPorts.length > 0 && round.cjobs.length >= state.loadPorts.length;
+    const addCJobDisabled = cjobLimitReached || serialMode;
+    const addCJobTitle = serialMode
+      ? "Pipeline/Sequential 每轮只能配置一个 CJob"
+      : "每轮 CJob 数不能超过 LoadPort 数";
+    return `<section class="round-card"><header class="round-head"><div class="round-summary"><div class="round-title"><div class="round-number">${roundIndex + 1}</div><strong>${roundTitle}</strong></div><label class="round-time-editor" for="round-${roundIndex}-time"><span>${roundIndex ? "重算时间" : "排程时间"}</span><span class="round-time-control"><input id="round-${roundIndex}-time" type="number" min="0" step="0.1" inputmode="decimal" data-round-time-index="${roundIndex}" value="${Number(round.currentTime)}" ${roundIndex ? "" : "disabled"}><b aria-hidden="true">s</b></span></label></div><button class="btn small round-add-cjob" type="button" data-action="add-cjob" data-round-index="${roundIndex}" ${addCJobDisabled ? `disabled title="${addCJobTitle}"` : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>CJob</span></button></header><div class="cjob-list">${cjobs}</div></section>`;
+  }).join("");
+  initializeCompactSelects();
+}
+
+/** 绘制 Step 中允许修改的数值参数。 */
+function renderStepNumberField(label, key, value, routeIndex, stageIndex, options = {}) {
+  const inputId = `step-${routeIndex}-${stageIndex}-${key}`;
+  const helper = options.helper ? `<small class="field-help">${escapeHtml(options.helper)}</small>` : "";
+  const minimum = options.minimum === undefined ? "" : ` min="${options.minimum}"`;
+  return `<div class="step-edit-field">
+    <label for="${inputId}">${escapeHtml(label)}</label>
+    <div class="step-number-control">
+      <input id="${inputId}" type="number" inputmode="decimal" step="${options.step || "0.1"}"${minimum} data-scope="test-step" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-round-index="${state.drawer?.roundIndex}" data-cjob-index="${state.drawer?.cjobIndex}" data-pjob-index="${state.drawer?.pjobIndex}" data-key="${key}" value="${escapeHtml(value)}">
+      <span aria-hidden="true">s</span>
+    </div>
+    ${helper}
+  </div>`;
+}
+
+/** 绘制 RouteStep 的 Clean 绑定列表和新增入口。 */
+function renderStepCleanEditor(routeIndex, stageIndex) {
+  return `<section class="step-clean-section">
+    <div class="context-clean-head"><div><strong>Clean</strong></div><button class="btn small" type="button" data-action="open-context-clean" data-clean-scope="step" data-route-index="${routeIndex}" data-stage-index="${stageIndex}">＋ Clean</button></div>
+    ${renderContextCleans("step", routeIndex, stageIndex)}
+  </section>`;
+}
+
+/** 绘制只属于当前 PJob 路径实例的 Clean，避免写回共享模板。 */
+function renderRouteCleanEditor(routeIndex) {
+  return `<section class="step-clean-section">
+    <div class="context-clean-head"><div><strong>Job Clean</strong></div><button class="btn small" type="button" data-action="open-context-clean" data-clean-scope="route" data-route-index="${routeIndex}" data-stage-index="-1">＋ Clean</button></div>
+    ${renderContextCleans("route", routeIndex)}
+  </section>`;
+}
+
+/** 绘制当前 Step 的配置详情；主区域只暴露业务允许修改的四项参数。 */
+function renderStepDrawer() {
+  if (!state.drawer) return;
+  const { routeIndex, stageIndex, roundIndex, cjobIndex, pjobIndex } = state.drawer, template = state.routes[routeIndex];
+  if (!template) { closeStepDrawer(); return; }
+  const pjob = state.rounds[roundIndex]?.cjobs[cjobIndex]?.pjobs[pjobIndex];
+  const route = runtimeRouteForTemplate(template, pjobRouteConfig(pjob, template)), stage = route?.stages[stageIndex];
+  if (!stage || isFixedRouteStep(route, stageIndex)) { closeStepDrawer(); return; }
+  document.getElementById("drawerTitle").textContent = `Step ${stage.stepId} 配置`;
+  const candidates = [...new Set(stage.visits.map(visit => visit.stationName).filter(Boolean))];
+  document.getElementById("drawerSubtitle").textContent = `腔室：${candidates.join(" / ") || "未选择"}`;
+  const first = stage.visits[0] ? normalizeVisit(stage.visits[0]) : null;
+  const editor = first ? `<section class="step-editor-card" aria-label="Step 时间参数">
+    <div class="step-edit-grid">
+      ${renderStepNumberField("Process Time", "processTime", first.processTime, routeIndex, stageIndex, { minimum: 0 })}
+      ${renderStepNumberField("QTime", "qTimeLimit", first.qTimeLimit, routeIndex, stageIndex)}
+      ${renderStepNumberField("Residency", "residencyConstraint", first.residencyConstraint, routeIndex, stageIndex)}
+    </div>
+  </section>${renderStepCleanEditor(routeIndex, stageIndex)}
+  <details class="step-system-details">
+    <summary><strong>系统参数</strong><span class="details-chevron" aria-hidden="true">⌄</span></summary>
+    <div class="step-system-grid">
+      ${renderReadonlyField("Recipe Time", first.processTime)}
+      ${renderReadonlyField("Process Recipe", first.processRecipe)}
+      ${renderReadonlyField("Process Type", first.processType)}
+      ${renderReadonlyField("Slot IDs", first.slotIds)}
+      ${renderReadonlyField("Weight", first.weight)}
+      ${renderReadonlyField("Move Time Offset", first.moveTimeOffset, true)}
+    </div>
+  </details>` : `<div class="empty">未选择候选设备，请先在路径列表中选择。</div>`;
+  document.getElementById("drawerBody").innerHTML = editor;
+}
+
+/** 从路径引用面板打开 Step 抽屉；所有改动写入当前 PJob 的独立 Route 配置。 */
+function openPJobStepDrawer(routeIndex, stageIndex, inlineContext = null) {
+  const route = state.routes[routeIndex];
+  if (!route || isFixedRouteStep(route, stageIndex)) return;
+  const context = inlineContext || pjobRoutePickerContext;
+  if (!context) return;
+  state.drawer = {
+    scope: "test", routeIndex, stageIndex,
+    roundIndex: context.roundIndex,
+    cjobIndex: context.cjobIndex,
+    pjobIndex: context.pjobIndex,
+  };
+  renderStepDrawer();
+  const drawerLayer = document.getElementById("drawerLayer");
+  drawerLayer.classList.add("open");
+  if (!drawerLayer.open) drawerLayer.showModal();
+}
+
+/** 关闭 Step 抽屉；底层 Route 编辑窗口保持原状态。 */
+function closeStepDrawer() {
+  state.drawer = null;
+  const drawerLayer = document.getElementById("drawerLayer");
+  drawerLayer.classList.remove("open");
+  if (drawerLayer.open) drawerLayer.close();
+}
+
+/** 绘制机器手槽位卡片；臂数与每臂槽位数分别展示。 */
+function renderRobotSlots() {
+  const container = document.getElementById("robotSlotList");
+  const summary = document.getElementById("robotSlotSummary");
+  if (!state.baseDevice || !state.robotNames.length) {
+    summary.textContent = state.baseDevice ? "设备未声明机器手" : "请先选择设备";
+    container.innerHTML = `<div class="robot-slot-empty"><span>${state.baseDevice ? "当前设备没有可配置的机器手。" : "选择或导入设备后，可在这里切换机器手的单臂与双臂模式。"}</span></div>`;
+    return;
+  }
+  const dualArmCount = state.robotNames.filter(name => {
+    const robot = state.baseDevice.Robots[name] || {};
+    const selected = state.robotSlots[name] || robotDefaultSlots(robot);
+    return robotArmSlotGroups(robot).filter(group => group.slotIds.some(slotId => selected.includes(slotId))).length >= DUAL_ARM_SLOT_COUNT;
+  }).length;
+  summary.textContent = `${state.robotNames.length} 台机器手 · ${dualArmCount} 台双臂`;
+  container.innerHTML = state.robotNames.map(robotName => {
+    const robot = state.baseDevice.Robots[robotName] || {};
+    const available = robotAvailableSlots(robot);
+    const armGroups = robotArmSlotGroups(robot);
+    const selected = state.robotSlots[robotName] || available;
+    const defaults = robotDefaultSlots(robot);
+    const selectedArmCount = armGroups.filter(group => group.slotIds.some(slotId => selected.includes(slotId))).length;
+    const isDualArm = selectedArmCount >= DUAL_ARM_SLOT_COUNT;
+    const supportsDualArm = armGroups.length >= DUAL_ARM_SLOT_COUNT;
+    const isDefault = JSON.stringify(selected) === JSON.stringify(defaults);
+    const isSaving = state.robotSlotsSaving.has(robotName);
+    const accessibleStationCount = new Set(
+      Object.values(robot.ArmInfo || {}).flatMap(arm => arm?.AccessibleStations || [])
+    ).size;
+    const tokens = armGroups.map(group => group.slotIds.map(slotId => `
+      <span class="robot-slot-token ${selected.includes(slotId) ? "is-active" : ""}">
+        ${escapeHtml(group.armName)} · Slot ${slotId}
+      </span>
+    `).join("")).join("");
+    return `
+      <article class="robot-slot-card" data-robot-slot-card="${escapeHtml(robotName)}">
+        <header class="robot-slot-card-head">
+          <div class="robot-slot-card-title">
+            <span class="robot-slot-card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="11" rx="3"/><path d="M12 3v4M8 12h.01M16 12h.01M8 18v3m8-3v3"/></svg>
+            </span>
+            <div>
+              <h3>${escapeHtml(robotName)}</h3>
+              <p>${escapeHtml(robot.Type || "Robot")} · 可达 ${accessibleStationCount} 个站点</p>
+            </div>
+          </div>
+          <span class="robot-slot-mode">${isSaving ? "保存中…" : isDualArm ? "双臂" : "单臂"}</span>
+        </header>
+        <div class="robot-slot-visual" aria-label="${escapeHtml(robotName)} 可用槽位">${tokens}</div>
+        <div class="robot-slot-controls" role="group" aria-label="${escapeHtml(robotName)} 工作模式">
+          <button class="robot-slot-choice" type="button" data-robot-slot-name="${escapeHtml(robotName)}" data-robot-arm-count="1" aria-pressed="${String(!isDualArm)}" ${isSaving ? "disabled" : ""}>单臂</button>
+          <button class="robot-slot-choice" type="button" data-robot-slot-name="${escapeHtml(robotName)}" data-robot-arm-count="2" aria-pressed="${String(isDualArm)}" ${!supportsDualArm || isSaving ? "disabled" : ""}>双臂</button>
+          <button class="robot-slot-choice robot-slot-default" type="button" data-robot-slot-default="${escapeHtml(robotName)}" ${isDefault || isSaving ? "disabled" : ""}>恢复默认</button>
+        </div>
+        <p class="robot-slot-card-note">${supportsDualArm ? "按物理 Arm 切换；每个 Arm 声明的多个槽位会一起保留。" : `设备文件声明 1 个 Arm、${available.length} 个手槽。`}</p>
+      </article>
+    `;
+  }).join("");
+}
+
+/** 保存一台机器手的单臂或双臂选择，并保留每条 Arm 的全部槽位。 */
+async function setRobotArmCount(robotName, armCount) {
+  if (!state.workspaceDeviceId || !state.baseDevice?.Robots?.[robotName]) return;
+  const armGroups = robotArmSlotGroups(state.baseDevice.Robots[robotName]);
+  const boundedCount = Math.max(1, Math.min(Number(armCount) || 1, DUAL_ARM_SLOT_COUNT, armGroups.length));
+  const previousSelections = structuredClone(state.robotSlots);
+  const selectedSlots = armGroups.slice(0, boundedCount).flatMap(group => group.slotIds);
+  const nextSelections = { ...state.robotSlots, [robotName]: selectedSlots };
+  if (JSON.stringify(previousSelections[robotName]) === JSON.stringify(nextSelections[robotName])) return;
+  state.robotSlotsSaving.add(robotName);
+  applyDeviceTopology(state.baseDevice, state.deviceName, nextSelections);
+  renderRobotSlots();
+  try {
+    const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/robot-slots`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ robotSlots: nextSelections }),
+    });
+    state.workspaceDevice.robotSlots = structuredClone(result.robotSlots);
+    applyDeviceTopology(state.baseDevice, state.deviceName, result.robotSlots);
+
+    setWorkspaceStatus(`已保存 ${robotName} 的${boundedCount >= DUAL_ARM_SLOT_COUNT ? "双臂" : "单臂"}配置`, "saved");
+  } catch (error) {
+    applyDeviceTopology(state.baseDevice, state.deviceName, previousSelections);
+    setWorkspaceStatus(`机器手槽位保存失败：${error.message}`, "dirty");
+    throw error;
+  } finally {
+    state.robotSlotsSaving.delete(robotName);
+    renderRobotSlots();
+  }
+}
+
+/** 将一台机器手恢复为导入设备文件中的原始 ArmInfo 模式。 */
+async function restoreRobotSlotDefault(robotName) {
+  const robot = state.baseDevice?.Robots?.[robotName];
+  if (!robot) return;
+  const defaults = robotDefaultSlots(robot);
+  const defaultArmCount = robotArmSlotGroups(robot).filter(
+    group => group.slotIds.some(slotId => defaults.includes(slotId))
+  ).length;
+  await setRobotArmCount(robotName, defaultArmCount);
+  setWorkspaceStatus(`已恢复 ${robotName} 的设备文件默认配置`, "saved");
+}
+
+/** 渲染所有依赖状态的区域。 */
+function renderAll() { renderTimes(); renderRoutes(); renderRounds(); renderRobotSlots(); if (state.drawer) renderStepDrawer(); }
+
+/** 打开 SearchTree 模型选择弹窗。 */
+function openSearchTreeOptionsDialog() {
+  pendingSearchTreeCheckpointFile = null;
+  const configuredPath = String(state.options.searchTreeModelPath || "").trim();
+  document.getElementById("searchTreeCheckpointPath").value = configuredPath;
+  document.getElementById("searchTreeCheckpointFile").value = "";
+  document.getElementById("searchTreeCheckpointHint").textContent = configuredPath
+    ? "当前 checkpoint 已保存在本地服务中；重新选择文件可替换它。"
+    : "选择本机 checkpoint 后将上传到本地服务，并用于后续运行。";
+  document.getElementById("searchTreeOptionsDialog").showModal();
+}
+
+/** 打开 Heuristic 设置；编辑值先留在弹窗，确认后才影响本次会话。 */
+function openHeuristicSettingsDialog() {
+  document.getElementById("heuristicSettingsError").textContent = "";
+  const configured = state.options.heuristicConfig && typeof state.options.heuristicConfig === "object"
+    ? state.options.heuristicConfig : null;
+  document.getElementById("heuristicCustomWeightsEnabled").checked = Boolean(configured);
+  document.querySelectorAll("[data-heuristic-weight]").forEach(input => {
+    const key = input.dataset.heuristicWeight;
+    input.value = configured?.[key] ?? DEFAULT_HEURISTIC_WEIGHTS[key];
+  });
+  for (const key of ["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"]) {
+    document.querySelectorAll(`[data-heuristic-dialog-option="${key}"]`).forEach(input => {
+      input.checked = String(state.options[key]) === input.value;
+    });
+  }
+  updateHeuristicWeightEditorState();
+  document.getElementById("heuristicSettingsDialog").showModal();
+}
+
+/** 根据自定义开关启用或禁用权重输入，避免未启用时造成已生效的误解。 */
+function updateHeuristicWeightEditorState() {
+  const enabled = document.getElementById("heuristicCustomWeightsEnabled")?.checked === true;
+  document.querySelectorAll("[data-heuristic-weight]").forEach(input => { input.disabled = !enabled; });
+  document.getElementById("heuristicWeightFields")?.classList.toggle("is-disabled", !enabled);
+}
+
+/** 校验并提交 Heuristic 设置；所有权重仅随当前测试请求发送。 */
+function saveHeuristicSettings() {
+  for (const key of ["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"]) {
+    const input = document.querySelector(`[data-heuristic-dialog-option="${key}"]:checked`);
+    state.options[key] = Number(input?.value);
+  }
+  if (document.getElementById("heuristicCustomWeightsEnabled").checked) {
+    const weights = {};
+    document.querySelectorAll("[data-heuristic-weight]").forEach(input => {
+      const value = Number(input.value);
+      if (!Number.isFinite(value)) throw new Error(`${input.dataset.heuristicWeight} 必须是有限数字`);
+      weights[input.dataset.heuristicWeight] = value;
+    });
+    state.options.heuristicConfig = weights;
+  } else state.options.heuristicConfig = null;
+  retainSessionSchedulingConfiguration();
+  document.getElementById("heuristicSettingsDialog").close();
+}
+
+/** 上传用户从文件夹选取的 checkpoint，并返回本地服务可访问的绝对路径。 */
+async function uploadSearchTreeCheckpoint(file) {
+  const response = await fetch("/api/model-checkpoints", {
+    method: "POST",
+    headers: { "X-Checkpoint-Filename": encodeURIComponent(file.name) },
+    body: file,
+  });
+  const result = await response.json();
+  if (!response.ok || !result.ok || !result.modelPath) {
+    throw new Error(result.error || `checkpoint 上传失败（${response.status}）`);
+  }
+  return String(result.modelPath);
+}
+
+/** 保存 Search Tree checkpoint；搜索和深度参数由生产后端统一管理。 */
+async function saveSearchTreeOptions() {
+  const saveButton = document.getElementById("saveSearchTreeOptionsButton");
+  saveButton.disabled = true;
+  try {
+    const modelPath = pendingSearchTreeCheckpointFile
+      ? await uploadSearchTreeCheckpoint(pendingSearchTreeCheckpointFile)
+      : String(document.getElementById("searchTreeCheckpointPath").value || "").trim();
+    state.options.searchTreeModelPath = modelPath;
+    pendingSearchTreeCheckpointFile = null;
+    retainSessionSchedulingConfiguration();
+    renderAll();
+    document.getElementById("searchTreeOptionsDialog").close();
+  } finally {
+    saveButton.disabled = false;
+  }
+}
+
+/** 根据 data 属性把表单值写回状态。 */
+function updateStateFromControl(control) {
+  let value = control.multiple ? Array.from(control.selectedOptions, item => item.value) : control.type === "checkbox" ? control.checked : control.type === "number" ? Number(control.value) : control.value;
+  const key = control.dataset.key;
+  const scope = control.dataset.scope;
+  const routeControl = ["stage-candidates", "stage-candidate-toggle"].includes(scope);
+  if (routeControl) markRoutesDirty(); else if (!control.dataset.option) markTestDirty();
+  if (control.dataset.timeIndex !== undefined) { state.times[Number(control.dataset.timeIndex)] = value; return; }
+  if (control.dataset.roundTimeIndex !== undefined) {
+    const roundIndex = Number(control.dataset.roundTimeIndex);
+    state.rounds[roundIndex].currentTime = roundIndex ? Math.max(0, value) : 0;
+    state.times[roundIndex] = state.rounds[roundIndex].currentTime;
+    return;
+  }
+  if (control.dataset.option) {
+    if (["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"].includes(control.dataset.option)) {
+      value = Number(control.value);
+    }
+    if (["residencyGuardSeconds", "maximumRobotHoldingSeconds", "maximumSystemResidenceCv"].includes(control.dataset.option)) {
+      value = Number.isFinite(value) ? Math.max(0, value) : 0;
+      control.value = value;
+    }
+    state.options[control.dataset.option] = value;
+    retainSessionSchedulingConfiguration();
+    return;
+  }
+  if (scope === "stage-candidates") setStageCandidates(Number(control.dataset.routeIndex), Number(control.dataset.stageIndex), Array.from(control.selectedOptions, item => item.value));
+  if (scope === "stage-candidate-toggle") {
+    const routeIndex = Number(control.dataset.routeIndex), stageIndex = Number(control.dataset.stageIndex);
+    const current = new Set(state.routes[routeIndex].stages[stageIndex].visits.map(visit => visit.stationName));
+    if (control.checked) current.add(control.dataset.candidate); else current.delete(control.dataset.candidate);
+    setStageCandidates(routeIndex, stageIndex, [...current]);
+  }
+  if (scope === "test-route") {
+    const route = state.routes[Number(control.dataset.routeIndex)];
+    const pjob = state.rounds[Number(control.dataset.roundIndex)]?.cjobs[Number(control.dataset.cjobIndex)]?.pjobs[Number(control.dataset.pjobIndex)];
+    const config = pjobRouteConfig(pjob, route);
+    config[key] = ROUTE_CLEAN_KEYS.includes(key) ? (value ? [value] : []) : value;
+  }
+  if (scope === "test-step") {
+    const route = state.routes[Number(control.dataset.routeIndex)];
+    const stage = route.stages[Number(control.dataset.stageIndex)];
+    const pjob = state.rounds[Number(control.dataset.roundIndex)]?.cjobs[Number(control.dataset.cjobIndex)]?.pjobs[Number(control.dataset.pjobIndex)];
+    const config = pjobRouteConfig(pjob, route);
+    const stepId = String(stage.stepId);
+    const stageConfig = config.stages[stepId] || (config.stages[stepId] = stageDefaultConfig(stage));
+    stageConfig[key] = structuredClone(value);
+    if (key === "processTime") stageConfig.recipeTime = Number(value);
+  }
+  if (scope === "cjob") {
+    const round = state.rounds[Number(control.dataset.roundIndex)];
+    const cjob = round.cjobs[Number(control.dataset.cjobIndex)];
+    if (key === "taskMode" && ["Pipeline", "Sequential"].includes(String(value)) && round.cjobs.length > 1) {
+      control.value = cjob.taskMode;
+      return;
+    }
+    if (key === "cjobCycle") {
+      value = Math.max(1, Math.min(1000, Math.trunc(Number(value) || 1)));
+      control.value = String(value);
+    }
+    cjob[key] = value;
+    if (key === "loadPort") cjob.pjobs.forEach(pjob => { pjob.loadPort = String(value); });
+    if (key === "jobType") cjob.priority = value === "NormalLot" ? (cjob.priority > 0 ? cjob.priority : 1) : -1;
+    normalizeRounds();
+  }
+  if (scope === "pjob") {
+    const pjob = state.rounds[Number(control.dataset.roundIndex)].cjobs[Number(control.dataset.cjobIndex)].pjobs[Number(control.dataset.pjobIndex)];
+    pjob[key] = value;
+    normalizeRounds();
+  }
+}
+
+/** 处理新增、删除和 Step 排序动作。 */
+function handleAction(button) {
+  const action = button.dataset.action, index = Number(button.dataset.index), routeIndex = Number(button.dataset.routeIndex), stageIndex = Number(button.dataset.stageIndex);
+  let routeAction = false;
+  if (action === "open-pjob-route-picker") { openPJobRoutePicker(button); return; }
+  if (action === "select-pjob-route") { selectPJobRoute(routeIndex); return; }
+  if (action === "back-pjob-route-selection") {
+    if (pjobRoutePickerContext) {
+      pjobRoutePickerContext.mode = "select";
+      renderPJobRouteDialogGroup(pjobRoutePickerContext.processKey, pjobRoutePickerContext.structureKey);
+    }
+    return;
+  }
+  if (action === "save-route") { saveRoutes().catch(error => writeTerminal(`$ 路径保存失败\n  ${error.message}`, true)); return; }
+  if (action === "cancel-route-edit") { cancelRouteEdit(); return; }
+  if (action === "open-pjob-step-drawer") { openPJobStepDrawer(routeIndex, stageIndex); return; }
+  if (action === "open-context-clean" || action === "edit-context-clean") {
+    openCleanDialog(
+      button.dataset.cleanScope,
+      routeIndex,
+      Number.isFinite(stageIndex) ? stageIndex : -1,
+      action === "edit-context-clean" ? button.dataset.cleanName || "" : "",
+      button.dataset.placement || "",
+    );
+    return;
+  }
+  if (action === "remove-context-clean") {
+    removeContextClean(
+      button.dataset.cleanScope,
+      routeIndex,
+      Number.isFinite(stageIndex) ? stageIndex : -1,
+      button.dataset.placement,
+      button.dataset.cleanName,
+    );
+    return;
+  }
+  if (action === "delete-clean-binding") {
+    const context = state.cleanDialogContext;
+    if (context?.cleanName) {
+      removeContextClean(
+        context.scope,
+        context.routeIndex,
+        context.stageIndex,
+        context.originalPlacement,
+        context.cleanName,
+      );
+    }
+    document.getElementById("cleanDialog").close();
+    state.cleanDialogContext = null;
+    return;
+  }
+  if (action === "toggle-route-group") {
+    const key = button.dataset.groupKey;
+    if (state.expandedRouteGroups.has(key)) state.expandedRouteGroups.delete(key); else state.expandedRouteGroups.add(key);
+    renderRoutes(); return;
+  }
+  if (action === "toggle-route-process-group") {
+    const key = button.dataset.processKey;
+    if (state.expandedRouteProcessGroups.has(key)) state.expandedRouteProcessGroups.delete(key); else state.expandedRouteProcessGroups.add(key);
+    renderRoutes(); return;
+  }
+  if (action === "edit-route") {
+    const profile = routeGroupingProfile(state.routes[routeIndex]);
+    state.routeProcessFilter = profile.isReentrant ? profile.key : String(profile.processCount);
+    state.routeParallelFilter = profile.key;
+    state.expandedRouteProcessGroups.add(String(profile.processCount));
+    state.expandedRouteGroups.add(profile.key);
+    beginRouteEdit(routeIndex); return;
+  }
+  if (action === "add-route") {
+    if (state.routeEditingIndex >= 0) { setWorkspaceStatus("请先保存或取消当前正在编辑的路径模板", "dirty"); return; }
+    const name = `Route${state.routes.length + 1}`, route = { name, group: name, bufferOption: 0, prePJobCleanRefs: [], postPJobCleanRefs: [], postCJobCleanRefs: [], stages: state.device ? defaultRouteStages(name) : linkRouteSteps([makeStage(""), makeStage(""), makeStage("", true, `${name}_Step2`), makeStage(""), makeStage("")]) };
+    state.routes.push(route);
+    state.routeGroupingProfiles.set(route, structuredClone(routeProcessProfile(route)));
+    const newIndex = state.routes.length - 1, profile = routeProcessProfile(route);
+    state.expandedRoutes.add(newIndex);
+    state.routeProcessFilter = profile.isReentrant ? profile.key : String(profile.processCount);
+    state.routeParallelFilter = profile.key;
+    state.expandedRouteProcessGroups.add(String(profile.processCount));
+    state.expandedRouteGroups.add(profile.key);
+    beginRouteEdit(newIndex, true);
+    routeAction = true;
+  }
+  if (action === "copy-route") {
+    if (state.routeEditingIndex >= 0) { setWorkspaceStatus("请先保存或取消当前正在编辑的路径模板", "dirty"); return; }
+    const source = state.routes[routeIndex], base = `${source.name || "Route"} 副本`, occupied = new Set(state.routes.map(route => route.name)); let name = base, suffix = 2;
+    while (occupied.has(name)) name = `${base} (${suffix++})`;
+    const copy = structuredClone(source); copy.name = name; state.routes.push(copy);
+    state.routeGroupingProfiles.set(copy, structuredClone(routeProcessProfile(copy)));
+    const newIndex = state.routes.length - 1, profile = routeProcessProfile(copy);
+    state.expandedRoutes.add(newIndex);
+    state.routeProcessFilter = profile.isReentrant ? profile.key : String(profile.processCount);
+    state.routeParallelFilter = profile.key;
+    state.expandedRouteProcessGroups.add(String(profile.processCount));
+    state.expandedRouteGroups.add(profile.key);
+    beginRouteEdit(newIndex, true);
+    routeAction = true;
+  }
+  if (action === "remove-route") {
+    if (state.routeEditingIndex >= 0) { setWorkspaceStatus("请先保存或取消当前正在编辑的路径模板", "dirty"); return; }
+    state.routes.splice(index, 1); state.expandedRoutes.clear(); state.expandedRouteProcessGroups.clear(); state.expandedRouteGroups.clear();
+    if (state.drawer?.routeIndex === index) closeStepDrawer();
+    markRoutesDirty();
+    saveRoutes().catch(error => writeTerminal(`$ 路径删除失败\n  ${error.message}`, true));
+    return;
+  }
+  if (action === "add-stage") { state.routes[index].stages.splice(-1, 0, makeStage(""), makeStage("")); linkRouteSteps(state.routes[index].stages); routeAction = true; }
+  if (action === "remove-stage" && !isFixedRouteStep(state.routes[routeIndex], stageIndex)) { state.routes[routeIndex].stages.splice(stageIndex, 1); linkRouteSteps(state.routes[routeIndex].stages); closeStepDrawer(); routeAction = true; }
+  if (action === "move-step-up" && stageIndex > 0 && !isFixedRouteStep(state.routes[routeIndex], stageIndex)) { [state.routes[routeIndex].stages[stageIndex - 1], state.routes[routeIndex].stages[stageIndex]] = [state.routes[routeIndex].stages[stageIndex], state.routes[routeIndex].stages[stageIndex - 1]]; linkRouteSteps(state.routes[routeIndex].stages); routeAction = true; }
+  if (action === "move-step-down" && stageIndex < state.routes[routeIndex].stages.length - 1 && !isFixedRouteStep(state.routes[routeIndex], stageIndex)) { [state.routes[routeIndex].stages[stageIndex + 1], state.routes[routeIndex].stages[stageIndex]] = [state.routes[routeIndex].stages[stageIndex], state.routes[routeIndex].stages[stageIndex + 1]]; linkRouteSteps(state.routes[routeIndex].stages); routeAction = true; }
+  if (action === "add-cjob") {
+    const roundIndex = Number(button.dataset.roundIndex), round = state.rounds[roundIndex];
+    if (round.cjobs.some(cjob => ["Pipeline", "Sequential"].includes(cjob.taskMode))) return;
+    if (state.loadPorts.length && round.cjobs.length >= state.loadPorts.length) return;
+    const cjob = makeCJob(roundIndex + 1, [], state.routes[0]?.name || "", state.loadPorts[round.cjobs.length] || state.loadPorts[0] || "");
+    cjob.key = `C${round.cjobs.length + 1}`; round.cjobs.push(cjob);
+  }
+  if (action === "remove-cjob") state.rounds[Number(button.dataset.roundIndex)].cjobs.splice(Number(button.dataset.cjobIndex), 1);
+  if (action === "add-pjob") {
+    const roundIndex = Number(button.dataset.roundIndex), cjob = state.rounds[roundIndex].cjobs[Number(button.dataset.cjobIndex)];
+    cjob.pjobs.push(makePJob(cjob.pjobs.length + 1, state.routes[0]?.name || "", cjob.loadPort || state.loadPorts[0] || "", 5));
+  }
+  if (action === "remove-pjob") state.rounds[Number(button.dataset.roundIndex)].cjobs[Number(button.dataset.cjobIndex)].pjobs.splice(Number(button.dataset.pjobIndex), 1);
+  normalizeRounds();
+  if (routeAction) {
+    markRoutesDirty();
+    renderRoutes();
+    if (state.drawer) renderStepDrawer();
+  } else {
+    markTestDirty(); renderAll();
+  }
+}
+
+/** 收集 Step/Clean 内嵌 Recipe，并合并同名 Recipe 的设备范围。 */
+function collectRecipes(routes = state.routes) {
+  const recipes = [];
+  const cleanByName = new Map(state.cleans.map(runtimeClean).map(clean => [clean.name, clean]));
+
+  /** 按公司标准把 CleanCondition 使用的计数器写入产品 Recipe.Weight。 */
+  function standardProcessWeight(visit) {
+    const rawWeight = visit.weight ?? "{}";
+    let weight;
+    try {
+      weight = typeof rawWeight === "string" ? JSON.parse(rawWeight || "{}") : structuredClone(rawWeight || {});
+    } catch (_error) {
+      // 保留非法原值，由后端返回既有的精确校验错误，避免前端静默改写。
+      return rawWeight;
+    }
+    if (!weight || typeof weight !== "object" || Array.isArray(weight)) return rawWeight;
+    [...stringList(visit.beforeCleanRefs), ...stringList(visit.afterCleanRefs)].forEach(cleanName => {
+      const clean = cleanByName.get(cleanName);
+      if (!stringList(clean?.modules).includes(visit.stationName)) return;
+      const stateVariable = String(clean?.stateVariable || "").trim();
+      // IdleTime 是设备空闲时钟；其余 CleanCondition 计数器随产品加工递增。
+      if (stateVariable && stateVariable !== "IdleTime" && weight[stateVariable] === undefined) {
+        weight[stateVariable] = 1;
+      }
+    });
+    return JSON.stringify(weight);
+  }
+
+  function add(name, time, modules, processType = "", weightText = "{}") {
+    const weight = typeof weightText === "string" ? weightText : JSON.stringify(weightText ?? {}), moduleList = stringList(modules);
+    const existing = recipes.find(recipe => recipe.name === name && Number(recipe.time) === Number(time) && recipe.processType === processType && recipe.weight === weight);
+    if (existing) {
+      existing.modules = [...new Set([...existing.modules, ...moduleList])];
+    } else recipes.push({ name, time: Number(time), modules: moduleList, processType, weight });
+  }
+  routes.forEach(route => { normalizeRoute(route); route.stages.forEach(stage => stage.visits.forEach(visit => { if (visit.processRecipe) add(visit.processRecipe, visit.processTime, [visit.stationName], visit.processType, standardProcessWeight(visit)); })); });
+  state.cleans.map(runtimeClean).forEach(clean => {
+    add(clean.recipeRef, clean.recipeTime, clean.modules);
+    if (clean.cleanType === "dummywac") add(clean.emptyRecipeRef, clean.wacRecipeTime, clean.modules);
+  });
+  return recipes;
+}
+
+/** 从设备拓扑中提取站点可用槽位列表。 */
+function stationSlotList(stationName: string): number[] {
+  const station = state.device?.Stations?.[stationName];
+  if (station) {
+    if (Array.isArray(station.Slots) && station.Slots.length) return station.Slots.map(Number);
+    const capacity = Number(station.Capacity) || 0;
+    return capacity >= 1 ? Array.from({ length: capacity }, (_, index) => index + 1) : [1];
+  }
+  const robot = state.device?.Robots?.[stationName];
+  return robot ? robotDefaultSlots(robot) : [1];
+}
+
+/** 将 Route Visit 的 slotIds 按站点真实槽位展开。 */
+function expandVisitSlotIds(): void {
+  if (!state.device) return;
+  for (const route of state.routes) {
+    for (const stage of (route.stages || [])) {
+      for (const visit of (stage.visits || [])) {
+        const stationName = String(visit.stationName || "").trim();
+        if (!stationName) continue;
+        const slots = stationSlotList(stationName);
+        visit.slotIds = slots.join(",");
+      }
+    }
+  }
+}
+
+/** 为每个 PJob 生成独立 Route/Recipe 名称，避免同模板的不同参数在运行请求中碰撞。 */
+function runtimePJobRouteInstances() {
+  const rounds = structuredClone(state.rounds);
+  const routes = [];
+  rounds.forEach((round, roundIndex) => round.cjobs.forEach((cjob, cjobIndex) => {
+    cjob.pjobs.forEach((pjob, pjobIndex) => {
+      const sourcePJob = state.rounds[roundIndex].cjobs[cjobIndex].pjobs[pjobIndex];
+      const template = state.routes.find(route => route.name === sourcePJob.routeRef);
+      if (!template) return;
+      const route = runtimeRouteForTemplate(template, pjobRouteConfig(sourcePJob, template));
+      const suffix = `r${roundIndex + 1}-t${cjob.taskId}-c${cjobIndex + 1}-p${pjobIndex + 1}`;
+      route.name = `${template.name}__${suffix}`;
+      route.stages.forEach(stage => stage.visits.forEach(visit => {
+        if (visit.processRecipe) visit.processRecipe = `${visit.processRecipe}__${suffix}`;
+      }));
+      pjob.routeRef = route.name;
+      delete pjob.routeConfig;
+      routes.push(route);
+    });
+  }));
+  return { routes, rounds };
+}
+
+/** 构造后端请求，Recipe 由 Route Step 和 Clean 自动生成。 */
+function buildPayload() {
+  normalizeRounds();
+  expandVisitSlotIds();
+  normalizePJobRouteConfigs();
+  const instances = runtimePJobRouteInstances();
+  const routes = instances.routes.map(route => ({ ...normalizeRoute(route), stages: route.stages.map(stage => ({ ...stage, visits: stage.visits.map(visit => structuredClone(visit)) })) }));
+  const cleans = state.cleans.map(runtimeClean);
+  const options = schedulingRequestOptions();
+  if (state.strategy === "search-tree") {
+    // 拓扑回放固定为连续求解，不再提供步进求解分支。
+    options.searchTreeExecutionMode = "continuous";
+  }
+  return { schemaVersion: EXPECTED_API_SCHEMA, workspaceDeviceId: state.workspaceDeviceId, workspaceTestId: state.testCaseId, deviceName: state.deviceName, device: state.device, strategy: state.strategy, roundCount: state.roundCount, options, hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), cleanValidationTypes: cleanValidationTypes(), recipes: collectRecipes(routes), cleans, routes, rounds: instances.rounds };
+}
+
+/** 收集发送给算法的选项；Heuristic 仅允许覆盖其三个 LoadLock 配置。 */
+function schedulingRequestOptions() {
+  if (state.strategy !== "heuristic") return { ...state.options };
+  const options = Object.fromEntries(
+    ["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"].map(key => [key, state.options[key]])
+  );
+  if (state.options.heuristicConfig) options.heuristicConfig = structuredClone(state.options.heuristicConfig);
+  return options;
+}
+
+/** 把数字输入限制在 [min, max] 并回填 DOM，防止手输越界值。 */
+function clampParallelismInput(elementId, min, max, fallback) {
+  const input = document.getElementById(elementId);
+  if (!input) return fallback;
+  let value = Number.parseInt(String(input.value), 10);
+  if (!Number.isFinite(value)) value = fallback;
+  value = Math.max(min, Math.min(max, value));
+  if (String(input.value) !== String(value)) input.value = String(value);
+  return value;
+}
+
+/** 返回“算法并行数”配置（1~30，默认 4）。 */
+function batchParallelism() {
+  return clampParallelismInput("batchParallelismInput", 1, 30, 4);
+}
+
+/** 返回“校验并行数”配置（1~15，默认 2）。 */
+function validationParallelism() {
+  return clampParallelismInput("validationParallelismInput", 1, 15, 2);
+}
+
+const CLEAN_VALIDATION_TYPES = ["preclean", "postclean", "wacclean", "dummy", "dummywac"] as const;
+
+/** 返回当前启用的 Clean 校验类型；未勾选类型不参与对应的业务规则判定。 */
+function cleanValidationTypes() {
+  return CLEAN_VALIDATION_TYPES.filter(type => document.getElementById(`cleanValidation${type[0].toUpperCase()}${type.slice(1)}Input`)?.checked === true);
+}
+
+let runSettingsPreferencesDirty = false;
+
+/** 收集运行设置弹窗的完整状态，作为本地偏好 API 的稳定载荷。 */
+function currentRunSettingsPreferences() {
+  return {
+    hongYeCheck: hongYeCheckEnabled(),
+    skipBaseline: skipBaselineEnabled(),
+    executionTimingEnabled: executionTimingEnabled(),
+    maximumWorkers: batchParallelism(),
+    validationWorkers: validationParallelism(),
+    cleanValidationTypes: cleanValidationTypes(),
+  };
+}
+
+/** 将服务端保存的本地运行偏好应用到弹窗控件。 */
+function applyRunSettingsPreferences(settings) {
+  if (!settings || typeof settings !== "object") return;
+  const checkboxFields = {
+    hongYeCheck: "hongYeCheckInput",
+    skipBaseline: "skipBaselineInput",
+    executionTimingEnabled: "executionTimingEnabledInput",
+  };
+  Object.entries(checkboxFields).forEach(([field, elementId]) => {
+    const input = document.getElementById(elementId);
+    if (input && typeof settings[field] === "boolean") input.checked = settings[field];
+  });
+  const maximumWorkersInput = document.getElementById("batchParallelismInput");
+  const validationWorkersInput = document.getElementById("validationParallelismInput");
+  if (maximumWorkersInput) maximumWorkersInput.value = String(settings.maximumWorkers ?? 4);
+  if (validationWorkersInput) validationWorkersInput.value = String(settings.validationWorkers ?? 2);
+  const enabledCleanTypes = new Set(Array.isArray(settings.cleanValidationTypes) ? settings.cleanValidationTypes : CLEAN_VALIDATION_TYPES);
+  CLEAN_VALIDATION_TYPES.forEach(type => {
+    const input = document.getElementById(`cleanValidation${type[0].toUpperCase()}${type.slice(1)}Input`);
+    if (input) input.checked = enabledCleanTypes.has(type);
+  });
+  batchParallelism();
+  validationParallelism();
+  runSettingsPreferencesDirty = false;
+  updateRunSettingsButtonLabel();
+}
+
+/** 从服务端 ``data/run_preferences.json`` 恢复当前安装实例的运行习惯。 */
+async function loadRunSettingsPreferences() {
+  const result = await requestJson("/api/preferences/run-settings", { cache: "no-store" });
+  if (!runSettingsPreferencesDirty) applyRunSettingsPreferences(result.runSettings);
+}
+
+/** 把运行设置原子保存到服务端本地数据目录。 */
+async function saveRunSettingsPreferences() {
+  const result = await requestJson("/api/preferences/run-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ runSettings: currentRunSettingsPreferences() }),
+  });
+  applyRunSettingsPreferences(result.runSettings);
+}
+
+/** 返回结果分析向导中可跨测试组复用的个人设置。 */
+function currentAnalysisSettingsPreferences() {
+  return {
+    metricIds: [...document.querySelectorAll("[data-analysis-metric]:checked")].map(input => String(input.value)),
+    windowMode: String(document.getElementById("analysisWindowMode")?.value || "steady"),
+    timeBudgetSeconds: Number(document.getElementById("analysisTimeBudget")?.value || 120),
+  };
+}
+
+/** 将本地个人分析偏好应用到逐指标勾选项和计算口径。 */
+function applyAnalysisSettingsPreferences(settings) {
+  if (!settings || typeof settings !== "object") return;
+  const selectedIds = new Set(Array.isArray(settings.metricIds) ? settings.metricIds : []);
+  document.querySelectorAll("[data-analysis-metric]").forEach(input => {
+    input.checked = selectedIds.has(String(input.value));
+  });
+  const windowInput = document.getElementById("analysisWindowMode");
+  const budgetInput = document.getElementById("analysisTimeBudget");
+  if (windowInput && ["steady", "full"].includes(String(settings.windowMode))) {
+    windowInput.value = String(settings.windowMode);
+  }
+  if (budgetInput && [30, 120, 300].includes(Number(settings.timeBudgetSeconds))) {
+    budgetInput.value = String(settings.timeBudgetSeconds);
+  }
+  analysisSettingsPreferencesDirty = false;
+}
+
+/** 从服务端本地偏好文件恢复结果分析习惯。 */
+async function loadAnalysisSettingsPreferences() {
+  const result = await requestJson("/api/preferences/analysis-settings", { cache: "no-store" });
+  if (!analysisSettingsPreferencesDirty) applyAnalysisSettingsPreferences(result.analysisSettings);
+}
+
+/** 原子保存结果分析指标、窗口和时间预算。 */
+async function saveAnalysisSettingsPreferences() {
+  const result = await requestJson("/api/preferences/analysis-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ analysisSettings: currentAnalysisSettingsPreferences() }),
+  });
+  applyAnalysisSettingsPreferences(result.analysisSettings);
+}
+
+/** 返回是否选择 HongYe SchStateLib 输出校验器。 */
+function hongYeCheckEnabled() {
+  return document.getElementById("hongYeCheckInput")?.checked === true;
+}
+
+/** 返回是否启用时间波动，直接控制设备实际时间推进。 */
+function executionTimingEnabled() {
+  return document.getElementById("executionTimingEnabledInput")?.checked === true;
+}
+
+let runSettingsTrigger = null;
+
+/** 更新齿轮按钮的无障碍摘要，并标记是否偏离推荐默认设置。 */
+function updateRunSettingsButtonLabel() {
+  const button = document.getElementById("openRunSettingsButton");
+  if (!button) return;
+  const hongYe = document.getElementById("hongYeCheckInput")?.checked === true;
+  const skipBaseline = document.getElementById("skipBaselineInput")?.checked === true;
+  const executionTiming = document.getElementById("executionTimingEnabledInput")?.checked === true;
+  const algorithmWorkers = batchParallelism();
+  const validationWorkers = validationParallelism();
+  const enabledCleanTypes = cleanValidationTypes();
+  const validationInput = document.getElementById("validationParallelismInput");
+  if (validationInput) validationInput.disabled = !hongYe;
+  const labels = [executionTiming && "时间波动模式", hongYe && "HongYe Check", skipBaseline && "跳过 Baseline", enabledCleanTypes.length !== CLEAN_VALIDATION_TYPES.length && `Clean 校验 ${enabledCleanTypes.length}/${CLEAN_VALIDATION_TYPES.length}`].filter(Boolean);
+  const parallelism = `算法×${algorithmWorkers}${hongYe ? ` 校验×${validationWorkers}` : ""}`;
+  const summary = labels.length ? `运行设置：${labels.join("、")}（${parallelism}）` : `运行设置：${parallelism}`;
+  button.setAttribute("aria-label", summary);
+  button.setAttribute("title", summary);
+  button.classList.toggle(
+    "is-customized",
+    executionTiming || !hongYe || !skipBaseline
+      || algorithmWorkers !== 4 || validationWorkers !== 2 || enabledCleanTypes.length !== CLEAN_VALIDATION_TYPES.length,
+  );
+}
+
+/** 打开运行设置原生 dialog，并在关闭后把焦点归还到触发按钮。 */
+function openRunSettingsDialog() {
+  const dialog = document.getElementById("runSettingsDialog");
+  runSettingsTrigger = document.getElementById("openRunSettingsButton");
+  runSettingsTrigger?.setAttribute("aria-expanded", "true");
+  dialog.showModal();
+  window.setTimeout(() => document.getElementById("executionTimingEnabledInput")?.focus(), 0);
+}
+
+/** 关闭运行设置 dialog；原生 Escape 和完成按钮都会经过这里的 close 事件收尾。 */
+function closeRunSettingsDialog() {
+  const dialog = document.getElementById("runSettingsDialog");
+  if (dialog?.open) dialog.close();
+}
+
+/** 收尾运行设置 dialog 的关闭状态并恢复焦点。 */
+function finishRunSettingsDialog() {
+  updateRunSettingsButtonLabel();
+  if (runSettingsPreferencesDirty) {
+    saveRunSettingsPreferences().catch(error => {
+      runSettingsPreferencesDirty = true;
+      writeTerminal(`$ 运行设置保存失败\n  ${error.message || "未知错误"}`, true);
+    });
+  }
+  runSettingsTrigger?.setAttribute("aria-expanded", "false");
+  if (runSettingsTrigger?.isConnected) runSettingsTrigger.focus();
+  runSettingsTrigger = null;
+}
+
+/** 返回“跳过Baseline”是否已勾选。 */
+function skipBaselineEnabled() {
+  return document.getElementById("skipBaselineInput")?.checked === true;
+}
+
+/** 把后端校验状态转换成前端中文文案（passed→通过，skipped→跳过）。 */
+function validationDisplay(value) {
+  if (value === "passed") return "通过";
+  if (value === "skipped") return "跳过";
+  return value ? String(value) : "";
+}
+
+/** 根据健康检查返回值绘制全部本地和标准算法。 */
+function renderOtherAlgorithmOptions(algorithms) {
+  state.availableAlgorithms = Array.isArray(algorithms) ? algorithms : [];
+  const container = document.getElementById("otherAlgorithmOptions");
+  container.innerHTML = state.availableAlgorithms.map(algorithm => `
+    <label class="strategy-card" data-strategy-card="${escapeHtml(algorithm.strategy)}" ${algorithm.unavailableReason ? `title="${escapeHtml(algorithm.unavailableReason)}"` : ""}>
+      <input type="radio" name="strategy" value="${escapeHtml(algorithm.strategy)}" ${algorithm.strategy === state.strategy ? "checked" : ""} ${algorithm.available === false ? "disabled" : ""}>
+      <b>${escapeHtml(algorithm.name)}</b>
+    </label>
+  `).join("");
+  updateStrategyOptionVisibility();
+}
+
+/** 按算法清单声明的能力控制通用参数区，不在前端维护算法名称白名单。 */
+function updateStrategyOptionVisibility() {
+  const algorithm = state.availableAlgorithms.find(item => item.strategy === state.strategy);
+  const optionGroups = new Set(algorithm?.optionGroups || []);
+  document.getElementById("loadlockOptions").classList.toggle("is-hidden", !optionGroups.has("loadlock"));
+  document.getElementById("heuristicSettings").classList.toggle("is-hidden", state.strategy !== "heuristic");
+  document.getElementById("searchTreeOptions").classList.toggle("is-hidden", !optionGroups.has("search-tree"));
+}
+
+/** 返回策略在批量结果中的可读名称，兼容动态发现的 other_alg 策略。 */
+function displayStrategyName(strategy) {
+  const normalized = String(strategy || "heuristic");
+  const cardName = document.querySelector(`[data-strategy-card="${CSS.escape(normalized)}"] b`)?.textContent;
+  return state.algorithmMetadata[normalized]?.name || cardName || normalized;
+}
+
+/** 用测试名称生成便于用户识别且适合本地文件系统的复现日志名称。 */
+function readableLogFileName(testName) {
+  const readableTestName = String(testName || "当前测试").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_").replace(/^[ ._]+|[ ._]+$/g, "") || "当前测试";
+  return `复现日志-${readableTestName}.json`;
+}
+
+/** 把本次结果加载进内嵌工作台，并启用直接查看入口。 */
+async function prepareWorkspaceView(result) {
+  if (!result?.resultId) return null;
+  const context = activeRunContext;
+  visualizationWorkspace.setDevice(context.payload.device);
+  visualizationWorkspace.setAnalysisConfiguration(context.payload.routes, context.payload.rounds);
+  visualizationWorkspace.setReplayPlan(context.payload);
+  await visualizationWorkspace.loadResult(result.resultId, context.name);
+  const replayDeadlock = visualizationWorkspace.getTerminalDeadlock();
+  if (result.deadlock) {
+    const serverCode = String(result.deadlock.Code || "").toUpperCase();
+    result.deadlock = replayDeadlock
+      || (DEADLOCK_TYPE_CATALOG[serverCode] ? result.deadlock : { Code: "DEADLOCK.UNCLASSIFIED" });
+  }
+  return visualizationWorkspace.getBottleneckUtilization();
+}
+
+/** 把运行时长压缩为固定宽度的 mm:ss.d，长任务超过一小时仍保持可读。 */
+function formatRunElapsed(milliseconds) {
+  const totalTenths = Math.max(0, Math.floor(Number(milliseconds || 0) / 100));
+  const minutes = Math.floor(totalTenths / 600);
+  const seconds = Math.floor(totalTenths / 10) % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${totalTenths % 10}`;
+}
+
+/** 启动紧凑状态卡计时，不依赖后端轮询频率。 */
+function startRunStatus(title, initialLabel = "正在准备") {
+  const card = document.getElementById("runStatusCard");
+  card.classList.remove("failed", "cancelled");
+  card.classList.add("running");
+  document.getElementById("runStatusTitle").textContent = title;
+  runStatusStartedAt = performance.now();
+  runStatusElapsedMs = 0;
+  renderRunStatusEvents([{ label: initialLabel, status: "running" }]);
+  window.clearInterval(runStatusTimer);
+  runStatusTimer = window.setInterval(() => {
+    runStatusElapsedMs = Math.max(runStatusElapsedMs, performance.now() - runStatusStartedAt);
+    document.getElementById("runStatusElapsed").textContent = formatRunElapsed(runStatusElapsedMs);
+  }, 100);
+}
+
+/** 最多展示最近 6 个真实阶段，避免状态卡挤占策略侧栏。 */
+function renderRunStatusEvents(events) {
+  const root = document.getElementById("runStatusEvents");
+  const visible = Array.isArray(events) ? events.slice(-6) : [];
+  root.replaceChildren(...visible.map(event => {
+    const item = document.createElement("span");
+    item.className = `run-status-event ${String(event.status || "")}`;
+    const suffix = event.status === "succeeded"
+      ? (String(event.label || "").startsWith("收到 ") ? "" : " 成功")
+      : event.status === "failed" ? " 失败"
+      : event.status === "running" ? "…"
+      : event.status === "cancelled" ? " 已停止"
+      : "";
+    item.textContent = `${event.label || "处理中"}${suffix}`;
+    if (event.detail) item.title = String(event.detail);
+    return item;
+  }));
+}
+
+/** 批测共用同一张小卡，只展示汇总而不复制下面的大结果列表。 */
+function renderBatchRunStatus(result) {
+  if (!result) return;
+  const total = Number(result.testCount || 0);
+  const completed = Number(result.completed || 0);
+  const running = (result.items || []).filter(item => item.status === "running").length;
+  renderRunStatusEvents([
+    { label: `完成 ${completed}/${total}`, status: completed === total && total ? "succeeded" : "running" },
+    { label: `运行中 ${running}`, status: running ? "running" : "skipped" },
+    { label: `成功 ${Number(result.succeeded || 0)}`, status: "succeeded" },
+    ...(Number(result.failed || 0) ? [{ label: `失败 ${Number(result.failed)}`, status: "failed" }] : []),
+  ]);
+  document.getElementById("runStatusTitle").textContent = `批量测试 · ${state.activeTestGroup || "未分组"}`;
+}
+
+/** 停止计时并保留最终状态，方便用户在下一次运行前核对。 */
+function finishRunStatus(status, title) {
+  window.clearInterval(runStatusTimer);
+  runStatusTimer = 0;
+  if (runStatusStartedAt) runStatusElapsedMs = Math.max(runStatusElapsedMs, performance.now() - runStatusStartedAt);
+  document.getElementById("runStatusElapsed").textContent = formatRunElapsed(runStatusElapsedMs);
+  const card = document.getElementById("runStatusCard");
+  card.classList.remove("running", "failed", "cancelled");
+  if (status === "failed") card.classList.add("failed");
+  if (status === "cancelled") card.classList.add("cancelled");
+  if (title) document.getElementById("runStatusTitle").textContent = title;
+}
+
+/** 返回当前测试组按名称数字自然顺序排列的测试。 */
+function currentBatchGroupTests() {
+  return (state.workspaceDevice?.tests || [])
+    .map((test, workspaceIndex) => ({ test, workspaceIndex }))
+    .filter(({ test }) => String(test.group || "").trim() === state.activeTestGroup)
+    .sort((left, right) => {
+      const leftLabel = String(left.test.name || left.test.id || "");
+      const rightLabel = String(right.test.name || right.test.id || "");
+      return TEST_ORDER_COLLATOR.compare(leftLabel, rightLabel) || left.workspaceIndex - right.workspaceIndex;
+    })
+    .map(({ test }) => test);
+}
+
+/** 更新结果区测试筛选按钮的数量摘要。 */
+function updateBatchResultFilterButton() {
+  const button = document.getElementById("batchResultFilterButton");
+  const tests = currentBatchGroupTests();
+  const selectedCount = resultTestFilterIds instanceof Set
+    ? tests.filter(test => resultTestFilterIds.has(String(test.id || ""))).length
+    : tests.length;
+  button.disabled = tests.length === 0;
+  button.textContent = "选择测试";
+  button.title = tests.length ? `当前显示 ${selectedCount}/${tests.length} 个测试` : "当前测试组没有测试";
+  button.setAttribute("aria-label", button.title);
+}
+
+/** 以未运行占位状态展示当前测试组；切换组时默认恢复为显示全部。 */
+function showCurrentGroupTestCards(resetSelection = true) {
+  const tests = currentBatchGroupTests();
+  if (resetSelection) resultTestFilterIds = new Set(tests.map(test => String(test.id || "")));
+  batchResultItemHistory.clear();
+  resetRunResult();
+  activeRunContext = null;
+  updateBatchLogDownload({ items: [] });
+  renderBatchItems(tests.map((test, index) => ({
+    index,
+    testId: String(test.id || ""),
+    testName: String(test.name || `测试 ${index + 1}`),
+    status: "not-run",
+  })));
+  updateBatchResultFilterButton();
+}
+
+/** 更新选择计数和“运行已选”按钮状态。 */
+function updateBatchSelectionCount() {
+  const checkboxes = [...document.querySelectorAll("[data-batch-test-selection]")];
+  const selectedCount = checkboxes.filter(checkbox => checkbox.checked).length;
+  document.getElementById("batchSelectionCount").textContent = `已选择 ${selectedCount}/${checkboxes.length} 项`;
+  document.getElementById("batchSelectionRunSelected").disabled = selectedCount === 0;
+}
+
+/** 按断言批量设置选择框，并同步无障碍计数。 */
+function setBatchTestSelection(predicate) {
+  document.querySelectorAll("[data-batch-test-selection]").forEach((checkbox, index) => {
+    checkbox.checked = Boolean(predicate(index));
+  });
+  updateBatchSelectionCount();
+}
+
+/** 打开测试选择弹窗；运行模式执行用户勾选项，筛选模式只更新结果卡片。 */
+function openBatchTestSelectionDialog(mode: "run" | "filter" = "run") {
+  if (!state.workspaceDeviceId) {
+    writeTerminal("$ 请先选择设备和测试组", true);
+    return;
+  }
+  const tests = currentBatchGroupTests();
+  if (!tests.length) {
+    writeTerminal("$ 当前测试组没有可运行测试", true);
+    return;
+  }
+  batchSelectionMode = mode;
+  document.getElementById("batchTestSelectionDialogTitle").textContent = mode === "filter" ? "选择显示的测试" : "选择要运行的测试";
+  document.getElementById("batchTestSelectionDialogContext").textContent = mode === "filter"
+    ? `${state.activeTestGroup || "未分组"} · 共 ${tests.length} 项 · 仅更新结果区显示，不会开始运行`
+    : `${state.activeTestGroup || "未分组"} · 共 ${tests.length} 项 · 将按下列顺序执行并展示`;
+  document.getElementById("batchSelectionList").innerHTML = tests.map((test, index) => `
+    <label class="batch-selection-item" title="${escapeHtml(`${test.id || ""} · ${test.name || ""}`)}">
+      <input type="checkbox" value="${escapeHtml(test.id || "")}" data-batch-test-selection ${mode === "run" || resultTestFilterIds?.has(String(test.id || "")) ? "checked" : ""}>
+      <span class="batch-selection-index">t${index + 1}</span>
+      <span class="batch-selection-name">${escapeHtml(test.name || `测试 ${index + 1}`)}</span>
+    </label>
+  `).join("");
+  const rangeStart = document.getElementById("batchSelectionRangeStart");
+  const rangeEnd = document.getElementById("batchSelectionRangeEnd");
+  rangeStart.max = String(tests.length); rangeStart.value = "1";
+  rangeEnd.max = String(tests.length); rangeEnd.value = String(tests.length);
+  document.getElementById("batchSelectionRunAll").textContent = mode === "filter" ? "显示全部" : "全量运行";
+  document.getElementById("batchSelectionRunSelected").textContent = mode === "filter" ? "完成" : "运行已选";
+  updateBatchSelectionCount();
+  const dialog = document.getElementById("batchTestSelectionDialog") as HTMLDialogElement;
+  dialog.showModal();
+  window.requestAnimationFrame(() => rangeStart.focus());
+}
+
+/** 读取当前选择；筛选模式只重绘卡片，运行模式按名称自然顺序启动任务。 */
+function runBatchSelection(runAll = false) {
+  const tests = currentBatchGroupTests();
+  const selectedIds = runAll
+    ? tests.map(test => String(test.id || ""))
+    : [...document.querySelectorAll("[data-batch-test-selection]:checked")].map(checkbox => String(checkbox.value));
+  if (!selectedIds.length) return;
+  (document.getElementById("batchTestSelectionDialog") as HTMLDialogElement).close();
+  if (batchSelectionMode === "filter") {
+    resultTestFilterIds = new Set(selectedIds);
+    if (state.batchResult) renderBatchItems(state.batchResult.items || []);
+    else showCurrentGroupTestCards(false);
+    updateBatchResultFilterButton();
+    return;
+  }
+  void runCurrentTestGroup(selectedIds);
+}
+
+/**
+ * 使用当前所选策略运行用户勾选的测试。
+ *
+ * 卡片队列模式一次只提交一项，并保留前面项的结果；普通批量模式
+ * 仍按运行设置中的并发数执行。
+ */
+async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
+  const fromResultCardQueue = runOptions.fromResultCardQueue === true;
+  if (runPreparationActive) return;
+  const button = document.getElementById("batchRunButton");
+  if (state.batchRunning) {
+    if (fromResultCardQueue) return;
+    try {
+      await requestBatchCancellation();
+    } catch (error) {
+      state.batchCancelRequested = false; state.batchCancelSent = false;
+      button.disabled = false; button.classList.remove("running"); button.classList.add("cancel"); button.textContent = "■ 终止调度";
+      writeTerminal(`$ 终止失败：${error.message || "未知错误"}\n  批量任务仍在运行，可再次尝试终止。`, true);
+    }
+    return;
+  }
+  if (!Array.isArray(selectedTestIds)) {
+    const selectedIds = resultTestFilterIds instanceof Set
+      ? [...resultTestFilterIds]
+      : currentBatchGroupTests().map(test => String(test.id || ""));
+    return runCurrentTestGroup(selectedIds, runOptions);
+  }
+  try {
+    if (!state.workspaceDeviceId) throw new Error("请先选择设备和测试组");
+    if (!await settleTestDraft()) return;
+    const selectedIdSet = new Set(selectedTestIds.map(String));
+    const tests = currentBatchGroupTests().filter(test => selectedIdSet.has(String(test.id || "")));
+    if (!tests.length) throw new Error("请至少选择一个可运行测试");
+    if (fromResultCardQueue) {
+      resultTestFilterIds = new Set(currentBatchGroupTests().map(test => String(test.id || "")));
+    } else {
+      batchResultItemHistory.clear();
+      resultTestFilterIds = new Set(tests.map(test => String(test.id || "")));
+    }
+    updateBatchResultFilterButton();
+    runPreparationActive = true; renderWorkspaceControls();
+    // 只读取本次勾选测试，冻结批量分析上下文，不依赖之后的目录选择或测试编辑。
+    const savedTests = [];
+    const readConcurrency = 4;
+    for (let offset = 0; offset < tests.length; offset += readConcurrency) {
+      const selected = tests.slice(offset, offset + readConcurrency);
+      const responses = await Promise.all(selected.map(test => requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${test.id}`)));
+      savedTests.push(...responses.map(response => response.test));
+    }
+    if (!fromResultCardQueue) resetRunResult();
+    activeRunContext = null;
+    const knownTests = fromResultCardQueue ? (activeBatchContext?.tests || []) : [];
+    const testsById = new Map([...knownTests, ...savedTests].map(test => [String(test.id || ""), test]));
+    activeBatchContext = { device: structuredClone(state.device), routes: structuredClone(state.routes), tests: structuredClone([...testsById.values()]) };
+    runPreparationActive = false;
+    state.batchRunning = true; state.activeBatchId = ""; state.batchCancelRequested = false; state.batchCancelSent = false; state.batchResult = null;
+    renderWorkspaceControls();
+    startRunStatus(`批量测试 · ${state.activeTestGroup || "未分组"}`, `等待 ${tests.length} 个测试`);
+    batchCardAnalyses.clear();
+    batchCardAnalysisRequests.clear();
+    lastBatchItemsRenderSignature = "";
+    document.getElementById("testGroupAnalysisPanel").hidden = true;
+    document.getElementById("testGroupAnalysisPanel").innerHTML = "";
+    updateAnalysisReportAvailability();
+    button.disabled = false; button.classList.add("cancel"); button.textContent = "■ 终止调度";
+    const queuedItems = tests.map((test, index) => ({
+      index,
+      testId: String(test.id || ""),
+      testName: String(test.name || `测试 ${index + 1}`),
+      status: "queued",
+    }));
+    renderBatchItems(queuedItems);
+    lastBatchItemsRenderSignature = batchItemsRenderSignature(queuedItems);
+    const validationSummary = hongYeCheckEnabled()
+      ? ` · HongYe 校验并行 ${validationParallelism()} 路`
+      : "";
+    writeTerminal(`$ 运行所选测试\n  组别: ${state.activeTestGroup || "未分组"}\n  策略: ${displayStrategyName(state.strategy)}\n  测试数: ${tests.length}\n  算法并行 ${batchParallelism()} 项${validationSummary}…`);
+    const response = await fetch("/api/run-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId: state.workspaceDeviceId, group: state.activeTestGroup, testIds: tests.map(test => test.id), strategy: state.strategy, options: schedulingRequestOptions(), hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: fromResultCardQueue ? 1 : batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() }),
+    });
+    let result = await response.json();
+    if (!response.ok || !result.batchId || !Array.isArray(result.items)) throw new Error(result.error || `服务返回 ${response.status}`);
+    state.activeBatchId = result.batchId;
+    showBatchProgress(result);
+    renderBatchRunStatus(result);
+    if (state.batchCancelRequested) await sendBatchCancellation();
+    while (!["completed", "failed", "cancelled"].includes(result.status)) {
+      await new Promise(resolve => window.setTimeout(resolve, BATCH_STATUS_POLL_MILLISECONDS));
+      const statusResponse = await fetch(`/api/run-batches/${encodeURIComponent(result.batchId)}`, { cache: "no-store" });
+      result = await statusResponse.json();
+      if (!statusResponse.ok) throw new Error(result.error || `服务返回 ${statusResponse.status}`);
+      showBatchProgress(result);
+      renderBatchRunStatus(result);
+    }
+    if (result.status === "cancelled") {
+      showBatchProgress(result);
+      writeTerminal(`$ 批量调度已终止\n  已停止提交等待中的测试；仍在算法内部执行的任务结果将被忽略。`);
+      finishRunStatus("cancelled", "批量测试已停止");
+      return;
+    }
+    if (result.status === "failed" && !Array.isArray(result.items)) throw new Error(result.error || "批量任务失败");
+    if (fromResultCardQueue) {
+      for (const item of result.items || []) batchResultItemHistory.set(String(item.testId || ""), item);
+      result = {
+        ...result,
+        items: currentBatchGroupTests()
+          .map(test => batchResultItemHistory.get(String(test.id || "")))
+          .filter(item => item && item.status !== "not-run"),
+      };
+      result.testCount = result.items.length;
+      result.completed = result.items.filter(item => ["succeeded", "failed", "cancelled"].includes(item.status)).length;
+      result.succeeded = result.items.filter(item => item.status === "succeeded").length;
+      result.failed = result.items.filter(item => item.status === "failed").length;
+      result.cancelled = result.items.filter(item => item.status === "cancelled").length;
+    }
+    showBatchResult(result);
+    if (!fromResultCardQueue || resultCardRunQueue.size <= 1) {
+      finishRunStatus(Number(result.failed || 0) ? "failed" : "completed", Number(result.failed || 0) ? "批量测试完成（有失败）" : "批量测试运行完成");
+    }
+  } catch (error) {
+    if (fromResultCardQueue && Array.isArray(selectedTestIds)) {
+      for (const testId of selectedTestIds.map(String)) {
+        const previous = batchResultItemHistory.get(testId);
+        if (previous) batchResultItemHistory.set(testId, { ...previous, ok: false, status: "failed", error: error.message || "未知错误" });
+      }
+      renderBatchItems([]);
+    }
+    writeTerminal(`$ 批量运行失败：${error.message || "未知错误"}`, true);
+    finishRunStatus("failed", "批量测试运行失败");
+  } finally {
+    runPreparationActive = false; state.batchRunning = false; state.activeBatchId = ""; state.batchCancelRequested = false; state.batchCancelSent = false;
+    button.disabled = !state.serviceCompatible;
+    button.classList.remove("running", "cancel"); button.textContent = "▶ 运行所选测试";
+    renderWorkspaceControls();
+  }
+}
+
+/** 把卡片双击的测试立即标记为等待，并展示完整测试组。 */
+function markResultCardTestQueued(testId) {
+  const tests = currentBatchGroupTests();
+  const index = tests.findIndex(test => String(test.id || "") === testId);
+  if (index < 0) return;
+  const test = tests[index];
+  batchResultItemHistory.set(testId, {
+    index,
+    testId,
+    testName: String(test.name || `测试 ${index + 1}`),
+    status: "queued",
+  });
+  resultTestFilterIds = new Set(tests.map(item => String(item.id || "")));
+  renderBatchItems([]);
+  updateBatchResultFilterButton();
+}
+
+const resultCardRunQueue = createResultCardRunQueue({
+  runTest: testId => runCurrentTestGroup([testId], { fromResultCardQueue: true }),
+  onStateChange(testId, event) {
+    if (event === "queued") {
+      markResultCardTestQueued(testId);
+      return;
+    }
+    if (event === "settled" && batchResultItemHistory.get(testId)?.status === "queued") {
+      batchResultItemHistory.set(testId, { ...batchResultItemHistory.get(testId), status: "not-run" });
+      renderBatchItems([]);
+    }
+  },
+});
+
+/** 校验卡片对应的测试并入队；重复双击同一等待项不会重复执行。 */
+function enqueueResultCardTest(testId) {
+  if (!state.serviceCompatible) {
+    writeTerminal("$ 调度服务尚未就绪，暂时无法运行测试", true);
+    return;
+  }
+  if ((runPreparationActive || state.batchRunning) && resultCardRunQueue.size === 0) {
+    writeTerminal("$ 当前批量任务正在运行，请在结束后使用卡片双击队列", true);
+    return;
+  }
+  if (!currentBatchGroupTests().some(test => String(test.id || "") === String(testId || ""))) return;
+  if (!resultCardRunQueue.enqueue(String(testId))) {
+    writeTerminal("$ 该测试已在运行队列中");
+  }
+}
+
+/** 请求终止当前批量任务；任务 ID 返回前点击也会在创建后立即补发。 */
+async function requestBatchCancellation() {
+  if (!state.batchRunning || state.batchCancelRequested) return;
+  resultCardRunQueue.clearPending();
+  state.batchCancelRequested = true;
+  const button = document.getElementById("batchRunButton");
+  button.disabled = true; button.classList.add("running"); button.textContent = "正在终止…";
+  writeTerminal("$ 正在终止批量调度…");
+  if (state.activeBatchId) await sendBatchCancellation();
+}
+
+/** 通知后端取消排队任务，并冻结当前批量结果。 */
+async function sendBatchCancellation() {
+  if (!state.activeBatchId || state.batchCancelSent) return;
+  state.batchCancelSent = true;
+  const response = await fetch(`/api/run-batches/${encodeURIComponent(state.activeBatchId)}`, { method: "DELETE" });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || `终止失败，服务返回 ${response.status}`);
+  showBatchProgress(result);
+}
+
+/** 校验未通过的外部算法原始输出也可保留为只读指标与诊断数据。 */
+function hasBatchResultMetrics(item) {
+  return item?.status === "succeeded" || item?.metricsAvailable === true;
+}
+
+/** 切换分析向导页面，并同步步骤图示、说明和底部操作。 */
+function showAnalysisWizardStep(step) {
+  analysisWizardStep = Math.max(1, Math.min(3, Number(step) || 1));
+  document.querySelectorAll("[data-analysis-page]").forEach(page => {
+    const active = Number(page.dataset.analysisPage) === analysisWizardStep;
+    page.hidden = !active;
+    page.classList.toggle("active", active);
+  });
+  document.querySelectorAll("[data-analysis-flow-step]").forEach(item => {
+    const itemStep = Number(item.dataset.analysisFlowStep);
+    item.classList.toggle("active", itemStep === analysisWizardStep);
+    item.classList.toggle("complete", itemStep < analysisWizardStep);
+  });
+  const descriptions = {
+    1: "逐项选择本次需要实际计算的指标，选择会保存为个人设置。",
+    2: "选择要分析的测试，并确认统计窗口和时间预算。",
+    3: "正在按所选指标计算，达到时间预算时会保留已完成结果。",
+  };
+  document.getElementById("analysisOptionsDescription").textContent = descriptions[analysisWizardStep];
+  document.getElementById("analysisPreviousButton").hidden = analysisWizardStep !== 2;
+  document.getElementById("analysisNextButton").hidden = analysisWizardStep !== 1;
+  document.getElementById("startGroupAnalysisButton").hidden = analysisWizardStep !== 2;
+  const cancelButton = document.getElementById("analysisOptionsCancel");
+  cancelButton.textContent = analysisWizardStep === 3 ? "取消分析" : "取消";
+}
+
+/** 打开以计算指标为第一页的结果分析向导。 */
+function openGroupAnalysisOptions() {
+  const result = state.batchResult;
+  if (!result?.items?.length) return;
+  const analyzable = result.items.filter(item => hasBatchResultMetrics(item) && item.resultUrl);
+  const options = document.getElementById("analysisTestOptions");
+  options.innerHTML = analyzable.map((item, index) => `
+    <label><input type="checkbox" checked value="${escapeHtml(String(item.testId || `index-${index}`))}" data-analysis-test>
+      <span><strong>${escapeHtml(item.testName || `测试 ${index + 1}`)}</strong><small>${escapeHtml(validationDisplay(item.validation))}</small></span>
+    </label>`).join("");
+  document.getElementById("analysisToggleAllTests").textContent = "取消全选";
+  document.getElementById("analysisDialogProgress").innerHTML = "";
+  document.getElementById("analysisOptionsCancel").disabled = false;
+  document.getElementById("analysisOptionsClose").disabled = false;
+  document.getElementById("startGroupAnalysisButton").disabled = false;
+  showAnalysisWizardStep(1);
+  (document.getElementById("analysisOptionsDialog") as HTMLDialogElement).showModal();
+  window.setTimeout(() => document.querySelector("[data-analysis-metric]")?.focus(), 0);
+}
+
+/** 把服务端真实阶段和完成数量绘制在向导第三页。 */
+function renderGroupAnalysisProgress(job) {
+  const percent = Math.max(0, Math.min(100, Number(job.progress) || 0));
+  const elapsed = Number(job.elapsedSeconds) || 0;
+  document.getElementById("analysisDialogProgress").innerHTML = `
+    <section class="group-analysis-progress" aria-live="polite">
+      <header><div><small>测试组结果分析</small><strong>${escapeHtml(job.message || "正在分析")}</strong></div><b>${percent}%</b></header>
+      <div class="group-analysis-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="width:${percent}%"></i></div>
+      <p>${escapeHtml(job.currentCaseName || "正在准备")} · 已完成 ${Number(job.completedCases) || 0}/${Number(job.totalCases) || 0} 个测试 · 已用 ${elapsed.toFixed(1)} 秒 / ${Number(job.timeBudgetSeconds) || 0} 秒</p>
+    </section>`;
+  showAnalysisWizardStep(3);
+}
+
+/** 创建后台分析任务、轮询真实进度，并展示完整或部分分析报告。 */
+async function showTestGroupAnalysis() {
+  const result = state.batchResult;
+  if (!result?.items?.length) return;
+  const selectedIds = new Set(
+    [...document.querySelectorAll("[data-analysis-test]:checked")].map(input => String(input.value)),
+  );
+  if (!selectedIds.size) throw new Error("请至少选择一个测试");
+  const metricIds = [...document.querySelectorAll("[data-analysis-metric]:checked")].map(input => String(input.value));
+  if (!metricIds.length) throw new Error("请至少选择一个计算指标");
+  const testsById = new Map((activeBatchContext?.tests || []).map(test => [String(test.id), test]));
+  const cases = result.items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item, index }) => selectedIds.has(String(item.testId || `index-${index}`)))
+    .map(({ item, index }) => {
+      const testId = String(item.testId || `index-${index}`);
+      const testCase = testsById.get(testId);
+      const resultId = String(item.resultUrl || "").startsWith("/api/results/")
+        ? decodeURIComponent(String(item.resultUrl).slice("/api/results/".length))
+        : "";
+      return {
+        id: testId,
+        name: item.testName || `t${index + 1}`,
+        status: String(item.status || "unknown"),
+        validation: String(item.validation || "unknown"),
+        makespan: item.makespan,
+        baselineMakespan: item.baseline?.status === "succeeded" ? item.baseline.makespan : null,
+        companyCapacityBaselineWph: companyCapacityBaselineFor(state.workspaceDevice?.name, item.testName),
+        cpuTimeMs: item.cpuTimeMs ?? item.totalElapsedMs,
+        elapsedTimeMs: item.totalElapsedMs,
+        error: item.error || item.baseline?.error || "",
+        resultId,
+        rounds: testCase?.rounds || [],
+      };
+    });
+  await saveAnalysisSettingsPreferences();
+  const job = await createTestGroupAnalysisJob({
+    cases,
+    device: activeBatchContext?.device,
+    routes: activeBatchContext?.routes || [],
+    metricIds,
+    windowMode: document.getElementById("analysisWindowMode").value,
+    timeBudgetSeconds: Number(document.getElementById("analysisTimeBudget").value),
+  });
+  activeGroupAnalysisJobId = String(job.id || "");
+  let snapshot = job;
+  renderGroupAnalysisProgress(snapshot);
+  while (["queued", "running"].includes(String(snapshot.status))) {
+    await new Promise(resolve => window.setTimeout(resolve, 500));
+    snapshot = await readTestGroupAnalysisJob(activeGroupAnalysisJobId);
+    renderGroupAnalysisProgress(snapshot);
+  }
+  activeGroupAnalysisJobId = "";
+  if (!snapshot.result) throw new Error(snapshot.message || "结果分析失败");
+  const summary = snapshot.result;
+  const panelMarkup = renderTestGroupAnalysis(
+    summary,
+    result.group || state.activeTestGroup || "当前测试组",
+  );
+  visualizationWorkspace.showGroupAnalysis(panelMarkup);
+  document.getElementById("analysisOptionsCancel").disabled = false;
+  document.getElementById("analysisOptionsClose").disabled = false;
+  (document.getElementById("analysisOptionsDialog") as HTMLDialogElement).close();
+  await switchTab("schedule");
+  setRunResultView("analysis");
+  const panel = document.getElementById("testGroupAnalysisPanel");
+  bindTestGroupExport(panel, summary, result.group || state.activeTestGroup || "当前测试组");
+  panel.querySelector("[data-return-run-results]")?.addEventListener("click", () => setRunResultView("results"));
+  panel.querySelector("[data-reconfigure-analysis]")?.addEventListener("click", openGroupAnalysisOptions);
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+/** 绑定测试组逐测试指标面板的“导出 CSV”按钮，生成 CSV 并触发浏览器下载。 */
+function bindTestGroupExport(panel, summary, groupName) {
+  const button = panel?.querySelector("[data-group-export-csv]");
+  if (!button) return;
+  button.addEventListener("click", (event) => {
+    // 阻止事件冒泡到 <summary>，避免点击导出时展开/收起表格。
+    event.preventDefault();
+    event.stopPropagation();
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const safeName = String(groupName || "测试组").replace(/[\\/:*?"<>|]/g, "_");
+    const blob = new Blob([`\uFEFF${testGroupSummaryCsv(summary)}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `测试组指标-${safeName}-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  });
+}
+
+/** 返回影响测试卡片显示的轻量签名，避免轮询时重建整组 DOM。 */
+function batchItemsRenderSignature(items) {
+  return JSON.stringify(items.map(item => [
+    item.status,
+    item.resultUrl,
+    item.logUrl,
+    item.error,
+    item.validation,
+    item.makespan,
+    item.cpuTimeMs,
+    item.baseline?.status,
+  ]));
+}
+
+/** 按服务端分配的测试序号稳定排序，完成先后不会改变卡片位置。 */
+function orderedBatchItems(items) {
+  return [...items].sort((left, right) => Number(left.index ?? 0) - Number(right.index ?? 0));
+}
+
+/** 实时绘制总体进度；仅在测试状态变化时重绘逐项卡片。 */
+function showBatchProgress(result) {
+  result.items = orderedBatchItems(result.items || []);
+  for (const item of result.items) {
+    const testId = String(item.testId || "");
+    if (testId) batchResultItemHistory.set(testId, item);
+  }
+  const completed = Number(result.completed || 0), total = Number(result.testCount || result.items?.length || 0);
+  const percent = total ? Math.round(completed / total * 100) : 0;
+  state.batchResult = result;
+  updateAnalysisReportAvailability();
+  updateBatchLogDownload(result);
+  const items = result.items || [];
+  const renderSignature = batchItemsRenderSignature(items);
+  if (renderSignature !== lastBatchItemsRenderSignature) {
+    renderBatchItems(items);
+    lastBatchItemsRenderSignature = renderSignature;
+  }
+  if (["completed", "cancelled"].includes(String(result.status))) {
+    void hydrateBatchCardAnalyses(items);
+  }
+  writeTerminal([
+    "$ 运行所选测试",
+    `  组别: ${result.group || "未分组"} · 策略: ${displayStrategyName(result.strategy)}`,
+    `  进度: ${completed}/${total} (${percent}%) · 算法并行: ${result.workerCount}${result.validationWorkers > 0 ? ` · HongYe 校验并行: ${result.validationWorkers}` : ""}`,
+    `  等待: ${(result.items || []).filter(item => item.status === "queued").length} · 运行中: ${(result.items || []).filter(item => item.status === "running").length} · 成功: ${result.succeeded || 0} · 失败: ${result.failed || 0} · 终止: ${result.cancelled || 0}`,
+  ].join("\n"));
+}
+
+/** 汇总批量测试卡片的失败报错文本；无失败时返回空字符串。 */
+function batchItemErrorText(item) {
+  const baseline = item.baseline || {};
+  if (baseline.status === "failed") return `Baseline 失败：${baseline.error || "等待重新计算"}`;
+  if (item.status === "failed") {
+    const deadlock = deadlockDisplay(item.deadlock);
+    if (deadlock) return `[${deadlock.deadlockCode}] ${deadlock.title}：${deadlock.message || item.error || "算法规划进入死锁"}`;
+    return `${hasBatchResultMetrics(item) ? "校验失败" : "运行失败"}：${item.error || "未知错误"}`;
+  }
+  if (baseline.status && baseline.status !== "succeeded" && baseline.status !== "skipped") return `Baseline 失效：${baseline.error || "等待重新计算"}`;
+  return "";
+}
+
+/** 只计算批量小卡片需要的产能和平均重算时间，避免触发完整结果分析。 */
+async function loadBatchCardAnalysis(item) {
+  const resultUrl = String(item?.resultUrl || "");
+  if (!resultUrl || !hasBatchResultMetrics(item)) return null;
+  if (batchCardAnalyses.has(resultUrl)) return batchCardAnalyses.get(resultUrl);
+  if (batchCardAnalysisRequests.has(resultUrl)) return batchCardAnalysisRequests.get(resultUrl);
+  const request = (async () => {
+    const testCase = (activeBatchContext?.tests || []).find(
+      test => String(test.id) === String(item.testId),
+    );
+    const resultId = resultUrl.startsWith("/api/results/")
+      ? decodeURIComponent(resultUrl.slice("/api/results/".length))
+      : "";
+    if (!resultId) return null;
+    try {
+      const response = await requestScheduleAnalysis({
+        resultId,
+        device: activeBatchContext?.device,
+        windowMode: "steady",
+        routes: activeBatchContext?.routes || [],
+        rounds: testCase?.rounds || [],
+        metricGroups: ["basic", "throughput"],
+      });
+      batchCardAnalyses.set(resultUrl, response.analysis);
+      return response.analysis;
+    } catch {
+      batchCardAnalyses.set(resultUrl, null);
+      return null;
+    } finally {
+      batchCardAnalysisRequests.delete(resultUrl);
+    }
+  })();
+  batchCardAnalysisRequests.set(resultUrl, request);
+  return request;
+}
+
+/** 以两路并发补齐已完成测试的小卡片指标，并在每项完成后更新显示。 */
+async function hydrateBatchCardAnalyses(items) {
+  const pending = orderedBatchItems(items).filter(item => {
+    const resultUrl = String(item?.resultUrl || "");
+    return resultUrl && !batchCardAnalyses.has(resultUrl) && !batchCardAnalysisRequests.has(resultUrl);
+  });
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < pending.length) {
+      const item = pending[nextIndex++];
+      await loadBatchCardAnalysis(item);
+      if (state.batchResult) renderBatchItems(state.batchResult.items || []);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(2, pending.length) }, worker));
+}
+
+function renderBatchItems(items) {
+  for (const item of orderedBatchItems(items)) {
+    const testId = String(item.testId || "");
+    if (testId) batchResultItemHistory.set(testId, item);
+  }
+  const entries = currentBatchGroupTests()
+    .map((test, index) => ({
+      item: batchResultItemHistory.get(String(test.id || "")) || {
+        index,
+        testId: String(test.id || ""),
+        testName: String(test.name || `测试 ${index + 1}`),
+        status: "not-run",
+      },
+      index,
+    }))
+    .filter(({ item }) => !(resultTestFilterIds instanceof Set) || resultTestFilterIds.has(String(item.testId || "")));
+  const statusLabels = { "not-run": "未运行", queued: "等待中", running: "运行中", succeeded: "成功", failed: "失败", cancelled: "已终止" };
+  document.getElementById("batchResults").innerHTML = entries.map(({ item, index }) => {
+    const hasMetrics = hasBatchResultMetrics(item);
+    const resultUrl = String(item.resultUrl || "");
+    const cardAnalysis = batchCardAnalyses.get(resultUrl);
+    const throughput = Number(cardAnalysis?.throughputPerHour);
+    const rawAverageRecomputeTime = cardAnalysis?.averageRecomputeTimeMs ?? item.averageRecomputeTimeMs;
+    const averageRecomputeTime = Number(rawAverageRecomputeTime);
+    const hasThroughput = Number.isFinite(throughput) && throughput > 0;
+    const hasAverageRecomputeTime = rawAverageRecomputeTime !== null
+      && rawAverageRecomputeTime !== undefined
+      && Number.isFinite(averageRecomputeTime);
+    const summaryError = batchItemErrorText(item);
+    const failed = Boolean(summaryError);
+    // 已终止状态已由卡片顶部标签表达，避免在指标下方重复显示相同信息。
+    const summaryNote = failed ? "" : summaryError;
+    const displayId = `t${index + 1}`;
+    const testId = String(item.testId || "");
+    const companyBaseline = companyCapacityBaselineFor(state.workspaceDevice?.name, item.testName);
+    return `
+      <div class="batch-result ${escapeHtml(item.status || "queued")} ${testId === expandedBatchTestId ? "details-open" : ""}" data-batch-test-card="${escapeHtml(testId)}" role="button" tabindex="0" aria-expanded="${testId === expandedBatchTestId}" aria-label="${escapeHtml(item.testName || `测试 ${index + 1}`)}：单击查看详情，双击加入运行队列" title="单击查看只读配置；双击加入运行队列">
+        <div class="batch-result-head">
+          <span class="batch-result-title"><strong title="${escapeHtml(item.testName || `测试 ${index + 1}`)}">${escapeHtml(item.testName || `测试 ${index + 1}`)}</strong></span>
+          <div class="batch-result-meta">
+            <span class="batch-status">${statusLabels[item.status] || "等待中"}</span>
+            ${item.logUrl ? `<a class="btn" href="${escapeHtml(item.logUrl)}" download="${escapeHtml(readableLogFileName(item.testName || `测试-${index + 1}`))}">日志</a>` : `<span class="btn" aria-disabled="true">日志</span>`}
+            ${item.resultUrl ? `<button class="btn primary" type="button" data-playback-result="${escapeHtml(item.resultUrl)}" data-playback-name="${escapeHtml(item.testName || `测试 ${index + 1}`)}">回放</button>` : `<span class="btn" aria-disabled="true">回放</span>`}
+            ${item.ganttUrl ? `<a class="btn" href="${escapeHtml(item.ganttUrl)}" target="_blank">甘特图</a>` : `<span class="btn" aria-disabled="true">甘特图</span>`}
+            ${failed ? `<button class="btn danger" type="button" data-batch-error="${escapeHtml(testId)}" aria-label="查看 ${escapeHtml(displayId)} 的报错信息">报错</button>` : ""}
+          </div>
+        </div>
+        <div class="batch-result-summary">
+          <div class="batch-metric-tags" aria-label="主要指标">
+            <span class="batch-metric-tag production">${companyBaseline === null ? (hasThroughput ? `产能 ${throughput.toFixed(1)} 片/h` : "产能 -") : `产能 ${hasThroughput ? throughput.toFixed(1) : "-"}/${companyBaseline.toFixed(1)} 片/h`}</span>
+            <span class="batch-metric-tag recompute">平均重算 ${hasMetrics && hasAverageRecomputeTime ? `${averageRecomputeTime.toFixed(1)} ms` : "—"}</span>
+          </div>
+          ${summaryNote ? `<span class="summary-error" title="${escapeHtml(summaryNote)}">${escapeHtml(summaryNote)}</span>` : ""}
+        </div>
+      </div>`;
+  }).join("");
+}
+
+/** 关闭结果预览面板下方的测试只读详情，并让失效请求不能覆盖当前状态。 */
+function closeBatchTestDetails() {
+  expandedBatchTestId = "";
+  batchTestDetailsRequestVersion += 1;
+  const panel = document.getElementById("batchTestDetails");
+  panel.hidden = true;
+  panel.innerHTML = "";
+}
+
+/** 同步结果卡片的展开视觉状态，不重置当前批量结果。 */
+function updateBatchTestCardDetailState() {
+  document.querySelectorAll("[data-batch-test-card]").forEach(card => {
+    const expanded = card.dataset.batchTestCard === expandedBatchTestId;
+    card.classList.toggle("details-open", expanded);
+    card.setAttribute("aria-expanded", String(expanded));
+  });
+}
+
+/** 将测试配置字段绘制为只读的紧凑字段，不提供表单控件。 */
+function renderBatchTestDetailField(label, value) {
+  const text = readonlyText(value);
+  return `<div class="batch-test-detail-field"><span>${escapeHtml(label)}</span><strong title="${escapeHtml(text)}">${escapeHtml(text)}</strong></div>`;
+}
+
+/** 生成结果详情内单个 PJob 的只读路径摘要。 */
+function batchTestDetailRouteSummary(testCase, pjob) {
+  const routeName = String(pjob?.routeRef || "");
+  const template = (state.workspaceDevice?.routes || state.routes || []).find(route => String(route?.name || "") === routeName);
+  if (!template) return routeName || "未配置路径";
+  const routeConfig = pjob?.routeConfig || testCase?.routeConfigs?.[routeName] || defaultRouteConfigForRoute(template);
+  return routePickerCompactPath(runtimeRouteForTemplate(template, routeConfig), true, pjob?.loadPort || "");
+}
+
+/** 生成结果预览面板下方的测试只读详情，结构与测试管理的轮次、CJob、PJob 一致。 */
+function renderBatchTestDetails(testCase) {
+  const rounds = Array.isArray(testCase?.rounds) ? testCase.rounds : [];
+  const details = rounds.map((round, roundIndex) => {
+    const cjobs = Array.isArray(round?.cjobs) ? round.cjobs : [];
+    const cjobMarkup = cjobs.map((cjob, cjobIndex) => {
+      const pjobs = Array.isArray(cjob?.pjobs) ? cjob.pjobs : [];
+      const pjobMarkup = pjobs.map((pjob, pjobIndex) => `<div class="batch-test-detail-pjob">
+        <div class="batch-test-detail-pjob-name"><span>PJob</span><strong>${escapeHtml(pjob?.jobName || `P${pjobIndex + 1}`)}</strong></div>
+        <div class="batch-test-detail-pjob-fields">
+          ${renderBatchTestDetailField("Material", pjob?.waferCount)}
+          ${renderBatchTestDetailField("Priority", pjob?.priority)}
+          ${renderBatchTestDetailField("OriginRoute", batchTestDetailRouteSummary(testCase, pjob))}
+        </div>
+      </div>`).join("") || '<span class="hint">此 CJob 没有 PJob。</span>';
+      return `<section class="batch-test-detail-cjob">
+        <div class="batch-test-detail-fields">
+          <header class="batch-test-detail-cjob-head"><strong>CJob ${cjobIndex + 1}</strong><span>TaskID ${escapeHtml(cjob?.taskId)}</span></header>
+          ${renderBatchTestDetailField("JobType", cjob?.jobType)}
+          ${renderBatchTestDetailField("LoadPort", cjob?.loadPort)}
+          ${renderBatchTestDetailField("Priority", cjob?.priority)}
+          ${renderBatchTestDetailField("TaskMode", cjob?.taskMode)}
+          ${renderBatchTestDetailField("CJobCycle", cjob?.cjobCycle)}
+        </div>
+        <div class="batch-test-detail-pjobs">${pjobMarkup}</div>
+      </section>`;
+    }).join("") || '<span class="hint">此轮没有 CJob。</span>';
+    return `<section class="batch-test-detail-round">
+      <header class="batch-test-detail-round-head"><span class="batch-test-detail-round-number">${roundIndex + 1}</span><strong>${roundIndex ? `第 ${roundIndex + 1} 轮重算` : "首次排程"}</strong><span>${roundIndex ? "重算时间" : "排程时间"} ${escapeHtml(formatCleanSeconds(round?.currentTime ?? 0))}</span></header>
+      <div class="batch-test-detail-cjobs">${cjobMarkup}</div>
+    </section>`;
+  }).join("") || '<p class="hint">该测试没有可显示的任务配置。</p>';
+  return `<div class="batch-test-details-body">${details}</div>`;
+}
+
+/** 点击结果卡片时按需读取保存的测试配置；再次点击同一卡片则收起。 */
+async function toggleBatchTestDetails(testId) {
+  if (!testId || !state.workspaceDeviceId) return;
+  if (expandedBatchTestId === testId) {
+    closeBatchTestDetails();
+    updateBatchTestCardDetailState();
+    return;
+  }
+  expandedBatchTestId = testId;
+  const requestVersion = ++batchTestDetailsRequestVersion;
+  const panel = document.getElementById("batchTestDetails");
+  panel.hidden = false;
+  panel.innerHTML = '<div class="batch-test-details-body"><p class="hint">正在读取测试详情…</p></div>';
+  updateBatchTestCardDetailState();
+  try {
+    const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${encodeURIComponent(testId)}`);
+    if (requestVersion !== batchTestDetailsRequestVersion || expandedBatchTestId !== testId) return;
+    panel.innerHTML = renderBatchTestDetails(result.test);
+  } catch (error) {
+    if (requestVersion !== batchTestDetailsRequestVersion || expandedBatchTestId !== testId) return;
+    panel.innerHTML = `<div class="batch-test-details-body"><p class="hint">读取测试详情失败：${escapeHtml(error?.message || "未知错误")}</p></div>`;
+  }
+}
+
+/** 打开批量测试报错信息弹窗，展示完整失败原因（不直接铺在卡片上）。 */
+function openBatchErrorDialog(testId) {
+  const item = batchResultItemHistory.get(String(testId || ""));
+  if (!item) return;
+  const errorText = batchItemErrorText(item) || "未知错误";
+  document.getElementById("batchErrorDialogContext").textContent = `${item.testName || "当前测试"} · ${item.status === "failed" ? "运行失败" : "基线异常"}`;
+  document.getElementById("batchErrorDialogContent").textContent = errorText;
+  (document.getElementById("batchErrorDialog") as HTMLDialogElement).showModal();
+}
+
+/** 生成一个甘特图页面 URL，其中每个成功测试作为独立标签页一次加载。 */
+function batchGanttUrl(items) {
+  const params = new URLSearchParams();
+  items.filter(item => item.resultUrl).forEach(item => {
+    params.append("src", item.resultUrl);
+    params.append("name", item.testName);
+  });
+  return params.size ? `/movelist_gantt_viewer.html?${params.toString()}` : "";
+}
+
+/** 清空底部“全部甘特图”入口，防止它沿用上一批测试结果。 */
+function resetBatchGanttLink() {
+  const link = document.getElementById("batchGanttButton");
+  link.href = "#";
+  link.setAttribute("aria-disabled", "true");
+}
+
+/** 更新当前批量任务的 ZIP 日志下载入口；执行中可下载已完成测试的日志。 */
+function updateBatchLogDownload(result) {
+  const buttons = document.querySelectorAll(".batch-log-download");
+  const hasLogs = (result.items || []).some(item => item.logUrl);
+  if (!result.batchId || !hasLogs) {
+    buttons.forEach(button => {
+      button.href = "#";
+      button.setAttribute("aria-disabled", "true");
+    });
+    return;
+  }
+  const deviceName = String(result.deviceName || "当前设备").replace(/\.json$/i, "");
+  const readableDeviceName = deviceName.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_") || "当前设备";
+  const readableGroupName = String(result.group || "当前测试组").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_") || "当前测试组";
+  buttons.forEach(button => {
+    button.href = `/api/run-batches/${encodeURIComponent(result.batchId)}/logs`;
+    button.download = `批量复现日志-${readableDeviceName}-${readableGroupName}.zip`;
+    button.removeAttribute("aria-disabled");
+  });
+}
+
+/** 汇总批量运行指标，并为每个测试保留甘特图和复现日志入口。 */
+function showBatchResult(result) {
+  state.batchResult = result;
+  updateBatchLogDownload(result);
+  updateAnalysisReportAvailability();
+  const resultErrors = result.items.flatMap((item, index) => {
+    if (item.status === "failed") {
+      return [`t${index + 1} ${item.testName || ""}：${item.error || "运行失败"}`];
+    }
+    if (item.status === "succeeded" && item.validation && item.validation !== "passed" && item.validation !== "skipped") {
+      return [`t${index + 1} ${item.testName || ""}：MoveList 校验 ${validationDisplay(item.validation)}${item.error ? `；${item.error}` : ""}`];
+    }
+    return [];
+  });
+  writeTerminal(resultErrors.join("\n"), resultErrors.length > 0);
+  renderBatchItems(result.items);
+  const allGanttUrl = batchGanttUrl(result.items);
+  const allGantt = document.getElementById("batchGanttButton");
+  if (allGanttUrl) { allGantt.href = allGanttUrl; allGantt.removeAttribute("aria-disabled"); }
+}
+
+/** 显示运行指标和逐轮日志。 */
+function showResult(result) {
+  state.batchResult = null;
+  document.getElementById("testGroupAnalysisPanel").hidden = true;
+  document.getElementById("batchResults").innerHTML = "";
+  updateAnalysisReportAvailability();
+  updateBatchLogDownload({});
+  resetBatchGanttLink();
+  writeTerminal(["$ 调度完成", ...(result.rounds || []).map(round => {
+    if (round.kind === "initial") return `  #${round.index} 首次 | ${round.elapsedMs.toFixed(1)} ms`;
+    const request = Number(round.requestedTime);
+    const recoveryEnd = Number(round.recoveryEndTime ?? round.effectiveTime);
+    const triggerLabel = round.trigger === "cjob-cycle" ? "CJobCycle 补片重算" : "定时重算";
+    const timing = Math.abs(recoveryEnd - request) > 1e-6
+      ? `@${request}s ${triggerLabel} · 固定旧动作收尾至 @${recoveryEnd}s`
+      : `@${request}s ${triggerLabel}`;
+    return `  #${round.index} ${timing} | ${round.elapsedMs.toFixed(1)} ms`;
+  }), "", ...(result.logs || [])].join("\n"));
+}
+
+/** 正常过程保持界面安静；只有错误才显示可复制的详细信息。 */
+function writeTerminal(message, error = false) {
+  const panel = document.getElementById("resultErrorPanel");
+  const details = document.getElementById("resultErrorDetails");
+  const terminal = document.getElementById("terminal");
+  if (!error) {
+    details.innerHTML = "";
+    details.hidden = true;
+    terminal.textContent = "";
+    terminal.hidden = false;
+    panel.hidden = true;
+    return;
+  }
+  details.innerHTML = "";
+  details.hidden = true;
+  terminal.hidden = false;
+  terminal.textContent = String(message || "未知错误").replace(/^\$\s*/, "");
+  panel.hidden = false;
+}
+
+/** 把单测失败压缩为“类型和编码 + 直接错误信息”，避免重复分区。 */
+function renderRunFailureCard({
+  cancelled,
+  errorMessage,
+  deadlock,
+  validationIssues,
+  baselineError,
+}) {
+  const panel = document.getElementById("resultErrorPanel");
+  const details = document.getElementById("resultErrorDetails");
+  const terminal = document.getElementById("terminal");
+  const issueRows = validationIssues.map(rawIssue => {
+    const issue = String(rawIssue || "").trim();
+    const matched = issue.match(/^\[([A-Z0-9-]+)\]\s*/);
+    const code = matched?.[1] || "MVL-UNKNOWN";
+    const message = matched ? issue.slice(matched[0].length) : issue;
+    return `<li><code>${escapeHtml(code)}</code><span>${escapeHtml(message || issue)}</span></li>`;
+  }).join("");
+  const validationFailure = validationIssues.length > 0;
+  const informationType = cancelled
+    ? "运行已终止"
+    : deadlock
+      ? "算法死锁"
+      : validationFailure
+        ? "MoveList 校验失败"
+        : baselineError
+          ? "Baseline 失败"
+          : "运行异常";
+  const primaryCode = deadlock?.deadlockCode || (validationIssues[0]?.match(/^\s*\[([A-Z0-9-]+)\]/)?.[1] ?? "RUN-ERR-001");
+  const summaryText = deadlock?.message || (cancelled ? "用户终止了本次运行" : errorMessage);
+  // 状态推进校验失败时只展示一条“状态推进失败|MVL-XXX-000|报错信息”，
+  // 去掉 meta 徽标与下方的重复问题列表，避免同一错误重复出现。
+  const summaryMarkup = validationFailure
+    ? `<strong>${escapeHtml(summaryText || "未提供错误说明")}</strong>`
+    : `<span class="error-summary-meta">[${escapeHtml(informationType)} <i aria-hidden="true">|</i> <code>${escapeHtml(primaryCode)}</code>]</span><strong>${escapeHtml(summaryText || "未提供错误说明")}</strong>`;
+  const validationSection = validationFailure ? "" : (issueRows ? `
+    <section class="error-detail-section" aria-labelledby="errorValidationTitle">
+      <div class="error-detail-heading"><span id="errorValidationTitle">MoveList 校验问题</span><b>${validationIssues.length} 项</b></div>
+      <ul class="error-issue-list">${issueRows}</ul>
+    </section>` : "");
+  const baselineSection = baselineError ? `
+    <section class="error-detail-section">
+      <div class="error-detail-heading"><span>Baseline</span><b>失败</b></div>
+      <p>${escapeHtml(baselineError.replace(/^Baseline\s*失败：?\s*/, ""))}</p>
+    </section>` : "";
+
+  details.innerHTML = `
+    <div class="error-summary-line">
+      ${summaryMarkup}
+    </div>
+    ${validationSection}
+    ${baselineSection}
+  `;
+  terminal.textContent = "";
+  terminal.hidden = true;
+  details.hidden = false;
+  panel.hidden = false;
+}
+
+/** 检查本地服务以及内置策略模型可用性。 */
+async function checkService() {
+  const pill = document.getElementById("serviceState");
+  const batchRunButton = document.getElementById("batchRunButton");
+  try {
+    const response = await fetch("/api/health", { cache: "no-store" });
+    if (!response.ok) throw new Error();
+    const status = await response.json(), compatible = status.schemaVersion === EXPECTED_API_SCHEMA;
+    state.serviceCompatible = compatible;
+    state.algorithmMetadata = status.algorithmMetadata || {};
+    renderOtherAlgorithmOptions(status.algorithms || status.otherAlgorithms || []);
+    batchRunButton.disabled = !compatible || (state.batchRunning && state.batchCancelRequested);
+    renderWorkspaceControls();
+    pill.textContent = compatible ? "本地服务已连接" : "服务版本过旧";
+    if (!compatible) {
+      pill.style.color = "var(--red)"; pill.style.background = "var(--red-soft)";
+      writeTerminal("$ 本地服务版本过旧\n  请重启: python -m app.backend.main", true);
+    }
+  }
+  catch {
+    state.serviceCompatible = false;
+    batchRunButton.disabled = true;
+    renderWorkspaceControls();
+    pill.textContent = "本地服务未连接";
+    pill.style.color = "var(--red)";
+    pill.style.background = "var(--red-soft)";
+    writeTerminal("$ 无法连接本地服务\n  请运行: python -m app.backend.main", true);
+  }
+}
+
+document.getElementById("workspaceDialogCancel").addEventListener("click", () => document.getElementById("workspaceDialog").close("cancel"));
+const batchErrorDialog = document.getElementById("batchErrorDialog") as HTMLDialogElement;
+document.getElementById("batchErrorDialogClose").addEventListener("click", () => batchErrorDialog.close());
+document.getElementById("batchErrorDialogConfirm").addEventListener("click", () => batchErrorDialog.close());
+document.getElementById("batchErrorDialogCopy").addEventListener("click", async () => {
+  const content = document.getElementById("batchErrorDialogContent")?.textContent || "";
+  try { await navigator.clipboard.writeText(content); } catch { /* 剪贴板不可用时静默忽略 */ }
+});
+batchErrorDialog.addEventListener("click", event => { if (event.target === batchErrorDialog) batchErrorDialog.close(); });
+document.getElementById("cleanDialogCancel").addEventListener("click", () => {
+  document.getElementById("cleanDialog").close();
+  state.cleanDialogContext = null;
+});
+document.getElementById("cleanDialog").addEventListener("close", () => { state.cleanDialogContext = null; });
+document.getElementById("pjobRouteDialogClose").addEventListener("click", () => closePJobRoutePicker());
+document.getElementById("pjobRouteDialog").addEventListener("cancel", event => { event.preventDefault(); closePJobRoutePicker(); });
+document.getElementById("pjobRouteDialog").addEventListener("click", event => { if (event.target.id === "pjobRouteDialog") closePJobRoutePicker(); });
+const bottleneckAnalysisHelpDialog = document.getElementById("bottleneckAnalysisHelpDialog") as HTMLDialogElement;
+document.getElementById("bottleneckAnalysisHelpDialogClose").addEventListener("click", () => bottleneckAnalysisHelpDialog.close());
+const residenceAnalysisHelpDialog = document.getElementById("residenceAnalysisHelpDialog") as HTMLDialogElement;
+document.getElementById("residenceAnalysisHelpDialogClose").addEventListener("click", () => residenceAnalysisHelpDialog.close());
+const throughputAnalysisHelpDialog = document.getElementById("throughputAnalysisHelpDialog") as HTMLDialogElement;
+document.getElementById("throughputAnalysisHelpDialogClose").addEventListener("click", () => throughputAnalysisHelpDialog.close());
+document.getElementById("visualPerformance").addEventListener("click", event => {
+  if (!(event.target instanceof Element)) return;
+  if (event.target.closest("#bottleneckAnalysisHelpButton") && !bottleneckAnalysisHelpDialog.open) {
+    bottleneckAnalysisHelpDialog.showModal();
+  }
+  if (event.target.closest("#residenceAnalysisHelpButton") && !residenceAnalysisHelpDialog.open) {
+    residenceAnalysisHelpDialog.showModal();
+  }
+  if (event.target.closest("#throughputAnalysisHelpButton") && !throughputAnalysisHelpDialog.open) {
+    throughputAnalysisHelpDialog.showModal();
+  }
+});
+document.getElementById("visualPerformance").addEventListener("change", event => {
+  const select = event.target instanceof HTMLSelectElement && (
+    event.target.id === "residenceMetricSelect"
+    || event.target.id === "throughputMetricSelect"
+    || event.target.id === "throughputWindowSize"
+    || event.target.id === "throughputRangeSelect"
+  )
+    ? event.target
+    : null;
+  if (!select) return;
+  const performancePanel = event.currentTarget;
+  if (!(performancePanel instanceof HTMLElement)) return;
+  const selectedMetric = select.value;
+  if (select.id === "residenceMetricSelect") {
+    performancePanel.querySelectorAll<HTMLElement>("[data-residence-metric-chart]").forEach(chart => {
+      chart.hidden = chart.dataset.residenceMetricChart !== selectedMetric;
+    });
+    performancePanel.querySelectorAll<HTMLElement>("[data-residence-summary]").forEach(summary => {
+      summary.hidden = summary.dataset.residenceSummary !== selectedMetric;
+    });
+    return;
+  }
+  const throughputMode = performancePanel.querySelector<HTMLSelectElement>("#throughputMetricSelect")?.value ?? "cumulative";
+  const throughputWindow = performancePanel.querySelector<HTMLSelectElement>("#throughputWindowSize")?.value ?? "5";
+  const activeThroughputChart = throughputMode === "rolling"
+    ? `rolling-${throughputWindow}`
+    : "cumulative";
+  performancePanel.querySelectorAll<HTMLElement>("[data-throughput-window-control]").forEach(control => {
+    control.hidden = throughputMode !== "rolling";
+  });
+  performancePanel.querySelectorAll<HTMLElement>("[data-throughput-chart]").forEach(chart => {
+    chart.hidden = chart.dataset.throughputChart !== activeThroughputChart;
+  });
+  performancePanel.querySelectorAll<HTMLElement>("[data-throughput-summary]").forEach(summary => {
+    summary.hidden = summary.dataset.throughputSummary !== activeThroughputChart;
+  });
+  const range = performancePanel.querySelector<HTMLSelectElement>("#throughputRangeSelect")?.value ?? "wafer:30";
+  const activeChart = performancePanel.querySelector<HTMLElement>(`[data-throughput-chart="${activeThroughputChart}"]`);
+  if (activeChart?.dataset.throughputPoints) updateThroughputChartRange(activeChart, range);
+});
+
+document.getElementById("bottleneckAnalysisHelpDialog").addEventListener("click", event => {
+  if (event.target === bottleneckAnalysisHelpDialog) bottleneckAnalysisHelpDialog.close();
+});
+document.getElementById("residenceAnalysisHelpDialog").addEventListener("click", event => {
+  if (event.target === residenceAnalysisHelpDialog) residenceAnalysisHelpDialog.close();
+});
+document.getElementById("throughputAnalysisHelpDialog").addEventListener("click", event => {
+  if (event.target === throughputAnalysisHelpDialog) throughputAnalysisHelpDialog.close();
+});
+document.getElementById("pjobRouteProcess").addEventListener("change", event => renderPJobRouteDialogGroup(event.target.value));
+document.getElementById("pjobRouteParallel").addEventListener("change", event => renderPJobRouteDialogGroup(pjobRoutePickerContext?.processKey, event.target.value));
+document.getElementById("routeProcessFilter").addEventListener("change", event => {
+  state.routeProcessFilter = event.target.value;
+  state.routeParallelFilter = "";
+  renderRoutes();
+});
+document.getElementById("routeParallelFilter").addEventListener("change", event => {
+  state.routeParallelFilter = event.target.value;
+  renderRoutes();
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && document.getElementById("pjobRouteDialog").open && !document.getElementById("drawerLayer").open) {
+    event.preventDefault();
+    closePJobRoutePicker();
+  }
+});
+document.getElementById("cleanPlacement").addEventListener("change", updateCleanDialogFields);
+document.getElementById("cleanType").addEventListener("change", event => {
+  const previousType = state.cleanDialogContext?.draft?.cleanType;
+  const nextType = event.target.value;
+  if (!["dummy", "dummywac"].includes(previousType)
+      && ["dummy", "dummywac"].includes(nextType)) {
+    document.getElementById("cleanDummyWaferCount").value = String(DEFAULT_DUMMY_WAFER_COUNT);
+  }
+  if (state.cleanDialogContext) state.cleanDialogContext.draft.cleanType = nextType;
+  updateCleanDialogFields();
+});
+document.getElementById("cleanDialogForm").addEventListener("submit", event => {
+  event.preventDefault();
+  saveCleanDialog();
+});
+document.getElementById("workspaceImportButton").addEventListener("click", () => openDataTransferDialog("import"));
+document.getElementById("workspaceExportButton").addEventListener("click", () => openDataTransferDialog("export"));
+document.getElementById("importCompanyBaselineButton").addEventListener("click", () => document.getElementById("companyBaselineFile").click());
+document.getElementById("companyBaselineFile").addEventListener("change", event => {
+  const input = event.currentTarget as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  importCompanyCapacityBaseline(file)
+    .catch(error => setWorkspaceStatus(`Baseline 导入失败：${error.message}`, "dirty"))
+    .finally(() => { input.value = ""; });
+});
+document.getElementById("dataTransferDialogClose").addEventListener("click", () => (document.getElementById("dataTransferDialog") as HTMLDialogElement).close());
+document.getElementById("dataTransferDialog").addEventListener("cancel", event => {
+  if (document.getElementById("dataTransferDialog").classList.contains("is-busy")) event.preventDefault();
+});
+document.getElementById("deviceTransferOption").addEventListener("click", () => chooseDataTransfer("device"));
+document.getElementById("testTransferOption").addEventListener("click", () => chooseDataTransfer("test"));
+document.getElementById("dataTransferDialog").addEventListener("click", event => {
+  if (event.target === document.getElementById("dataTransferDialog") && !document.getElementById("dataTransferDialog").classList.contains("is-busy")) (event.target as HTMLDialogElement).close();
+});
+document.getElementById("deviceFile").addEventListener("change", event => {
+  const input = event.currentTarget as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  setDataTransferBusy(true);
+  const operation = file.name.toLowerCase().endsWith(".json")
+    ? loadDevice(file)
+    : runWorkspaceTransfer("device", file);
+  operation.catch(error => {
+    const status = document.getElementById("dataTransferStatus");
+    status.textContent = error.message || "设备导入失败";
+    status.classList.add("error");
+    setDataTransferBusy(false);
+    writeTerminal(`$ 设备读取失败\n  ${error.message}`, true);
+  });
+});
+document.getElementById("testExchangeFile").addEventListener("change", event => {
+  const input = event.currentTarget as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  setDataTransferBusy(true);
+  runWorkspaceTransfer("test", file).catch(error => {
+    const status = document.getElementById("dataTransferStatus");
+    status.textContent = error.message || "测试集导入失败";
+    status.classList.add("error");
+    setDataTransferBusy(false);
+    writeTerminal(`$ 测试集导入失败\n  ${error.message}`, true);
+  });
+});
+document.getElementById("resultPreviewViewButton").addEventListener("click", () => setRunResultView("results"));
+document.getElementById("analysisReportViewButton").addEventListener("click", () => {
+  if (!canOpenAnalysisReport()) return;
+  if (document.getElementById("testGroupAnalysisPanel").hidden) openGroupAnalysisOptions();
+  else setRunResultView("analysis");
+});
+document.getElementById("batchResultFilterButton").addEventListener("click", () => openBatchTestSelectionDialog("filter"));
+for (const [sourceId, targetId] of [["runDeviceSelect", "deviceSelect"], ["runGroupSelect", "testGroupSelect"]]) {
+  document.getElementById(sourceId).addEventListener("change", event => {
+    const target = document.getElementById(targetId) as HTMLSelectElement;
+    target.value = event.target.value; target.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+document.getElementById("discardTestButton").addEventListener("click", () => discardTestDraft().catch(error => setWorkspaceStatus(`撤销失败：${error.message}`, "dirty")));
+document.getElementById("saveAndRunPageButton").addEventListener("click", async () => {
+  try { await saveCurrentTest(false); showTestCatalog(); }
+  catch (error) { setWorkspaceStatus(`保存失败：${error.message}`, "dirty"); }
+});
+document.getElementById("cancelTestEditButton").addEventListener("click", async () => {
+  try { if (await settleTestDraft()) showTestCatalog(); }
+  catch (error) { setWorkspaceStatus(`无法返回列表：${error.message}`, "dirty"); }
+});
+document.querySelectorAll("[data-management-target]").forEach(button => button.addEventListener("click", () => {
+  (async () => {
+    await switchTab("test-management");
+    await switchManagementSection(button.dataset.managementTarget);
+  })().catch(error => setWorkspaceStatus(`切换失败：${error.message}`, "dirty"));
+}));
+document.getElementById("testCatalogBody").addEventListener("click", event => {
+  const button = event.target.closest("[data-test-action]");
+  if (!button || button.disabled) return;
+  (async () => {
+    if (button.dataset.testId !== state.testCaseId) await selectWorkspaceTest(button.dataset.testId);
+    if (button.dataset.testAction === "edit") showTestEditor();
+    if (button.dataset.testAction === "copy") { await createTestCase(true); showTestCatalog(); }
+    if (button.dataset.testAction === "delete") { await deleteCurrentTest(); showTestCatalog(); }
+  })().catch(error => setWorkspaceStatus(`测试操作失败：${error.message}`, "dirty"));
+});
+document.getElementById("deviceImportButton").addEventListener("click", () => document.getElementById("workspaceImportButton").click());
+document.getElementById("deviceExportButton").addEventListener("click", () => document.getElementById("workspaceExportButton").click());
+window.addEventListener("beforeunload", event => { if (state.dirty) { event.preventDefault(); event.returnValue = ""; } });
+document.getElementById("deviceSelect").addEventListener("change", event => (async () => {
+  if (!await settleTestDraft()) return;
+  if (state.deviceTimingDirty) await saveDeviceTiming();
+  await selectWorkspaceDevice(event.target.value);
+})().catch(error => writeTerminal(`$ 设备切换失败\n  ${error.message}`, true)));
+document.getElementById("deleteDeviceButton").addEventListener("click", () => deleteWorkspaceDevice().catch(error => { setWorkspaceStatus(`删除设备失败：${error.message}`, "dirty"); writeTerminal(`$ 删除设备失败\n  ${error.message}`, true); }));
+document.getElementById("saveDeviceTimingButton").addEventListener("click", () => saveDeviceTiming().catch(error => writeTerminal(`$ 设备时间保存失败\n  ${error.message}`, true)));
+document.getElementById("resetDeviceTimingButton").addEventListener("click", () => resetDeviceTimingDraft("已撤销尚未保存的时间修改"));
+document.getElementById("deviceStationSelect").addEventListener("change", event => {
+  state.deviceStationName = event.target.value;
+  renderDeviceTimingConfiguration();
+});
+document.getElementById("deviceRobotSelect").addEventListener("change", event => {
+  state.deviceRobotName = event.target.value;
+  renderDeviceTimingConfiguration();
+});
+document.getElementById("previousDeviceStationButton").addEventListener("click", () => stepDeviceTimingSelection("station", -1));
+document.getElementById("nextDeviceStationButton").addEventListener("click", () => stepDeviceTimingSelection("station", 1));
+document.getElementById("previousDeviceRobotButton").addEventListener("click", () => stepDeviceTimingSelection("robot", -1));
+document.getElementById("nextDeviceRobotButton").addEventListener("click", () => stepDeviceTimingSelection("robot", 1));
+document.getElementById("testGroupSelect").addEventListener("change", event => selectWorkspaceGroup(event.target.value).catch(error => writeTerminal(`$ 测试组别切换失败\n  ${error.message}`, true)));
+document.getElementById("testCaseSelect").addEventListener("change", event => selectWorkspaceTest(event.target.value).catch(error => writeTerminal(`$ 测试集切换失败\n  ${error.message}`, true)));
+document.getElementById("testCaseName").addEventListener("input", event => { state.testCaseName = event.target.value; markTestDirty(); });
+document.getElementById("newGroupButton").addEventListener("click", () => createTestGroup().catch(error => writeTerminal(`$ 新建测试组别失败\n  ${error.message}`, true)));
+document.getElementById("renameGroupButton").addEventListener("click", () => renameCurrentTestGroup().catch(error => { setWorkspaceStatus(`重命名测试组别失败：${error.message}`, "dirty"); writeTerminal(`$ 重命名测试组别失败\n  ${error.message}`, true); }));
+document.getElementById("deleteGroupButton").addEventListener("click", () => deleteCurrentTestGroup().catch(error => { setWorkspaceStatus(`删除测试组别失败：${error.message}`, "dirty"); writeTerminal(`$ 删除测试组别失败\n  ${error.message}`, true); }));
+document.getElementById("newTestButton").addEventListener("click", () => createTestCase(false).then(showTestEditor).catch(error => writeTerminal(`$ 新建测试集失败\n  ${error.message}`, true)));
+document.getElementById("emptyGroupNewTestButton").addEventListener("click", () => createTestCase(false).then(showTestEditor).catch(error => writeTerminal(`$ 新建测试集失败\n  ${error.message}`, true)));
+document.getElementById("copyTestButton").addEventListener("click", () => createTestCase(true).catch(error => writeTerminal(`$ 复制测试集失败\n  ${error.message}`, true)));
+document.getElementById("saveTestButton").addEventListener("click", () => saveCurrentTest(false).catch(error => writeTerminal(`$ 保存测试集失败\n  ${error.message}`, true)));
+document.getElementById("deleteTestButton").addEventListener("click", () => deleteCurrentTest().catch(error => writeTerminal(`$ 删除测试集失败\n  ${error.message}`, true)));
+document.getElementById("roundCount").addEventListener("input", event => { resizeRounds(event.target.value); markTestDirty(); });
+document.getElementById("batchRunButton").addEventListener("click", runCurrentTestGroup);
+document.getElementById("openRunSettingsButton").addEventListener("click", openRunSettingsDialog);
+document.getElementById("runSettingsDialogClose").addEventListener("click", closeRunSettingsDialog);
+document.getElementById("runSettingsDialog").addEventListener("close", finishRunSettingsDialog);
+["hongYeCheckInput", "executionTimingEnabledInput", "skipBaselineInput", "batchParallelismInput", "validationParallelismInput", ...CLEAN_VALIDATION_TYPES.map(type => `cleanValidation${type[0].toUpperCase()}${type.slice(1)}Input`)].forEach(id => {
+  document.getElementById(id).addEventListener("change", () => {
+    runSettingsPreferencesDirty = true;
+    updateRunSettingsButtonLabel();
+  });
+});
+updateRunSettingsButtonLabel();
+document.getElementById("batchTestSelectionDialogClose").addEventListener("click", () => (document.getElementById("batchTestSelectionDialog") as HTMLDialogElement).close());
+document.getElementById("batchTestSelectionDialogCancel").addEventListener("click", () => (document.getElementById("batchTestSelectionDialog") as HTMLDialogElement).close());
+document.getElementById("batchSelectionSelectAll").addEventListener("click", () => setBatchTestSelection(() => true));
+document.getElementById("batchSelectionClear").addEventListener("click", () => setBatchTestSelection(() => false));
+document.getElementById("batchSelectionApplyRange").addEventListener("click", () => {
+  const total = currentBatchGroupTests().length;
+  const startInput = document.getElementById("batchSelectionRangeStart");
+  const endInput = document.getElementById("batchSelectionRangeEnd");
+  const rawStart = Math.min(total, Math.max(1, Number.parseInt(startInput.value, 10) || 1));
+  const rawEnd = Math.min(total, Math.max(1, Number.parseInt(endInput.value, 10) || total));
+  const start = Math.min(rawStart, rawEnd), end = Math.max(rawStart, rawEnd);
+  startInput.value = String(start); endInput.value = String(end);
+  setBatchTestSelection(index => index + 1 >= start && index + 1 <= end);
+});
+document.getElementById("batchSelectionList").addEventListener("change", updateBatchSelectionCount);
+document.getElementById("batchSelectionRunAll").addEventListener("click", () => runBatchSelection(true));
+document.getElementById("batchTestSelectionForm").addEventListener("submit", event => {
+  event.preventDefault();
+  runBatchSelection(false);
+});
+document.getElementById("openSearchTreeOptionsDialogButton").addEventListener("click", openSearchTreeOptionsDialog);
+document.getElementById("openHeuristicSettingsDialogButton").addEventListener("click", openHeuristicSettingsDialog);
+document.getElementById("heuristicSettingsDialogCancel").addEventListener("click", () => document.getElementById("heuristicSettingsDialog").close());
+document.getElementById("heuristicCustomWeightsEnabled").addEventListener("change", updateHeuristicWeightEditorState);
+document.getElementById("heuristicSettingsForm").addEventListener("submit", event => {
+  event.preventDefault();
+  try { saveHeuristicSettings(); } catch (error) { document.getElementById("heuristicSettingsError").textContent = error.message; }
+});
+document.getElementById("searchTreeOptionsDialogCancel").addEventListener("click", () => document.getElementById("searchTreeOptionsDialog").close());
+document.getElementById("searchTreeCheckpointFile").addEventListener("change", event => {
+  pendingSearchTreeCheckpointFile = event.currentTarget.files?.[0] || null;
+  if (!pendingSearchTreeCheckpointFile) return;
+  document.getElementById("searchTreeCheckpointPath").value = pendingSearchTreeCheckpointFile.name;
+  document.getElementById("searchTreeCheckpointHint").textContent = `已选择“${pendingSearchTreeCheckpointFile.name}”；保存参数时上传。`;
+});
+document.getElementById("clearSearchTreeCheckpointButton").addEventListener("click", () => {
+  pendingSearchTreeCheckpointFile = null;
+  document.getElementById("searchTreeCheckpointFile").value = "";
+  document.getElementById("searchTreeCheckpointPath").value = "";
+  document.getElementById("searchTreeCheckpointHint").textContent = "保存后将使用默认模型或冷启动模型。";
+});
+document.getElementById("searchTreeOptionsForm").addEventListener("submit", event => {
+  event.preventDefault();
+  saveSearchTreeOptions().catch(error => {
+    document.getElementById("searchTreeCheckpointHint").textContent = error.message || "参数保存失败";
+  });
+});
+const cancelOrCloseAnalysisWizard = async () => {
+  if (activeGroupAnalysisJobId) {
+    document.getElementById("analysisOptionsCancel").disabled = true;
+    document.getElementById("analysisOptionsClose").disabled = true;
+    await cancelTestGroupAnalysisJob(activeGroupAnalysisJobId);
+    return;
+  }
+  (document.getElementById("analysisOptionsDialog") as HTMLDialogElement).close();
+};
+document.getElementById("analysisOptionsClose").addEventListener("click", () => void cancelOrCloseAnalysisWizard());
+document.getElementById("analysisOptionsCancel").addEventListener("click", () => void cancelOrCloseAnalysisWizard());
+document.getElementById("analysisOptionsDialog").addEventListener("cancel", event => {
+  if (!activeGroupAnalysisJobId) return;
+  event.preventDefault();
+  void cancelOrCloseAnalysisWizard();
+});
+document.getElementById("analysisOptionsDialog").addEventListener("close", () => {
+  if (analysisSettingsPreferencesDirty) {
+    saveAnalysisSettingsPreferences().catch(error => writeTerminal(`$ 分析设置保存失败\n  ${error.message || "未知错误"}`, true));
+  }
+});
+document.getElementById("analysisNextButton").addEventListener("click", () => {
+  if (!document.querySelector("[data-analysis-metric]:checked")) {
+    writeTerminal("$ 请至少选择一个计算指标", true);
+    return;
+  }
+  showAnalysisWizardStep(2);
+});
+document.getElementById("analysisPreviousButton").addEventListener("click", () => showAnalysisWizardStep(1));
+document.querySelectorAll("[data-analysis-metric], #analysisWindowMode, #analysisTimeBudget").forEach(input => {
+  input.addEventListener("change", () => { analysisSettingsPreferencesDirty = true; });
+});
+document.getElementById("analysisToggleAllTests").addEventListener("click", event => {
+  const checkboxes = [...document.querySelectorAll("[data-analysis-test]")];
+  const selectAll = checkboxes.some(checkbox => !checkbox.checked);
+  checkboxes.forEach(checkbox => { checkbox.checked = selectAll; });
+  event.currentTarget.textContent = selectAll ? "取消全选" : "全选";
+});
+document.getElementById("analysisOptionsForm").addEventListener("submit", event => {
+  event.preventDefault();
+  if (analysisWizardStep === 1) {
+    if (document.querySelector("[data-analysis-metric]:checked")) showAnalysisWizardStep(2);
+    else writeTerminal("$ 请至少选择一个计算指标", true);
+    return;
+  }
+  if (analysisWizardStep !== 2) return;
+  document.getElementById("startGroupAnalysisButton").disabled = true;
+  showTestGroupAnalysis().catch(error => {
+    activeGroupAnalysisJobId = "";
+    document.getElementById("startGroupAnalysisButton").disabled = false;
+    document.getElementById("analysisOptionsCancel").disabled = false;
+    document.getElementById("analysisOptionsClose").disabled = false;
+    document.getElementById("analysisOptionsCancel").textContent = "关闭";
+    document.getElementById("analysisDialogProgress").innerHTML = `<section class="group-analysis-warning"><strong>结果分析失败</strong><br>${escapeHtml(error.message || "未知错误")}</section>`;
+    if (analysisWizardStep !== 3) {
+      document.getElementById("analysisOptionsCancel").textContent = "取消";
+    } else {
+      visualizationWorkspace.showGroupAnalysis(`<section class="group-analysis-warning"><strong>结果分析失败</strong><br>${escapeHtml(error.message || "未知错误")}</section>`);
+      setRunResultView("analysis");
+    }
+    writeTerminal(`$ 测试组结果分析失败\n  ${error.message || "未知错误"}`, true);
+  });
+});
+document.querySelectorAll(".batch-log-download").forEach(button => {
+  button.addEventListener("click", event => { if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault(); });
+});
+document.getElementById("batchGanttButton").addEventListener("click", event => { if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault(); });
+document.getElementById("closeDrawer").addEventListener("click", closeStepDrawer);
+document.getElementById("drawerLayer").addEventListener("click", event => { if (event.target.id === "drawerLayer") closeStepDrawer(); });
+document.addEventListener("keydown", event => { if (event.key === "Escape") closeStepDrawer(); });
+document.addEventListener("keydown", event => {
+  const card = event.target.closest?.("[data-step-card]");
+  if (!card || event.key !== "Enter") return;
+  const inlineContext = card.dataset.roundIndex === undefined ? null : {
+    roundIndex: Number(card.dataset.roundIndex), cjobIndex: Number(card.dataset.cjobIndex), pjobIndex: Number(card.dataset.pjobIndex),
+  };
+  openPJobStepDrawer(Number(card.dataset.routeIndex), Number(card.dataset.stageIndex), inlineContext);
+});
+document.addEventListener("keydown", event => {
+  const card = event.target.closest?.("[data-batch-test-card]");
+  if (!card || !["Enter", " "].includes(event.key)) return;
+  if (event.target.closest("a, button, input, select, textarea, label")) return;
+  event.preventDefault();
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    enqueueResultCardTest(card.dataset.batchTestCard);
+    return;
+  }
+  toggleBatchTestDetails(card.dataset.batchTestCard).catch(error => writeTerminal(`$ 测试详情读取失败\n  ${error.message || "未知错误"}`, true));
+});
+document.addEventListener("dblclick", event => {
+  const card = event.target.closest?.("[data-batch-test-card]");
+  if (!card || event.target.closest("a, button, input, select, textarea, label")) return;
+  event.preventDefault();
+  window.clearTimeout(batchCardClickTimer);
+  batchCardClickTimer = 0;
+  enqueueResultCardTest(card.dataset.batchTestCard);
+});
+document.addEventListener("input", event => {
+  if (event.target.matches("[data-device-timing-target], [data-device-execution-target]")) updateDeviceTimingFromControl(event.target);
+  const execution = state.deviceTimingDraft?.execution;
+  if (execution && event.target.id === "executionFluctuationRatio") {
+    execution.fluctuation.ratio = Math.max(0, Math.min(1, (Number(event.target.value) || 0) / 100));
+    markDeviceTimingDirty();
+  }
+  if (execution && event.target.id === "executionMinimumOffset") {
+    execution.fluctuation.minimumOffsetSeconds = Number(event.target.value);
+    markDeviceTimingDirty();
+  }
+  if (execution && event.target.id === "executionMaximumOffset") {
+    execution.fluctuation.maximumOffsetSeconds = Number(event.target.value);
+    markDeviceTimingDirty();
+  }
+  if (event.target.matches("[data-scope], [data-option], [data-time-index], [data-round-time-index]")) updateStateFromControl(event.target);
+});
+document.addEventListener("change", event => {
+  const execution = state.deviceTimingDraft?.execution;
+  if (execution && event.target.name === "executionTimingMode") {
+    execution.mode = event.target.value === "fluctuation" ? "fluctuation" : "fixed";
+    markDeviceTimingDirty();
+    renderDeviceTimingConfiguration();
+    return;
+  }
+  if (execution && event.target.id === "executionFluctuationKind") {
+    execution.fluctuation.kind = event.target.value === "offset" ? "offset" : "ratio";
+    markDeviceTimingDirty();
+    renderDeviceTimingConfiguration();
+    return;
+  }
+  if (execution && event.target.id === "executionSamplingMode") {
+    execution.fluctuation.samplingMode = event.target.value === "per-init" ? "per-init" : "per-move";
+    markDeviceTimingDirty();
+    return;
+  }
+  const transferAxis = event.target.closest?.("[data-robot-transfer-axis]");
+  if (transferAxis) {
+    state.deviceRobotTransferAxes[transferAxis.dataset.robotTransferAxis] = transferAxis.value;
+    renderDeviceRobotTiming();
+    return;
+  }
+  const transferStation = event.target.closest?.("[data-robot-transfer-station]");
+  if (transferStation) {
+    const robotName = transferStation.dataset.robotTransferStation;
+    const selectedAxis = state.deviceRobotTransferAxes[robotName] === "dest" ? "dest" : "src";
+    state.deviceRobotTransferSources[`${robotName}:${selectedAxis}`] = transferStation.value;
+    renderDeviceRobotTiming();
+    return;
+  }
+  if (event.target.matches("[data-scope], [data-option], [data-time-index], [data-round-time-index]")) {
+    updateStateFromControl(event.target);
+    if (event.target.dataset.scope === "stage-candidate-toggle") {
+      refreshCandidatePicker(event.target);
+      return;
+    }
+    if (["name", "cleanType", "recipeTime", "wacRecipeTime", "jobType", "waferCount", "bufferOption", ...ROUTE_CLEAN_KEYS].includes(event.target.dataset.key) || event.target.dataset.timeIndex !== undefined || event.target.dataset.roundTimeIndex !== undefined || ["stage-candidates", "cjob", "pjob"].includes(event.target.dataset.scope)) renderAll();
+    else if (state.drawer) { renderRoutes(); renderStepDrawer(); }
+    else if (["test-step", "test-route"].includes(event.target.dataset.scope)) renderRounds();
+  }
+  if (event.target.name === "strategy") {
+    state.strategy = event.target.value;
+    const algorithm = state.availableAlgorithms.find(item => item.strategy === state.strategy);
+    if (algorithm?.defaultOptions && typeof algorithm.defaultOptions === "object") {
+      Object.assign(state.options, algorithm.defaultOptions);
+    }
+    retainSessionSchedulingConfiguration();
+    document.getElementById("roundCount").disabled = false;
+    updateStrategyOptionVisibility();
+    renderAll();
+  }
+});
+document.addEventListener("click", event => {
+  const tab = event.target.closest("[data-tab-target]"); if (tab) switchTab(tab.dataset.tabTarget);
+  const transferFillButton = event.target.closest("[data-robot-transfer-fill]");
+  if (transferFillButton) {
+    fillRobotTransferTimes(transferFillButton);
+    return;
+  }
+  const deviceConfigSection = event.target.closest("[data-device-config-section]");
+  if (deviceConfigSection) {
+    switchDeviceConfigSection(deviceConfigSection.dataset.deviceConfigSection);
+    return;
+  }
+  const robotSlotChoice = event.target.closest("[data-robot-slot-name][data-robot-arm-count]");
+  if (robotSlotChoice && !robotSlotChoice.disabled) {
+    setRobotArmCount(robotSlotChoice.dataset.robotSlotName, Number(robotSlotChoice.dataset.robotArmCount))
+      .catch(error => writeTerminal(`$ 机器手槽位保存失败\n  ${error.message}`, true));
+    return;
+  }
+  const robotSlotDefault = event.target.closest("[data-robot-slot-default]");
+  if (robotSlotDefault && !robotSlotDefault.disabled) {
+    restoreRobotSlotDefault(robotSlotDefault.dataset.robotSlotDefault)
+      .catch(error => writeTerminal(`$ 机器手默认配置恢复失败\n  ${error.message}`, true));
+    return;
+  }
+  const batchErrorButton = event.target.closest("[data-batch-error]");
+  if (batchErrorButton) {
+    openBatchErrorDialog(batchErrorButton.dataset.batchError);
+    return;
+  }
+  const playbackResult = event.target.closest("[data-playback-result]");
+  if (playbackResult) {
+    visualizationWorkspace.loadResult(playbackResult.dataset.playbackResult, playbackResult.dataset.playbackName)
+      .then(() => visualizationWorkspace.showPlayback())
+      .catch(error => writeTerminal(`$ 回放诊断加载失败\n  ${error.message || "未知错误"}`, true));
+    return;
+  }
+  const workspaceResult = event.target.closest("[data-workspace-result]");
+  if (workspaceResult) {
+    visualizationWorkspace.loadResult(workspaceResult.dataset.workspaceResult, workspaceResult.dataset.workspaceName)
+      .then(() => visualizationWorkspace.show())
+      .catch(error => writeTerminal(`$ 工作台加载失败\n  ${error.message || "未知错误"}`, true));
+    return;
+  }
+  const batchTestCard = event.target.closest("[data-batch-test-card]");
+  if (batchTestCard) {
+    if (event.target.closest("a, button, input, select, textarea, label")) return;
+    window.clearTimeout(batchCardClickTimer);
+    batchCardClickTimer = window.setTimeout(() => {
+      batchCardClickTimer = 0;
+      toggleBatchTestDetails(batchTestCard.dataset.batchTestCard).catch(error => writeTerminal(`$ 测试详情读取失败\n  ${error.message || "未知错误"}`, true));
+    }, BATCH_CARD_SINGLE_CLICK_DELAY_MILLISECONDS);
+    return;
+  }
+  const button = event.target.closest("[data-action]"); if (button && !button.disabled) { handleAction(button); return; }
+  const card = event.target.closest("[data-step-card]");
+  if (card) {
+    const inlineContext = card.dataset.roundIndex === undefined ? null : {
+      roundIndex: Number(card.dataset.roundIndex), cjobIndex: Number(card.dataset.cjobIndex), pjobIndex: Number(card.dataset.pjobIndex),
+    };
+    openPJobStepDrawer(Number(card.dataset.routeIndex), Number(card.dataset.stageIndex), inlineContext);
+  }
+});
+window.addEventListener("pagehide", () => {
+  if (runSettingsPreferencesDirty) {
+    fetch("/api/preferences/run-settings", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runSettings: currentRunSettingsPreferences() }), keepalive: true,
+    }).catch(() => {});
+  }
+  if (analysisSettingsPreferencesDirty) {
+    fetch("/api/preferences/analysis-settings", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisSettings: currentAnalysisSettingsPreferences() }), keepalive: true,
+    }).catch(() => {});
+  }
+  if (state.deviceTimingDirty && state.workspaceDeviceId && state.deviceTimingDraft) {
+    fetch(`/api/workspaces/${state.workspaceDeviceId}/device-timing`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ timing: state.deviceTimingDraft }), keepalive: true,
+    }).catch(() => {});
+  }
+
+});
+
+const managementSections = document.getElementById("testManagementSections");
+for (const id of ["routeManagementSection", "deviceManagementSection"]) managementSections.append(document.getElementById(id));
+initializeCompactSelects();
+renderAll(); renderWorkspaceControls(); renderDeviceTimingConfiguration(); checkService();
+loadRunSettingsPreferences().catch(error => writeTerminal(`$ 运行设置读取失败\n  ${error.message || "未知错误"}`, true));
+loadAnalysisSettingsPreferences().catch(error => writeTerminal(`$ 分析设置读取失败\n  ${error.message || "未知错误"}`, true));
+loadWorkspaceCatalog().catch(error => setWorkspaceStatus(`测试集读取失败：${error.message}`, "dirty"));
