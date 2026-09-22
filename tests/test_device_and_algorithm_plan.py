@@ -116,6 +116,24 @@ class ConfigEditorDeviceTests(unittest.TestCase):
         self.assertIn("PM1", self.device["Stations"])
         self.assertIn("LP1", self.device["Stations"])
 
+    def test_discovers_adapter_package_without_python_entry(self) -> None:
+        """正式算法包只暴露 Adapter DLL 时也应参与动态发现。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            algorithm_root = Path(temporary_directory) / "other_alg"
+            package_root = algorithm_root / "cycle-adapter"
+            package_root.mkdir(parents=True)
+            (package_root / "Adapter4Scheduler.dll").write_bytes(b"adapter")
+            with patch.object(
+                algorithm_interface,
+                "OTHER_ALGORITHM_ROOT",
+                algorithm_root,
+            ):
+                algorithms = algorithm_interface.discover_other_algorithms()
+
+        self.assertEqual(1, len(algorithms))
+        self.assertEqual("Adapter4Scheduler.dll", algorithms[0]["entry"])
+        self.assertEqual("dotnet-adapter", algorithms[0]["runtime"])
+
     def test_frontend_contains_search_strategy_controls(self) -> None:
         """页面应动态生成算法选择，但不显示宏周期的旧兼容参数。"""
         source = _editor_source()

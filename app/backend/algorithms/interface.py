@@ -1,10 +1,9 @@
 """``other_alg`` 标准算法包的发现及调度、回放动作接口调用边界。
 
-外部策略只能由服务扫描 ``alg/other_alg`` 下的目录包获得。算法包既可以
-保留交付目录中的 ``CT/infer`` 层，也可以把 ``infer``、``ropn_sa`` 和
-``config`` 直接放在算法目录下。所有调用都在独占会话中执行，切换算法时
-会清理上一算法的同名 Python 模块。``get_replay_actions`` 是可选接口，缺失
-时明确返回 ``None``。
+外部策略只能由服务扫描 ``alg/other_alg`` 下的目录包获得。正式 Adapter 包
+通过包根目录的 ``Adapter4Scheduler.dll`` 与平台内置 Host 调用；旧包仍
+兼容 ``CT/infer``、``infer`` 或 ``src/infer`` Python 入口。所有调用都在独占
+会话中执行，DLL 在独立进程运行，Python 包切换时清理同名模块。
 """
 
 from __future__ import annotations
@@ -21,12 +20,15 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, Iterator, Mapping, Optional, Union
 
+from .dotnet_adapter_runtime import DotNetAdapterRuntime
+
 
 JsonObject = Dict[str, Any]
 EXTERNAL_ENTRY_RELATIVE_PATH = Path("CT") / "infer" / "scheduler.py"
 PACKAGED_ENTRY_RELATIVE_PATH = Path("infer") / "scheduler.py"
 # 公司端按 ``src.infer.scheduler`` 约定的交付布局（如 HeteroGraph）。
 SRC_ENTRY_RELATIVE_PATH = Path("src") / "infer" / "scheduler.py"
+ADAPTER_DLL_RELATIVE_PATH = Path("Adapter4Scheduler.dll")
 # 文件位于 ``app/backend/algorithms``，向上三级才是仓库根目录。
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ALGORITHM_ROOT = Path(
@@ -43,10 +45,11 @@ _ACTIVE_ALGORITHM = threading.local()
 _ENTRY_MODULE: Optional[ModuleType] = None
 _ENTRY_ROOT: Optional[Path] = None
 _ENTRY_REVISION: Optional[str] = None
+_ADAPTER_RUNTIME: Optional[DotNetAdapterRuntime] = None
 
 ALGORITHM_SOURCE_SUFFIXES = frozenset({
     ".py", ".json", ".yaml", ".yml", ".toml", ".npz", ".npy", ".pt",
-    ".pth", ".pkl", ".joblib",
+    ".pth", ".pkl", ".joblib", ".dll", ".ps1", ".exe",
 })
 IGNORED_ALGORITHM_DIRECTORIES = frozenset({
     "__pycache__", ".git", ".pytest_cache", ".mypy_cache", ".venv", "venv",
@@ -85,8 +88,8 @@ def algorithm_revision(root: Path) -> str:
 def discover_other_algorithms() -> list[JsonObject]:
     """扫描 ``other_alg`` 一级子目录并返回可供前端选择的标准算法。
 
-    每个算法目录必须包含 ``CT/infer/scheduler.py``、``infer/scheduler.py``
-    或 ``src/infer/scheduler.py`` 之一，目录名同时作为稳定算法 ID。
+    Adapter 包只需包含 ``Adapter4Scheduler.dll``；Host 由平台统一提供。旧包也可
+    继续提供三种历史 Python 入口。目录名作为稳定算法 ID。
 
     每次调用都重新扫描目录；新增或删除算法包后刷新前端即可看到最新列表。
     """
@@ -100,17 +103,22 @@ def discover_other_algorithms() -> list[JsonObject]:
         ):
             if not ALGORITHM_ID_PATTERN.fullmatch(root.name):
                 continue
-            entry_path = next(
-                (
-                    root / relative_path
-                    for relative_path in (
-                        EXTERNAL_ENTRY_RELATIVE_PATH,
-                        PACKAGED_ENTRY_RELATIVE_PATH,
-                        SRC_ENTRY_RELATIVE_PATH,
-                    )
-                    if (root / relative_path).is_file()
-                ),
-                None,
+            adapter_ready = (root / ADAPTER_DLL_RELATIVE_PATH).is_file()
+            entry_path = (
+                root / ADAPTER_DLL_RELATIVE_PATH
+                if adapter_ready
+                else next(
+                    (
+                        root / relative_path
+                        for relative_path in (
+                            EXTERNAL_ENTRY_RELATIVE_PATH,
+                            PACKAGED_ENTRY_RELATIVE_PATH,
+                            SRC_ENTRY_RELATIVE_PATH,
+                        )
+                        if (root / relative_path).is_file()
+                    ),
+                    None,
+                )
             )
             if entry_path is None:
                 continue
@@ -120,6 +128,7 @@ def discover_other_algorithms() -> list[JsonObject]:
                 "strategy": f"{OTHER_ALGORITHM_STRATEGY_PREFIX}{root.name}",
                 "path": str(root.resolve()),
                 "entry": str(entry_path.relative_to(root).as_posix()),
+                "runtime": "dotnet-adapter" if adapter_ready else "python",
                 "available": True,
                 "revision": algorithm_revision(root),
             })
@@ -345,6 +354,24 @@ def _json_text(payload: Union[str, Mapping[str, Any]]) -> str:
     return json.dumps(dict(payload), ensure_ascii=False)
 
 
+def _json_object(payload: Union[str, Mapping[str, Any]]) -> JsonObject:
+    """把标准入口输入转换为 Adapter Host 使用的 JSON object。"""
+    value: Any = json.loads(payload) if isinstance(payload, str) else payload
+    if not isinstance(value, Mapping):
+        raise TypeError("Adapter 输入必须是 JSON 对象或 JSON object 字符串")
+    return dict(value)
+
+
+def _active_adapter_runtime() -> Optional[DotNetAdapterRuntime]:
+    """返回当前独占会话的 Adapter 运行时。"""
+    return _ADAPTER_RUNTIME
+
+
+def uses_dotnet_adapter() -> bool:
+    """返回当前会话是否通过 ``Adapter4Scheduler.dll`` 执行。"""
+    return _active_adapter_runtime() is not None
+
+
 @contextmanager
 def session(algorithm_id: str) -> Iterator[None]:
     """独占运行一个标准算法，并隔离其与本地算法的同名包。
@@ -354,26 +381,41 @@ def session(algorithm_id: str) -> Iterator[None]:
     因此外部算法的绝对导入不会误用本地代码，随后运行本地算法也不会引用
     外部算法的残留模块。
     """
-    global _ENTRY_MODULE, _ENTRY_ROOT, _ENTRY_REVISION
+    global _ENTRY_MODULE, _ENTRY_ROOT, _ENTRY_REVISION, _ADAPTER_RUNTIME
     with _SESSION_LOCK:
         previous = getattr(_ACTIVE_ALGORITHM, "algorithm_id", None)
         _ACTIVE_ALGORITHM.algorithm_id = algorithm_id
-        namespace_snapshot = _capture_namespace_modules()
-        _restore_namespace_modules({})
+        _ACTIVE_ALGORITHM.request_sequence = 0
+        selected_root = _selected_entry()
+        use_adapter = (selected_root / ADAPTER_DLL_RELATIVE_PATH).is_file()
+        namespace_snapshot = _capture_namespace_modules() if not use_adapter else {}
+        if use_adapter:
+            _ADAPTER_RUNTIME = DotNetAdapterRuntime(selected_root)
+        else:
+            _restore_namespace_modules({})
         try:
             yield
         finally:
+            if _ADAPTER_RUNTIME is not None:
+                _ADAPTER_RUNTIME.close()
+                _ADAPTER_RUNTIME = None
             if _ENTRY_ROOT is not None:
                 _unload_previous_algorithm(_ENTRY_ROOT)
             _ENTRY_MODULE = None
             _ENTRY_ROOT = None
             _ENTRY_REVISION = None
-            _restore_namespace_modules(namespace_snapshot)
+            if not use_adapter:
+                _restore_namespace_modules(namespace_snapshot)
             _ACTIVE_ALGORITHM.algorithm_id = previous
+            _ACTIVE_ALGORITHM.request_sequence = 0
 
 
 def init(init_data: Union[str, Mapping[str, Any]]) -> None:
-    """调用当前算法的 ``CT.infer.scheduler.init`` 初始化设备拓扑。"""
+    """通过当前包的 Adapter 或兼容 Python 入口初始化设备拓扑。"""
+    adapter = _active_adapter_runtime()
+    if adapter is not None:
+        adapter.init(_json_object(init_data))
+        return
     _load_entry_module().init(_json_text(init_data))
 
 
@@ -383,6 +425,15 @@ def update(update_data: Union[str, Mapping[str, Any]]) -> JsonObject:
     输出既可以是 JSON 字符串，也可以是直接返回的 dict（单文件登记算法
     常见做法），两者都会被解析成标准输出对象。
     """
+    adapter = _active_adapter_runtime()
+    if adapter is not None:
+        payload = _json_object(update_data)
+        request_sequence = int(
+            getattr(_ACTIVE_ALGORITHM, "request_sequence", 0)
+        ) + 1
+        _ACTIVE_ALGORITHM.request_sequence = request_sequence
+        request_id = int(payload.get("RequestID") or request_sequence)
+        return adapter.update(request_id, payload)
     raw_output = _load_entry_module().update(_json_text(update_data))
     if isinstance(raw_output, Mapping):
         output = dict(raw_output)
@@ -393,6 +444,40 @@ def update(update_data: Union[str, Mapping[str, Any]]) -> JsonObject:
     if isinstance(output.get("Info"), dict):
         output = dict(output["Info"])
     return dict(output)
+
+
+def update_move_state(move_state: Union[str, Mapping[str, Any]]) -> None:
+    """把单条动作状态通知发送到当前算法会话。
+
+    Adapter 包通过 DLL 的 ``UpdateMoveState`` 接收通知；兼容 Python 包可选实现
+    ``updateMovestate`` 或 ``update_move_state``，未实现时保持历史行为。
+    """
+    adapter = _active_adapter_runtime()
+    if adapter is not None:
+        adapter.update_move_state(_json_object(move_state))
+        return
+    module = _load_entry_module()
+    callback = getattr(module, "updateMovestate", None)
+    if not callable(callback):
+        callback = getattr(module, "update_move_state", None)
+    if callable(callback):
+        callback(_json_text(move_state))
+
+
+def update_move_states(
+    move_states: list[Union[str, Mapping[str, Any]]],
+) -> None:
+    """按原顺序发送一批动作状态通知，并合并 Adapter Host 往返。
+
+    Adapter 包通过一条 Host 请求批量传输，再由 Host 逐条调用 DLL 的标准
+    ``UpdateMoveState``。历史 Python 包仍逐条调用，以保持原有入口契约。
+    """
+    adapter = _active_adapter_runtime()
+    if adapter is not None:
+        adapter.update_move_states([_json_object(item) for item in move_states])
+        return
+    for move_state in move_states:
+        update_move_state(move_state)
 
 
 def get_replay_actions(
@@ -413,6 +498,8 @@ def get_replay_actions(
     返回:
         算法动作诊断对象；算法未提供接口时为 ``None``。
     """
+    if _active_adapter_runtime() is not None:
+        return None
     callback = getattr(_load_entry_module(), "get_replay_actions", None)
     if not callable(callback):
         return None

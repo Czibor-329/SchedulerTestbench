@@ -57,6 +57,9 @@ def _execute_standard_algorithm(
         entry_name = "src.api.init/update"
         session_context = builtin_algorithm_session()
 
+        def notify_move_states(_payloads: Sequence[Mapping[str, Any]]) -> None:
+            """内置算法无需在 update 之前另行接收批量通知。"""
+
         def initialize(payload: Mapping[str, Any]) -> None:
             """通过公开 JSON 入口初始化内置算法。"""
             builtin_algorithm_api.init(
@@ -99,6 +102,7 @@ def _execute_standard_algorithm(
         session_context = algorithm_session(str(algorithm_id))
         initialize = algorithm_init
         run_update = algorithm_update
+        notify_move_states = algorithm_update_move_states
         prepared_first_update = deepcopy(dict(first_update))
 
     summaries: List[Dict[str, Any]] = []
@@ -259,6 +263,7 @@ def _execute_standard_algorithm(
                     notification,
                     _finite_number(event_time, requested_time),
                 )
+            notify_move_states(notifications)
             recompute_index = len(summaries) + 1
             reproduction.add("RecomputeControl", {
                 "ControlInfo": {
@@ -296,7 +301,11 @@ def _execute_standard_algorithm(
                 (
                     notifications
                     if builtin_strategy is not None
-                    else _running_move_states(notifications)
+                    else (
+                        []
+                        if algorithm_uses_dotnet_adapter()
+                        else _running_move_states(notifications)
+                    )
                 ),
                 projected_state=projected_state,
                 previous_output=output,

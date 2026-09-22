@@ -123,6 +123,8 @@ from app.backend.algorithms.interface import (
     init as algorithm_init,
     session as algorithm_session,
     update as algorithm_update,
+    update_move_states as algorithm_update_move_states,
+    uses_dotnet_adapter as algorithm_uses_dotnet_adapter,
 )
 from app.backend.analysis import (
     analyze_schedule_performance,
