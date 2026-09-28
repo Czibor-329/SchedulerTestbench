@@ -5194,6 +5194,8 @@ function normalizeRound(raw, roundIndex, fallbackTime, firstTaskId = roundIndex,
 
 // src/config_editor.ts
 var { VISIT_SHARED_FIELDS: VISIT_SHARED_FIELDS2, automaticTemplateName: automaticTemplateName2 } = route_editor_logic_exports;
+var DEFAULT_COUNT_CLEAN_UPPER = 9999;
+var DEFAULT_IDLE_TIME_CLEAN_UPPER = 999999;
 var visualizationWorkspace = createVisualizationWorkspace();
 var chooseTestDraft = createDraftChoiceDialog(document.getElementById("testDraftDialog"));
 var activeRunContext = null;
@@ -5482,7 +5484,7 @@ function runtimeClean(clean) {
     taskName: taskNames[type],
     stateVariable: isWac ? "ProcessCount" : "IdleTime",
     lower: isWac ? value.triggerCount : 0,
-    upper: 9999,
+    upper: isWac ? DEFAULT_COUNT_CLEAN_UPPER : DEFAULT_IDLE_TIME_CLEAN_UPPER,
     updateStateVariables: isWac ? ["ProcessCount"] : isDummy ? ["IdleTime", "DummyCount"] : type === "preclean" ? ["IdleTime"] : [],
     materialCount: isDummy ? value.triggerCount : 0,
     preJudge: false,

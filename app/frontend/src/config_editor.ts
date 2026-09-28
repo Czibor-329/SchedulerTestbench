@@ -37,6 +37,8 @@ import {
 } from "./editor_models";
 
 const { VISIT_SHARED_FIELDS, automaticTemplateName } = RouteEditorLogic;
+const DEFAULT_COUNT_CLEAN_UPPER = 9999;
+const DEFAULT_IDLE_TIME_CLEAN_UPPER = 999999;
 const visualizationWorkspace = createVisualizationWorkspace();
 const chooseTestDraft = createDraftChoiceDialog(document.getElementById("testDraftDialog") as HTMLDialogElement);
 let activeRunContext = null;
@@ -309,7 +311,7 @@ function runtimeClean(clean) {
     taskName: taskNames[type],
     stateVariable: isWac ? "ProcessCount" : "IdleTime",
     lower: isWac ? value.triggerCount : 0,
-    upper: 9999,
+    upper: isWac ? DEFAULT_COUNT_CLEAN_UPPER : DEFAULT_IDLE_TIME_CLEAN_UPPER,
     updateStateVariables: isWac ? ["ProcessCount"] : isDummy ? ["IdleTime", "DummyCount"] : type === "preclean" ? ["IdleTime"] : [],
     materialCount: isDummy ? value.triggerCount : 0,
     preJudge: false,

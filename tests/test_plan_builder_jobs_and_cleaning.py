@@ -458,7 +458,7 @@ class ConfigEditorPlanTests(unittest.TestCase):
 
     def test_clean_types_expand_to_scheduler_conditions(self) -> None:
         """五类精简 Clean 应展开为正确任务、触发变量和 Dummy 参数。"""
-        pre = _runtime_clean({"name": "Pre", "cleanType": "preclean", "recipeTime": 10})
+        pre = _runtime_clean({"name": "Pre", "cleanType": "preclean", "recipeTime": 10, "upper": 9999})
         post = _runtime_clean({"name": "Post", "cleanType": "postclean", "recipeTime": 11})
         wac = _runtime_clean({
             "name": "Wac", "cleanType": "wacclean",
@@ -475,6 +475,11 @@ class ConfigEditorPlanTests(unittest.TestCase):
 
         self.assertEqual("PreClean", pre["taskName"])
         self.assertEqual("PostClean", post["taskName"])
+        self.assertEqual(999999.0, pre["upper"])
+        self.assertEqual(999999.0, post["upper"])
+        self.assertEqual(999999.0, dummy["upper"])
+        self.assertEqual(999999.0, dummy_wac["upper"])
+        self.assertEqual(9999.0, wac["upper"])
         self.assertEqual(("ProcessCount", 7), (wac["stateVariable"], wac["lower"]))
         self.assertEqual(("WacClean", ["ProcessCount"]), (wac["taskName"], wac["updateStateVariables"]))
         self.assertEqual(("PreDummyClean", 4), (dummy["taskName"], dummy["materialCount"]))

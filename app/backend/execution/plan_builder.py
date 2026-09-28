@@ -21,6 +21,7 @@ from app.backend.execution.runtime_snapshot import (
 FIRST_SLOT_ID = 1
 MAX_WAFERS_PER_JOB = 25
 DEFAULT_TRIGGER_UPPER = 9999.0
+DEFAULT_IDLE_TIME_CLEAN_UPPER = 999999.0
 # 旧 Clean 未提供库存配置时使用的 DummyPort wafer 数量。
 DEFAULT_DUMMY_WAFER_COUNT = 8
 DUMMY_MATERIAL_ID_START = 100000
@@ -460,7 +461,7 @@ def _runtime_clean(clean: Mapping[str, Any]) -> Dict[str, Any]:
         "taskName": task_names[clean_type],
         "stateVariable": "ProcessCount" if is_wac else "IdleTime",
         "lower": trigger_count if is_wac else 0,
-        "upper": DEFAULT_TRIGGER_UPPER,
+        "upper": DEFAULT_TRIGGER_UPPER if is_wac else DEFAULT_IDLE_TIME_CLEAN_UPPER,
         "triggerCount": material_count if is_dummy else trigger_count,
         "updateStateVariables": (
             ["ProcessCount"]
