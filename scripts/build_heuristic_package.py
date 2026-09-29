@@ -27,7 +27,6 @@ EXCLUDED_RUNTIME_FILES = frozenset({
     PurePosixPath("src/task_data/macro_rule_scenarios.py"),
     PurePosixPath("src/schedule/strategies/dual_actor_e2e.py"),
     PurePosixPath("src/schedule/strategies/e2e_ctq.py"),
-    PurePosixPath("src/schedule/strategies/global_wafer.py"),
     PurePosixPath("src/schedule/strategies/loadlock_macro.py"),
     PurePosixPath("src/schedule/strategies/milp.py"),
     PurePosixPath("src/schedule/strategies/schedule_alphago_model.py"),
