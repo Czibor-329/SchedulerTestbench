@@ -24,9 +24,6 @@ ARCHIVE_PREFIX = "alg-heuristic"
 ZIP_TIMESTAMP_MINIMUM_YEAR = 1980
 EXCLUDED_RUNTIME_FILES = frozenset({
     PurePosixPath("src/task_data/generator.py"),
-    PurePosixPath("src/task_data/macro_rule_scenarios.py"),
-    PurePosixPath("src/schedule/strategies/dual_actor_e2e.py"),
-    PurePosixPath("src/schedule/strategies/e2e_ctq.py"),
     PurePosixPath("src/schedule/strategies/loadlock_macro.py"),
     PurePosixPath("src/schedule/strategies/milp.py"),
     PurePosixPath("src/schedule/strategies/schedule_alphago_model.py"),
@@ -48,8 +45,8 @@ PACKAGE_README = r"""# CT Scheduler Heuristic 部署包
 - `requirements.txt`：唯一第三方运行依赖 NumPy。
 - `PACKAGE_INFO.json`：源码提交、构建日期和运行环境信息。
 
-不包含 Git 历史、虚拟环境、训练数据、测试、模型、`other_alg`、E2E、
-双 Actor、MILP 或 LoadLock Macro 实现。
+不包含 Git 历史、虚拟环境、训练数据、测试、模型、`other_alg`、
+MILP 或 LoadLock Macro 实现。
 
 ## 安装
 

@@ -240,10 +240,6 @@ VIEWER_PATH = FRONTEND_DIR / "movelist_gantt_viewer.html"
 DOCUMENTATION_PAGE_PATH = FRONTEND_DIR / "documentation.html"
 ROUTE_EDITOR_LOGIC_PATH = FRONTEND_DIR / "route_editor_logic.js"
 FRONTEND_ASSET_DIR = FRONTEND_DIR / "assets"
-E2E_CTQ_MODEL_PATH = ALGORITHM_ROOT / "results" / "models" / "e2e_ctq_policy.npz"
-DUAL_ACTOR_MODEL_PATH = (
-    ALGORITHM_ROOT / "results" / "dual_actor_primitive_v1_candidate.npz"
-)
 BUILTIN_ALGORITHM_CATALOG_PATH = ALGORITHM_ROOT / "algorithms.json"
 ALGORITHM_CATALOG_SCHEMA_VERSION = 1
 WORKSPACE_STORE_PATH = DATA_DIR / "datasets"

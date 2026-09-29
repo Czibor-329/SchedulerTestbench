@@ -1765,21 +1765,6 @@
     .action-status-tooltip { position: absolute; z-index: 12; right: 0; bottom: calc(100% + 6px); left: 0; width: auto; max-width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; color: #3d4c63; background: #fff; box-shadow: 0 6px 18px rgba(15,23,42,.12); font-size: 11px; font-weight: 400; line-height: 1.4; opacity: 0; pointer-events: none; transform: translateY(3px); transition: opacity .15s ease, transform .15s ease; visibility: hidden; }
     .action-card:hover .action-status-tooltip, .action-card:focus-visible .action-status-tooltip { opacity: 1; transform: translateY(0); visibility: visible; }
     .action-card:focus-visible { outline: 3px solid rgba(36,87,214,.28); outline-offset: 1px; }
-    .dual-actor-decision { display: grid; min-width: 0; }
-    .dual-actor-decision-head { display: grid; gap: 2px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
-    .dual-actor-decision-head strong { color: var(--ink); font-size: 13px; }
-    .dual-actor-decision-head strong small { color: var(--muted); font-size: 11px; font-weight: 600; }
-    .dual-actor-decision-head > span { color: var(--muted); font-size: 11px; }
-    .dual-actor-recommendation-list { display: grid; gap: 8px; padding: 8px; }
-    .dual-actor-recommendation { overflow: hidden; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
-    .dual-actor-recommendation > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 9px; border-bottom: 1px solid var(--line); background: var(--soft); }
-    .dual-actor-recommendation > header > div { display: grid; min-width: 0; gap: 1px; }
-    .dual-actor-recommendation > header strong { color: var(--ink); font-size: 12px; }
-    .dual-actor-recommendation > header small, .dual-actor-recommendation > header > span { color: var(--muted); font-size: 10px; white-space: nowrap; }
-    .dual-actor-recommendation.is-atmosphere { border-left: 3px solid #c47a09; }
-    .dual-actor-recommendation.is-vacuum { border-left: 3px solid #315fc2; }
-    .dual-actor-recommendation ol { max-height: 270px; margin: 0; padding: 0; overflow: auto; list-style: none; }
-    .dual-actor-recommendation .decision-candidate { min-height: 86px; }
     .decision-tag.is-recommendation.is-atmosphere { border-color: #dfbd83; color: #85520a; background: #fff7e8; }
     .decision-tag.is-recommendation.is-vacuum { border-color: #afc3ec; color: #294f9d; background: #edf3ff; }
     .petri-control-panel .decision-candidate { min-height: 92px; padding: 10px 12px; }

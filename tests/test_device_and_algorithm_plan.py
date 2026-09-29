@@ -644,54 +644,6 @@ class ConfigEditorDeviceTests(unittest.TestCase):
                 )
                 last_event_type = move["MoveType"]
 
-    @unittest.skipUnless(
-        (ROOT / "alg" / "results" / "models" / "e2e_ctq_policy.npz").is_file(),
-        "默认 E2E 模型未随仓库交付",
-    )
-    def test_e2e_ctq_persists_decision_trace_for_topology_playback(self) -> None:
-        """E2E 候选评分应进入结果文件，运行摘要只保留轨迹计数。"""
-        from src.schedule.strategies.e2e_ctq import DEFAULT_MODEL_PATH, load_e2e_ctq_policy
-
-        plan = {
-            "deviceName": DEVICE_PATH.name,
-            "device": self.device,
-            "strategy": "e2e-ctq",
-            "roundCount": 1,
-            "options": {},
-            "recipes": [{
-                "name": "DecisionTraceRecipe",
-                "time": 40,
-                "modules": ["PM1", "PM2"],
-                "weight": {},
-            }],
-            "cleans": [],
-            "routes": [_route(
-                "DecisionTraceRoute",
-                "PM1,PM2",
-                "DecisionTraceRecipe",
-            )],
-            "rounds": [{
-                "currentTime": 0,
-                "jobs": [{
-                    **_job("DecisionTraceJob", "DecisionTraceRoute", "LP1"),
-                    "waferCount": 2,
-                }],
-            }],
-        }
-        policy = load_e2e_ctq_policy(DEFAULT_MODEL_PATH)
-
-        with patch("src.api._load_policy", return_value=policy):
-            result = execute_plan(plan)
-
-        trace = result["output"]["DecisionTrace"]
-        self.assertGreater(len(trace), 0)
-        self.assertEqual("e2e-ctq-decision-trace-v1", result["output"]["DecisionTraceMeta"]["schema"])
-        self.assertGreaterEqual(trace[0]["candidateCount"], 1)
-        self.assertIn("policyPreference", trace[0]["candidates"][0])
-        diagnostics = result["rounds"][0]["strategyDiagnostics"]
-        self.assertNotIn("decisionTrace", diagnostics)
-        self.assertEqual(len(trace), diagnostics["decisionTraceCount"])
-
     def test_local_standard_algorithm_calls_formal_init_and_update(self) -> None:
         """前端选择 other_alg 算法后应通过本地正式 init/update 入口完成首排。"""
         plan = {

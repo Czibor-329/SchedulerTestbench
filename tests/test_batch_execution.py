@@ -118,15 +118,15 @@ class BatchExecutionTests(unittest.TestCase):
             patch.object(config_server, "save_reproduction_log", return_value="log-id"),
         ):
             result = config_server.run_workspace_test_batch(
-                "device-batch", "回归", "e2e-ctq", {"seed": 9}, maximum_workers=2, hongye_check=False,
+                "device-batch", "回归", "loadlock-macro", {"seed": 9}, maximum_workers=2, hongye_check=False,
             )
 
         self.assertEqual(2, result["testCount"])
         self.assertEqual(2, result["succeeded"])
         self.assertEqual({"案例 A", "案例 B"}, {item["testName"] for item in result["items"]})
         self.assertEqual(4, len(submitted))
+        self.assertEqual(2, sum(plan["strategy"] == "loadlock-macro" for plan in submitted))
         self.assertEqual(2, sum(plan["strategy"] == "heuristic" for plan in submitted))
-        self.assertEqual(2, sum(plan["strategy"] == "e2e-ctq" for plan in submitted))
         self.assertTrue(all(plan["options"]["seed"] == 9 for plan in submitted))
         self.assertTrue(all([route["name"] for route in plan["routes"]] == ["BatchRoute"] for plan in submitted))
         self.assertTrue(all(item["baseline"]["status"] == "succeeded" for item in result["items"]))
@@ -536,7 +536,7 @@ class BatchExecutionTests(unittest.TestCase):
             patch.object(config_server, "save_reproduction_log", return_value="log-id"),
         ):
             result = config_server.run_workspace_test_batch(
-                "device-baseline", "回归", "e2e-ctq", {}, maximum_workers=1, hongye_check=False,
+                "device-baseline", "回归", "loadlock-macro", {}, maximum_workers=1, hongye_check=False,
             )
 
         item = result["items"][0]
@@ -852,7 +852,7 @@ class BatchExecutionTests(unittest.TestCase):
             patch.object(config_server, "save_reproduction_log", return_value="log-id"),
         ):
             result = config_server.run_workspace_test_batch(
-                "device-failed-base", "回归", "e2e-ctq", {}, maximum_workers=1, hongye_check=False,
+                "device-failed-base", "回归", "loadlock-macro", {}, maximum_workers=1, hongye_check=False,
             )
 
         item = result["items"][0]

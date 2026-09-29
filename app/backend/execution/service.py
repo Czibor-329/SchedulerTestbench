@@ -563,15 +563,10 @@ def _execute_standard_algorithm(
             len(round_trace) if isinstance(round_trace, list) else 0
         )
     if decision_trace:
-        dual_actor_trace = strategy == "dual-actor-e2e"
         combined_output["DecisionTrace"] = decision_trace
         combined_output["DecisionTraceMeta"] = {
-            "schema": (
-                "dual-actor-primitive-decision-trace-v1"
-                if dual_actor_trace
-                else "e2e-ctq-decision-trace-v1"
-            ),
-            "model": "双 Actor 原子调度" if dual_actor_trace else "E2E-CTQ",
+            "schema": "decision-trace-v1",
+            "model": strategy,
             "decisionCount": len(decision_trace),
             "truncated": decision_trace_truncated,
         }
@@ -691,11 +686,7 @@ def _execute_plan(raw_plan: Mapping[str, Any], reproduction: ReproductionLog) ->
                 )
 
     options = plan.get("options") if isinstance(plan.get("options"), Mapping) else {}
-    default_loadlock_manager_mode = (
-        "joint"
-        if strategy in {"e2e-ctq", "dual-actor-e2e"}
-        else "petri-look"
-    )
+    default_loadlock_manager_mode = "petri-look"
     loadlock_manager_mode = str(
         (options.get("loadLockManager") if strategy != "heuristic" else None)
         or default_loadlock_manager_mode

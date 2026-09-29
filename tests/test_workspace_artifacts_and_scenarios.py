@@ -731,8 +731,8 @@ class WorkspaceArtifactTests(unittest.TestCase):
         self.assertTrue(result["updates"][1]["MoveStates"])
         self.assertTrue(all(set(entry) == {"Time", "Describe", "SimTime", "Info"} for entry in reproduction))
 
-    def test_frontend_exposes_available_dual_actor_strategy(self) -> None:
-        """双 Actor 清单、健康检查和介绍必须使用同一个稳定策略名。"""
+    def test_frontend_exposes_action_diagnostics(self) -> None:
+        """动作诊断的过滤选项由前端提供。"""
         html = _editor_source()
         workspace_source = (
             ROOT
@@ -741,25 +741,20 @@ class WorkspaceArtifactTests(unittest.TestCase):
             / "src"
             / "workspace_visualizer.ts"
         ).read_text(encoding="utf-8")
-        metadata = config_server.read_algorithm_metadata()
-
         self.assertIn("renderOtherAlgorithmOptions(status.algorithms", html)
         self.assertIn("algorithm.strategy", html)
-        self.assertIn('"Validation / Dual Actor"', html)
         self.assertIn('data-action-status-filter value="enabled" checked', html)
         self.assertIn('data-action-status-filter value="physical-blocked" checked', html)
         self.assertIn('data-action-status-filter value="deadlock-blocked" checked', html)
         self.assertNotIn('id="visualRecommendationModel"', html)
         self.assertIn('actionDiagnostics', workspace_source)
-        self.assertIn("Pick、Place、Swap", metadata["dual-actor-e2e"]["introduction"])
-        self.assertEqual(
-            {"name", "introduction"},
-            set(metadata["dual-actor-e2e"]),
-        )
 
     def test_algorithm_metadata_only_contains_name_and_introduction(self) -> None:
         """算法展示信息只保留名称和介绍，不再包含版本记录字段。"""
         metadata = config_server.read_algorithm_metadata()
 
-        self.assertIn("端到端资源流", metadata["e2e-ctq"]["introduction"])
-        self.assertEqual({"name", "introduction"}, set(metadata["e2e-ctq"]))
+        self.assertEqual(
+            {"heuristic", "loadlock-macro", "cycle", "search-tree"},
+            set(metadata),
+        )
+        self.assertTrue(all(set(row) == {"name", "introduction"} for row in metadata.values()))

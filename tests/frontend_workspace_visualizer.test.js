@@ -538,7 +538,7 @@ test("结果分析与拓扑回放使用独立界面并共享当前 MoveList", as
   assert.equal(root.elements.get("visualSource").title, "t1.json");
   const lens = root.elements.get("visualDecisionLens").innerHTML;
   assert.equal(lens, "");
-  assert.doesNotMatch(lens, /E2E推荐|Δ 基准|模型偏好|剩余工期/);
+  assert.doesNotMatch(lens, /Δ 基准|模型偏好|剩余工期/);
   assert.doesNotMatch(root.elements.get("visualDeviceStage").innerHTML, /PM2/);
 
   workspace.showGroupAnalysis("<h2>组级统计</h2>");
@@ -569,7 +569,7 @@ test("动作空间按状态筛选并把原因放进悬浮提示", () => {
   const enabled = logic.renderDecisionLens(decision, "idle", "", ["enabled"]);
   assert.match(enabled, /Pick\(1\) LP1#1 → ATR#1/);
   assert.match(enabled, /action-status-tooltip[\s\S]*当前物理可行/);
-  assert.doesNotMatch(enabled, /decision-tag action-status|action-block-reason|目标槽已满|无回程槽|E2E|推荐|剩余工期|LA#1/);
+  assert.doesNotMatch(enabled, /decision-tag action-status|action-block-reason|目标槽已满|无回程槽|推荐|剩余工期|LA#1/);
   const blockedSwap = logic.renderDecisionLens(decision, "idle", "", ["deadlock-blocked"]);
   assert.match(blockedSwap, /Swap\(1,2\) VTR#1 → PM2#1/);
   assert.doesNotMatch(blockedSwap, /decision-tag action-status/);
@@ -578,149 +578,6 @@ test("动作空间按状态筛选并把原因放进悬浮提示", () => {
   const blockedPlace = logic.renderDecisionLens(decision, "idle", "", ["physical-blocked"]);
   assert.match(blockedPlace, /Place ATR#1 → LA#1/);
   assert.match(blockedPlace, /另 23 片相同/);
-});
-
-test("旧模型推荐轨迹不再进入动作状态卡片", async () => {
-  const root = fakeWorkspaceDocument();
-  const workspace = logic.createVisualizationWorkspace(root);
-  await workspace.loadFile({
-    name: "dual-actor-decision.json",
-    async text() {
-      return JSON.stringify({
-        MoveList: moves,
-        DecisionTraceMeta: {
-          schema: "dual-actor-primitive-decision-trace-v1",
-          model: "双 Actor 原子调度",
-        },
-        DecisionTrace: [{
-          model: "dual-actor-e2e",
-          decisionIndex: 12,
-          time: 0,
-          candidateGroups: [
-            {
-              actor: "atmosphere",
-              label: "大气端 Actor",
-              selectedActionId: "atr-pick",
-              candidateCount: 2,
-              candidates: [
-                { actionId: "atr-place", actor: "atmosphere", kind: "place", robot: "ATR", source: "ATR", destination: "LA", rank: 2, policyPreference: 0.2, expectedRemainingCost: 18 },
-                { actionId: "atr-pick", actor: "atmosphere", kind: "pick", robot: "ATR", source: "LP1", destination: "Robot hand", rank: 1, selected: true, policyPreference: 0.8, expectedRemainingCost: 11 },
-              ],
-            },
-            {
-              actor: "vacuum",
-              label: "真空端 Actor",
-              selectedActionId: "vtr-swap",
-              candidateCount: 1,
-              candidates: [
-                { actionId: "vtr-swap", actor: "vacuum", kind: "swap", robot: "VTR", source: "PM1", destination: "PM2", rank: 1, selected: true, policyPreference: 1, expectedRemainingCost: 9 },
-              ],
-            },
-          ],
-        }],
-      });
-    },
-  });
-
-  const lens = root.elements.get("visualDecisionLens").innerHTML;
-  assert.equal(lens, "");
-  assert.doesNotMatch(lens, /Actor|推荐|policyPreference/);
-});
-
-test("双 Actor 原始决策按最终定时 MoveList 的物理动作时刻对齐", () => {
-  const trace = logic.normalizeDecisionTrace({
-    DecisionTraceMeta: {
-      schema: "dual-actor-primitive-decision-trace-v1",
-      model: "双 Actor 原子调度",
-    },
-    DecisionTrace: [
-      {
-        model: "dual-actor-e2e",
-        decisionIndex: 1,
-        time: 0,
-        selectedActionId: "atr:pick:W1:LP1",
-        proposals: [{
-          actor: "atmosphere",
-          actionId: "atr:pick:W1:LP1",
-          kind: "pick",
-          robot: "ATR",
-          materialIds: ["W1"],
-          source: "LP1",
-          selected: true,
-        }],
-      },
-      {
-        model: "dual-actor-e2e",
-        decisionIndex: 2,
-        time: 0,
-        selectedActionId: "atr:place:W1:LA",
-        proposals: [{
-          actor: "atmosphere",
-          actionId: "atr:place:W1:LA",
-          kind: "place",
-          robot: "ATR",
-          materialIds: ["W1"],
-          source: "LP1",
-          destination: "LA",
-          selected: true,
-        }],
-      },
-    ],
-  });
-  const aligned = logic.alignOriginalDecisionTraceToMoves(trace, [
-    {
-      MoveID: 10, MoveType: 0, StartTime: 12.5, EndTime: 14,
-      Robot: "ATR", ModuleName: "ATR", MatIDList: ["W1"], SrcStationList: ["LP1"],
-    },
-    {
-      MoveID: 11, MoveType: 1, StartTime: 18.75, EndTime: 20,
-      Robot: "ATR", ModuleName: "ATR", MatIDList: ["W1"], DestStationList: ["LA"],
-    },
-  ]);
-
-  assert.deepEqual(aligned.map(step => step.time), [12.5, 18.75]);
-  assert.deepEqual(
-    aligned.map(step => step.executedActionId),
-    ["atr:pick:W1:LP1", "atr:place:W1:LA"],
-  );
-  assert.ok(aligned.every(step => step.modelEvaluated && !step.replayEvaluated));
-  assert.ok(aligned.every(step => step.candidates.some(candidate => candidate.executed)));
-});
-
-test("旧联合动作推荐不再进入动作状态卡片", async () => {
-  const root = fakeWorkspaceDocument();
-  const workspace = logic.createVisualizationWorkspace(root);
-  await workspace.loadFile({
-    name: "reentrant-priority.json",
-    async text() {
-      return JSON.stringify({
-        MoveList: moves,
-        DecisionTrace: [{
-          decisionIndex: 7,
-          time: 188.7,
-          selectedActionId: "pm-reentry",
-          executedActionId: "pm-reentry",
-          candidateCount: 2,
-          candidates: [
-            {
-              actionId: "feed-later", rank: 2, source: "LP1", destination: "LB",
-              robot: "ATR", flowKind: "feed", policyPreference: 0.9,
-              priorityDeferred: true,
-            },
-            {
-              actionId: "pm-reentry", rank: 1, source: "PM3", destination: "PM2",
-              robot: "VTR", flowKind: "internal", policyPreference: 0.1,
-              selected: true, executed: true,
-            },
-          ],
-        }],
-      });
-    },
-  });
-
-  const lens = root.elements.get("visualDecisionLens").innerHTML;
-  assert.equal(lens, "");
-  assert.doesNotMatch(lens, /E2E推荐|与计划一致/);
 });
 
 test("连续回放不恢复已经取消的决策边界自动暂停", async () => {
@@ -1733,7 +1590,7 @@ test("Aligner 使用紧凑叉形，Cooler 在俯视图显示顶部可见槽位",
   assert.doesNotMatch(topology, /cooler-plate/);
 });
 
-test("E2E 决策在机器人尚未执行时驱动单槽机械臂朝向且不再绘制箭头", () => {
+test("动作决策在机器人尚未执行时驱动单槽机械臂朝向且不再绘制箭头", () => {
   const idleSnapshot = logic.buildWorkspaceSnapshot(moves, device, 0);
   const decision = {
     decisionIndex: 0,
@@ -2270,7 +2127,7 @@ test("动作接口回放跨过 Pick 边界时保持连续播放", async () => {
     const root = fakeWorkspaceDocument();
     const workspace = logic.createVisualizationWorkspace(root);
     await workspace.loadFile({
-      name: "dual-actor-primitive-boundary.json",
+      name: "primitive-boundary.json",
       async text() {
         return JSON.stringify({ MoveList: moves });
       },

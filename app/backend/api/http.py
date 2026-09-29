@@ -182,16 +182,7 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                 "schemaVersion": API_SCHEMA_VERSION,
                 "algorithmRepositoryAvailable": BUILTIN_ALGORITHM_AVAILABLE,
                 "strategies": strategy_availability,
-                "strategyModels": {
-                    "e2e-ctq": (
-                        E2E_CTQ_MODEL_PATH.name if E2E_CTQ_MODEL_PATH.is_file() else ""
-                    ),
-                    "dual-actor-e2e": (
-                        DUAL_ACTOR_MODEL_PATH.name
-                        if DUAL_ACTOR_MODEL_PATH.is_file()
-                        else ""
-                    ),
-                },
+                "strategyModels": {},
                 "strategyErrors": builtin_strategy_errors,
                 "algorithmMetadata": algorithm_metadata_for_health(
                     builtin_algorithms,

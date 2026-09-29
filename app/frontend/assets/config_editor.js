@@ -1498,9 +1498,8 @@ function normalizeDecisionTrace(payload) {
   const traceMeta = record.DecisionTraceMeta;
   const meta = traceMeta && typeof traceMeta === "object" && !Array.isArray(traceMeta) ? traceMeta : {};
   return rawTrace.filter((step) => Boolean(step) && typeof step === "object" && !Array.isArray(step)).map((step) => {
-    const modelSignature = `${String(step.model ?? "")} ${String(meta.schema ?? "")} ${String(meta.model ?? "")}`.toLowerCase();
-    const model = modelSignature.includes("actions") ? "actions" : modelSignature.includes("dual-actor") || modelSignature.includes("\u53CC actor") ? "dual-actor-e2e" : "e2e-ctq";
-    const rawCandidates = Array.isArray(step.candidates) ? step.candidates : model === "dual-actor-e2e" && Array.isArray(step.proposals) ? step.proposals : [];
+    const model = "actions";
+    const rawCandidates = Array.isArray(step.candidates) ? step.candidates : [];
     let candidates = rawCandidates.filter((candidate) => Boolean(candidate) && typeof candidate === "object" && !Array.isArray(candidate)).map((candidate) => normalizeDecisionCandidate(candidate)).sort((left, right) => left.rank - right.rank || right.policyPreference - left.policyPreference);
     const rawGroups = Array.isArray(step.candidateGroups) ? step.candidateGroups : [];
     let candidateGroups = rawGroups.filter((group) => Boolean(group) && typeof group === "object" && !Array.isArray(group)).map((group) => {
@@ -1521,31 +1520,12 @@ function normalizeDecisionTrace(payload) {
         candidates: groupCandidates
       };
     });
-    if (model === "dual-actor-e2e" && !candidateGroups.length && candidates.length) {
-      candidateGroups = ["atmosphere", "vacuum"].map((actor) => {
-        const groupCandidates = candidates.filter((candidate) => candidate.actor === actor).map((candidate, index, rows) => ({
-          ...candidate,
-          rank: candidate.rank || index + 1,
-          policyPreference: rows.length === 1 && candidate.policyPreference === 0 ? 1 : candidate.policyPreference
-        }));
-        return {
-          actor,
-          label: actor === "atmosphere" ? "\u5927\u6C14\u7AEF Actor" : "\u771F\u7A7A\u7AEF Actor",
-          selectedActionId: groupCandidates.find((candidate) => candidate.selected)?.actionId ?? "",
-          executedActionId: groupCandidates.find((candidate) => candidate.executed)?.actionId ?? "",
-          candidateCount: groupCandidates.length,
-          shownCandidateCount: groupCandidates.length,
-          candidatesTruncated: false,
-          candidates: groupCandidates
-        };
-      }).filter((group) => group.candidates.length);
-    }
     if (candidateGroups.length) candidates = candidateGroups.flatMap((group) => group.candidates);
     const actionDiagnostics = listValue(step.actionDiagnostics).filter((action) => Boolean(action) && typeof action === "object" && !Array.isArray(action)).map(normalizeReplayActionDiagnostic).filter((action) => Boolean(action));
     const rawActionCounts = step.actionCounts && typeof step.actionCounts === "object" ? step.actionCounts : {};
     return {
       model,
-      modelLabel: String(step.modelLabel ?? (model === "dual-actor-e2e" ? "\u53CC Actor \u539F\u5B50\u8C03\u5EA6" : "E2E-CTQ")),
+      modelLabel: String(step.modelLabel ?? meta.model ?? "\u52A8\u4F5C\u8BCA\u65AD"),
       decisionIndex: finiteNumber2(step.decisionIndex),
       time: finiteNumber2(step.time),
       revision: finiteNumber2(step.revision),
