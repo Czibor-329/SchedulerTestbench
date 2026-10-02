@@ -4028,6 +4028,8 @@ export class VisualizationWorkspace {
   private cpuTimeMs: number | null = null;
   private recomputeCount = 0;
   private bottleneckSummary: BottleneckUtilizationSummary | null = null;
+  /** 新结果或清空操作会让之前的文件读取和 HTTP 响应失效。 */
+  private resultLoadVersion = 0;
   private analysisRequestVersion = 0;
   private time = 0;
   private playing = false;
@@ -4076,7 +4078,10 @@ export class VisualizationWorkspace {
 
   /** 加载内部调用或测试夹具提供的 MoveList 文件；页面文件入口不调用此方法。 */
   async loadFile(file: File): Promise<void> {
+    const loadVersion = ++this.resultLoadVersion;
+    this.analysisRequestVersion += 1;
     const payload = JSON.parse(await file.text()) as unknown;
+    if (loadVersion !== this.resultLoadVersion) return;
     await this.loadMoves(
       normalizeMovePayload(payload),
       normalizeDecisionTrace(payload),
@@ -4091,8 +4096,11 @@ export class VisualizationWorkspace {
 
   /** 加载用户在回放页选择的平台复现日志。 */
   private async loadReplayLogFile(file: File): Promise<void> {
+    const loadVersion = ++this.resultLoadVersion;
+    this.analysisRequestVersion += 1;
     this.setLoading(true, "正在解析复现日志…");
     const payload = JSON.parse(await file.text()) as unknown;
+    if (loadVersion !== this.resultLoadVersion) return;
     const replayLog = normalizeReplayLogPayload(payload);
     if (replayLog.device) this.device = replayLog.device;
     this.setReplayPlan(null);
@@ -4112,6 +4120,8 @@ export class VisualizationWorkspace {
 
   /** 从后端保存的运行结果加载 MoveList。 */
   async loadResult(resultIdOrUrl: string, sourceName = "当前运行结果"): Promise<void> {
+    const loadVersion = ++this.resultLoadVersion;
+    this.analysisRequestVersion += 1;
     const resultUrl = resultIdOrUrl.startsWith("/")
       ? resultIdOrUrl
       : `/api/results/${encodeURIComponent(resultIdOrUrl)}`;
@@ -4119,6 +4129,7 @@ export class VisualizationWorkspace {
     try {
       const response = await fetch(resultUrl, { cache: "no-store" });
       const payload = await response.json() as unknown;
+      if (loadVersion !== this.resultLoadVersion) return;
       if (!response.ok) {
         const message = payload && typeof payload === "object"
           ? String((payload as UnknownRecord).error ?? "")
@@ -4152,6 +4163,7 @@ export class VisualizationWorkspace {
         0,
       );
     } catch (error) {
+      if (loadVersion !== this.resultLoadVersion) return;
       this.showError(error instanceof Error ? error.message : String(error));
       throw error;
     }
@@ -4189,6 +4201,8 @@ export class VisualizationWorkspace {
     plan: Record<string, any>,
     sourceName = "Search Tree 实时求解",
   ): void {
+    this.resultLoadVersion += 1;
+    this.analysisRequestVersion += 1;
     this.pause();
     this.liveSolving = true;
     this.moves = [];
@@ -4298,11 +4312,14 @@ export class VisualizationWorkspace {
 
   /** 停止播放并释放动画帧。 */
   destroy(): void {
+    this.resultLoadVersion += 1;
+    this.analysisRequestVersion += 1;
     this.pause();
   }
 
   /** 清除旧测试结果，避免切换测试后继续误看上一份 MoveList。 */
   clear(): void {
+    this.resultLoadVersion += 1;
     this.pause();
     this.liveSolving = false;
     this.moves = [];
@@ -4347,7 +4364,7 @@ export class VisualizationWorkspace {
       <span>运行一次计划，或使用右上角“导入日志”载入平台复现日志后开始回放。</span>`;
   }
 
-  /** 接收规范化后的 MoveList 并重置时间轴。 */
+  /** 接收规范化后的 MoveList 并重置时间轴；拓扑就绪后返回，指标在后台更新。 */
   private async loadMoves(
     moves: MoveRecord[],
     _decisionTrace: DecisionTraceStep[],
@@ -4397,7 +4414,7 @@ export class VisualizationWorkspace {
     this.showSingleResult();
     this.setTopologyVisible(true);
     this.render(snapshot);
-    await this.renderPerformance();
+    void this.renderPerformance();
   }
 
   /** 绑定文件、时间轴、播放和快捷控制事件。 */

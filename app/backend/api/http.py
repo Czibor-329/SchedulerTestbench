@@ -8,6 +8,7 @@ from app.backend.bootstrap import *
 from app.backend.execution.run_state import *
 from app.backend.execution.service import *
 from app.backend.execution.batch_service import DEFAULT_BATCH_WORKERS
+from app.backend.execution.batch_results import build_failure_result_artifact
 from app.backend.execution.validation_limiter import DEFAULT_VALIDATION_WORKERS
 from app.backend.preferences.repository import *
 from app.backend.workspace.repository import *
@@ -17,6 +18,7 @@ from app.backend.workspace.transfer_jobs import *
 from app.backend.company_capacity_baselines import *
 from app.backend.artifacts.repository import *
 from app.backend.artifacts.deadlock_diagnostic import *
+from app.backend.schedule_analysis_service import analyze_schedule_request
 from app.backend.analysis_jobs import (
     cancel_test_group_analysis_job,
     create_test_group_analysis_job,
@@ -323,9 +325,30 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                     self._send_json({"ok": False, "error": str(error)}, HTTPStatus.NOT_FOUND)
                 return
         if path.startswith("/api/results/"):
-            result = read_result(path.rsplit("/", 1)[-1])
+            result_id = path.rsplit("/", 1)[-1]
+            view = parse_qs(parsed_url.query).get("view", [""])[0]
+            if view == "replay-context":
+                result = read_replay_context(result_id)
+            elif view in {"", "movelist"}:
+                result = read_result(result_id, include_replay_context=view != "movelist")
+            else:
+                self._send_json({"ok": False, "error": "不支持的结果视图"}, HTTPStatus.BAD_REQUEST)
+                return
             if result is None:
                 self._send_json({"ok": False, "error": "结果不存在或已过期"}, HTTPStatus.NOT_FOUND)
+            else:
+                self._send_json(result)
+            return
+        artifact_parts = [part for part in path.split("/") if part]
+        if len(artifact_parts) == 4 and artifact_parts[:2] == ["api", "artifacts"]:
+            if artifact_parts[3] == "summary":
+                result = read_result_summary(artifact_parts[2])
+            elif artifact_parts[3] == "manifest":
+                result = read_run_manifest(artifact_parts[2])
+            else:
+                result = None
+            if result is None:
+                self._send_json({"ok": False, "error": "运行制品不存在或已过期"}, HTTPStatus.NOT_FOUND)
             else:
                 self._send_json(result)
             return
@@ -543,65 +566,7 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
         if path == "/api/analysis/schedule":
             try:
                 payload = self._read_json_object()
-                result_id = str(payload.get("resultId") or "").strip()
-                if result_id:
-                    saved_result = read_result(result_id)
-                    if saved_result is None:
-                        raise ValueError("结果不存在或已过期")
-                    moves = normalize_move_payload(saved_result)
-                    run_metrics = saved_result.get("RunMetricsMetadata")
-                    if not isinstance(run_metrics, Mapping):
-                        legacy_metadata = saved_result.get("ProductionMetricsMetadata")
-                        run_metrics = {
-                            "cpuTimeMs": (
-                                _finite_number(legacy_metadata.get("calculationSeconds")) * 1000.0
-                                if isinstance(legacy_metadata, Mapping)
-                                else None
-                            ),
-                            # RecomputePoints 只记录首排之后的重算点；首轮同样会
-                            # 调用一次算法 update，必须纳入 CPU Time 的平均分母。
-                            "recomputeCount": (
-                                len(list(saved_result.get("RecomputePoints") or [])) + 1
-                                if isinstance(legacy_metadata, Mapping)
-                                else 0
-                            ),
-                        }
-                else:
-                    moves = normalize_move_payload(
-                        payload.get("moves", payload.get("result")),
-                    )
-                    run_metrics = {
-                        "cpuTimeMs": payload.get("cpuTimeMs"),
-                        "recomputeCount": payload.get("recomputeCount"),
-                    }
-                device = payload.get("device")
-                if device is not None and not isinstance(device, Mapping):
-                    raise ValueError("device 必须是 JSON 对象或 null")
-                context = payload.get("context")
-                if context is None:
-                    routes = payload.get("routes")
-                    rounds = payload.get("rounds")
-                    if routes is not None or rounds is not None:
-                        if routes is not None and not isinstance(routes, list):
-                            raise ValueError("routes 必须是数组")
-                        if rounds is not None and not isinstance(rounds, list):
-                            raise ValueError("rounds 必须是数组")
-                        context = build_schedule_analysis_context(routes, rounds)
-                if context is not None and not isinstance(context, Mapping):
-                    raise ValueError("context 必须是 JSON 对象或 null")
-                analysis = analyze_schedule_performance(
-                    moves,
-                    device,
-                    str(payload.get("windowMode") or "steady"),
-                    context,
-                    run_metrics,
-                    metric_groups=payload.get("metricGroups"),
-                )
-                self._send_json({
-                    "ok": True,
-                    "analysis": analysis,
-                    "bottleneck": summarize_bottleneck_utilization(analysis),
-                })
+                self._send_json(analyze_schedule_request(payload))
             except Exception as error:  # noqa: BLE001
                 self._send_json(
                     {"ok": False, "error": str(error)},
@@ -693,6 +658,8 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
         replay_plan: Optional[Dict[str, Any]] = None
         baseline_response: Optional[Dict[str, Any]] = None
         client_run_id = ""
+        run_identity: Dict[str, Any] = {}
+        artifact_committed = False
         request_started = time.perf_counter()
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -705,6 +672,15 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
             workspace_test_id = str(payload.get("workspaceTestId") or "")
             strategy = str(payload.get("strategy") or "heuristic")
             client_run_id = str(payload.get("clientRunId") or "").strip()
+            run_identity = {
+                "deviceId": workspace_device_id,
+                "testId": workspace_test_id,
+                "deviceName": str(payload.get("deviceName") or ""),
+                "testName": str(payload.get("testCaseName") or "当前测试"),
+                "strategy": strategy,
+                "clientRunId": client_run_id,
+                "startedAt": _workspace_timestamp(),
+            }
             if client_run_id:
                 _start_single_run(
                     client_run_id,
@@ -716,6 +692,11 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                     workspace_device_id,
                     workspace_test_id,
                 )
+                run_identity.update({
+                    "deviceName": str(device.get("name") or ""),
+                    "testName": str(test_case.get("name") or "当前测试"),
+                    "group": str(test_case.get("group") or ""),
+                })
                 selected_plan = deepcopy(dict(payload))
                 runtime_device = deepcopy(device.get("device"))
                 if isinstance(runtime_device, dict):
@@ -769,30 +750,34 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                     "plan": replay_plan,
                     "updates": deepcopy(list(result.get("updates") or [])),
                 }
-            result_id = save_result(artifact)
-            log_id = save_reproduction_log(result["reproductionLog"])
             response = {
                 key: value
                 for key, value in result.items()
                 if key not in {"output", "reproductionLog"}
             }
-            response["resultId"] = result_id
-            response["ganttUrl"] = f"/movelist_gantt_viewer.html?src=/api/results/{result_id}"
-            response.update(_log_response_fields(log_id))
+            response.update(save_run_artifacts(
+                artifact,
+                result["reproductionLog"],
+                {**run_identity, **{
+                    key: value for key, value in response.items()
+                    if key not in {"updates", "logs"}
+                }, "status": "succeeded"},
+                execution_logs=result.get("logs") or [],
+            ))
+            artifact_committed = True
             if client_run_id:
                 _finish_single_run(client_run_id, "completed")
             self._send_json(response)
         except LoggedPlanError as error:
             if client_run_id:
                 _finish_single_run(client_run_id, "failed", str(error))
-            log_id = save_reproduction_log(error.reproduction_log)
             response = {"ok": False, "error": str(error)}
             if baseline_response is not None:
                 response["baseline"] = baseline_response
-            response.update(_log_response_fields(log_id))
             response.update(_logged_failure_result_fields(
                 error,
                 replay_plan=replay_plan,
+                persist=False,
             ))
             strategy = str(payload.get("strategy") or "") if isinstance(payload, Mapping) else ""
             if strategy.casefold().startswith("other_alg:"):
@@ -807,8 +792,17 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                 })
                 if baseline_response is not None and "makespan" in response:
                     response.update(_baseline_comparison(response, baseline_response))
+            response.update(save_run_artifacts(
+                build_failure_result_artifact(error, replay_plan, run_metrics=response),
+                error.reproduction_log,
+                {**run_identity, **response, "status": "failed"},
+                execution_logs=[str(error)],
+            ))
             self._send_json(response, HTTPStatus.BAD_REQUEST)
         except Exception as error:  # noqa: BLE001
+            if artifact_committed:
+                # 输出已经原子保存，响应传输错误不代表算法运行失败，也不重复归档。
+                raise
             reproduction = ReproductionLog()
             reproduction.add("Input", [deepcopy(dict(payload))] if isinstance(payload, Mapping) else [])
             reproduction.add("AlgOutput", _alg_output_info(feedback=[{
@@ -816,7 +810,6 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                 "Type": type(error).__name__,
                 "Message": str(error),
             }]))
-            log_id = save_reproduction_log(reproduction.entries)
             cancelled_error_type = globals().get("SearchCancelledError")
             cancelled = (
                 isinstance(error, UserRunCancelledError)
@@ -835,7 +828,12 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                 )
             if baseline_response is not None:
                 response["baseline"] = baseline_response
-            response.update(_log_response_fields(log_id))
+            response.update(save_run_artifacts(
+                None,
+                reproduction.entries,
+                {**run_identity, **response, "status": "cancelled" if cancelled else "failed"},
+                execution_logs=[response["error"]],
+            ))
             self._send_json(response, HTTPStatus.BAD_REQUEST)
 
     def do_PUT(self) -> None:

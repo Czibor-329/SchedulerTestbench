@@ -4047,6 +4047,8 @@ var VisualizationWorkspace = class {
   cpuTimeMs = null;
   recomputeCount = 0;
   bottleneckSummary = null;
+  /** 新结果或清空操作会让之前的文件读取和 HTTP 响应失效。 */
+  resultLoadVersion = 0;
   analysisRequestVersion = 0;
   time = 0;
   playing = false;
@@ -4090,7 +4092,10 @@ var VisualizationWorkspace = class {
   }
   /** 加载内部调用或测试夹具提供的 MoveList 文件；页面文件入口不调用此方法。 */
   async loadFile(file) {
+    const loadVersion = ++this.resultLoadVersion;
+    this.analysisRequestVersion += 1;
     const payload = JSON.parse(await file.text());
+    if (loadVersion !== this.resultLoadVersion) return;
     await this.loadMoves(
       normalizeMovePayload(payload),
       normalizeDecisionTrace(payload),
@@ -4104,8 +4109,11 @@ var VisualizationWorkspace = class {
   }
   /** 加载用户在回放页选择的平台复现日志。 */
   async loadReplayLogFile(file) {
+    const loadVersion = ++this.resultLoadVersion;
+    this.analysisRequestVersion += 1;
     this.setLoading(true, "\u6B63\u5728\u89E3\u6790\u590D\u73B0\u65E5\u5FD7\u2026");
     const payload = JSON.parse(await file.text());
+    if (loadVersion !== this.resultLoadVersion) return;
     const replayLog = normalizeReplayLogPayload(payload);
     if (replayLog.device) this.device = replayLog.device;
     this.setReplayPlan(null);
@@ -4124,11 +4132,14 @@ var VisualizationWorkspace = class {
   }
   /** 从后端保存的运行结果加载 MoveList。 */
   async loadResult(resultIdOrUrl, sourceName = "\u5F53\u524D\u8FD0\u884C\u7ED3\u679C") {
+    const loadVersion = ++this.resultLoadVersion;
+    this.analysisRequestVersion += 1;
     const resultUrl = resultIdOrUrl.startsWith("/") ? resultIdOrUrl : `/api/results/${encodeURIComponent(resultIdOrUrl)}`;
     this.setLoading(true, "\u6B63\u5728\u52A0\u8F7D\u8FD0\u884C\u7ED3\u679C\u2026");
     try {
       const response = await fetch(resultUrl, { cache: "no-store" });
       const payload = await response.json();
+      if (loadVersion !== this.resultLoadVersion) return;
       if (!response.ok) {
         const message = payload && typeof payload === "object" ? String(payload.error ?? "") : "";
         throw new Error(message || `\u670D\u52A1\u8FD4\u56DE ${response.status}`);
@@ -4158,6 +4169,7 @@ var VisualizationWorkspace = class {
         0
       );
     } catch (error) {
+      if (loadVersion !== this.resultLoadVersion) return;
       this.showError(error instanceof Error ? error.message : String(error));
       throw error;
     }
@@ -4186,6 +4198,8 @@ var VisualizationWorkspace = class {
   }
   /** 在完整 MoveList 返回前显示初始拓扑，并进入增量求解状态。 */
   beginLiveSolve(plan, sourceName = "Search Tree \u5B9E\u65F6\u6C42\u89E3") {
+    this.resultLoadVersion += 1;
+    this.analysisRequestVersion += 1;
     this.pause();
     this.liveSolving = true;
     this.moves = [];
@@ -4277,10 +4291,13 @@ var VisualizationWorkspace = class {
   }
   /** 停止播放并释放动画帧。 */
   destroy() {
+    this.resultLoadVersion += 1;
+    this.analysisRequestVersion += 1;
     this.pause();
   }
   /** 清除旧测试结果，避免切换测试后继续误看上一份 MoveList。 */
   clear() {
+    this.resultLoadVersion += 1;
     this.pause();
     this.liveSolving = false;
     this.moves = [];
@@ -4324,7 +4341,7 @@ var VisualizationWorkspace = class {
       <strong>\u7B49\u5F85\u56DE\u653E\u6570\u636E</strong>
       <span>\u8FD0\u884C\u4E00\u6B21\u8BA1\u5212\uFF0C\u6216\u4F7F\u7528\u53F3\u4E0A\u89D2\u201C\u5BFC\u5165\u65E5\u5FD7\u201D\u8F7D\u5165\u5E73\u53F0\u590D\u73B0\u65E5\u5FD7\u540E\u5F00\u59CB\u56DE\u653E\u3002</span>`;
   }
-  /** 接收规范化后的 MoveList 并重置时间轴。 */
+  /** 接收规范化后的 MoveList 并重置时间轴；拓扑就绪后返回，指标在后台更新。 */
   async loadMoves(moves, _decisionTrace, loadPortReplenishments, sourceName, resultUrl, analysisResultId, cpuTimeMs = null, recomputeCount = 0) {
     if (!moves.length) throw new Error("MoveList \u4E3A\u7A7A\uFF0C\u65E0\u6CD5\u5EFA\u7ACB\u53EF\u89C6\u5316\u56DE\u653E");
     this.pause();
@@ -4363,7 +4380,7 @@ var VisualizationWorkspace = class {
     this.showSingleResult();
     this.setTopologyVisible(true);
     this.render(snapshot);
-    await this.renderPerformance();
+    void this.renderPerformance();
   }
   /** 绑定文件、时间轴、播放和快捷控制事件。 */
   bindEvents() {
@@ -8179,7 +8196,9 @@ function openSearchTreeOptionsDialog() {
 function openHeuristicSettingsDialog() {
   document.getElementById("heuristicSettingsError").textContent = "";
   const configured = state.options.heuristicConfig && typeof state.options.heuristicConfig === "object" ? state.options.heuristicConfig : null;
-  document.getElementById("heuristicCustomWeightsEnabled").checked = Boolean(configured);
+  document.getElementById("heuristicSelectionMode").value = configured?.selection_mode || "priority";
+  document.getElementById("heuristicRandomSeed").value = configured?.random_seed ?? 0;
+  document.getElementById("heuristicCustomWeightsEnabled").checked = Boolean(configured && Object.keys(DEFAULT_HEURISTIC_WEIGHTS).some((key) => key in configured));
   document.querySelectorAll("[data-heuristic-weight]").forEach((input) => {
     const key = input.dataset.heuristicWeight;
     input.value = configured?.[key] ?? DEFAULT_HEURISTIC_WEIGHTS[key];
@@ -8193,18 +8212,27 @@ function openHeuristicSettingsDialog() {
   document.getElementById("heuristicSettingsDialog").showModal();
 }
 function updateHeuristicWeightEditorState() {
-  const enabled = document.getElementById("heuristicCustomWeightsEnabled")?.checked === true;
+  const random = document.getElementById("heuristicSelectionMode").value === "random";
+  document.getElementById("heuristicRandomSeed").disabled = !random;
+  document.getElementById("heuristicCustomWeightsEnabled").disabled = random;
+  const enabled = !random && document.getElementById("heuristicCustomWeightsEnabled")?.checked === true;
   document.querySelectorAll("[data-heuristic-weight]").forEach((input) => {
     input.disabled = !enabled;
   });
   document.getElementById("heuristicWeightFields")?.classList.toggle("is-disabled", !enabled);
 }
 function saveHeuristicSettings() {
+  const random = document.getElementById("heuristicSelectionMode").value === "random";
+  const seedText = document.getElementById("heuristicRandomSeed").value.trim();
+  const seed = Number(seedText);
+  if (random && (!seedText || !Number.isSafeInteger(seed))) throw new Error("\u968F\u673A\u79CD\u5B50\u5FC5\u987B\u662F\u5B89\u5168\u8303\u56F4\u5185\u7684\u6574\u6570");
   for (const key of ["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"]) {
     const input = document.querySelector(`[data-heuristic-dialog-option="${key}"]:checked`);
     state.options[key] = Number(input?.value);
   }
-  if (document.getElementById("heuristicCustomWeightsEnabled").checked) {
+  if (random) {
+    state.options.heuristicConfig = { selection_mode: "random", random_seed: seed };
+  } else if (document.getElementById("heuristicCustomWeightsEnabled").checked) {
     const weights = {};
     document.querySelectorAll("[data-heuristic-weight]").forEach((input) => {
       const value = Number(input.value);
@@ -9960,6 +9988,7 @@ document.getElementById("openSearchTreeOptionsDialogButton").addEventListener("c
 document.getElementById("openHeuristicSettingsDialogButton").addEventListener("click", openHeuristicSettingsDialog);
 document.getElementById("heuristicSettingsDialogCancel").addEventListener("click", () => document.getElementById("heuristicSettingsDialog").close());
 document.getElementById("heuristicCustomWeightsEnabled").addEventListener("change", updateHeuristicWeightEditorState);
+document.getElementById("heuristicSelectionMode").addEventListener("change", updateHeuristicWeightEditorState);
 document.getElementById("heuristicSettingsForm").addEventListener("submit", (event) => {
   event.preventDefault();
   try {

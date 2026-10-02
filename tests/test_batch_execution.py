@@ -1,72 +1,33 @@
-"""批量运行、校验配额、Baseline 与取消状态测试。"""
+"""批量编排、校验配额、进度和取消状态的集成边界测试。
+
+Baseline 与单次失败制品分别由专用测试文件覆盖；本文件只验证批量调度边界，
+保存边界使用确定夹具，不写入真实 exports。
+"""
 
 from __future__ import annotations
 
-import copy
 from concurrent.futures import Future
 import inspect
 import json
-import os
-import re
-import tempfile
 import threading
 import time
 import unittest
 import zipfile
 from io import BytesIO
-from contextlib import nullcontext
-from pathlib import Path
 from unittest.mock import patch
 
 import app.backend.application as config_server
-from app.backend.algorithms.interface import discover_other_algorithms
-from app.backend.execution.plan_builder import _runtime_clean, build_process_recipes
-from src.compiler import compile_problem
-from app.backend.application import (
-    BuildState,
-    LoggedPlanError,
-    build_round_update,
-    build_route,
-    create_workspace_test,
-    delete_workspace_device,
-    delete_workspace_test,
-    execute_plan,
-    extract_init_data,
-    get_workspace_device,
-    import_workspace_device,
-    list_workspace_devices,
-    update_workspace_test,
-)
-from scripts.replay_config_log import load_plan_from_log
-from tests.support.plan_fixtures import DEVICE_PATH, PSE300_DEVICE_PATH, job as _job, route as _route
+from app.backend.application import LoggedPlanError, execute_plan, extract_init_data
+from tests.support.plan_fixtures import PSE300_DEVICE_PATH, device_recording, job as _job, route as _route
+from tests.support.run_artifact_fixtures import saved_run_fields
 
-
-ROOT = Path(__file__).resolve().parents[1]
-EDITOR_PATH = ROOT / "app" / "frontend" / "config_editor.html"
-DOCUMENTATION_PAGE_PATH = ROOT / "app" / "frontend" / "documentation.html"
-EDITOR_STYLE_PATH = ROOT / "app" / "frontend" / "assets" / "config_editor.css"
-EDITOR_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "config_editor.ts"
-DOCUMENTATION_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "documentation_page.ts"
-
-
-def _editor_source() -> str:
-    """合并页面模板、样式和 TypeScript 源码，供前端结构回归断言使用。"""
-    return "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (EDITOR_PATH, EDITOR_STYLE_PATH, EDITOR_SCRIPT_PATH)
-    )
-
-
-def _device_recording() -> list[dict]:
-    """读取包含 AlgInit 的项目内实时重算小设备案例。"""
-    return json.loads(DEVICE_PATH.read_text(encoding="utf-8"))
 
 class BatchExecutionTests(unittest.TestCase):
     """批量运行、校验配额、Baseline 与取消状态。"""
 
     def setUp(self) -> None:
         """为每个案例提取同一份设备拓扑。"""
-        self.recording = _device_recording()
+        self.recording = device_recording()
         self.device = extract_init_data(self.recording)
 
     def test_batch_run_uses_selected_strategy_for_every_test_in_current_group(self) -> None:
@@ -114,8 +75,7 @@ class BatchExecutionTests(unittest.TestCase):
         with (
             patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
-            patch.object(config_server, "save_result", return_value="result-id"),
-            patch.object(config_server, "save_reproduction_log", return_value="log-id"),
+            patch.object(config_server, "save_run_artifacts", return_value=saved_run_fields()),
         ):
             result = config_server.run_workspace_test_batch(
                 "device-batch", "回归", "loadlock-macro", {"seed": 9}, maximum_workers=2, hongye_check=False,
@@ -196,8 +156,7 @@ class BatchExecutionTests(unittest.TestCase):
         with (
             patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
-            patch.object(config_server, "save_result", return_value="result-id"),
-            patch.object(config_server, "save_reproduction_log", return_value="log-id"),
+            patch.object(config_server, "save_run_artifacts", return_value=saved_run_fields()),
             # Baseline 持久化会全量解析工作区数据集目录，本测试只验证批量
             # 编排状态机，不验证文件写入，mock 掉以避免慢 I/O 拖垮断言时限。
             patch.object(config_server, "_persist_workspace_baseline", return_value=True),
@@ -268,8 +227,7 @@ class BatchExecutionTests(unittest.TestCase):
         with (
             patch.object(config_server._batch_service, "ProcessPoolExecutor", ImmediateProcessExecutor),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
-            patch.object(config_server, "save_result", return_value="result-id"),
-            patch.object(config_server, "save_reproduction_log", return_value="log-id"),
+            patch.object(config_server, "save_run_artifacts", return_value=saved_run_fields()),
         ):
             result = config_server._execute_workspace_test_batch(
                 device,
@@ -350,8 +308,7 @@ class BatchExecutionTests(unittest.TestCase):
         with (
             patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
-            patch.object(config_server, "save_result", return_value="result-id"),
-            patch.object(config_server, "save_reproduction_log", return_value="log-id"),
+            patch.object(config_server, "save_run_artifacts", return_value=saved_run_fields()),
             patch.object(config_server, "_persist_workspace_baseline", return_value=True),
         ):
             result = config_server.run_workspace_test_batch(
@@ -381,8 +338,7 @@ class BatchExecutionTests(unittest.TestCase):
         with (
             patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
-            patch.object(config_server, "save_result", return_value="result-id"),
-            patch.object(config_server, "save_reproduction_log", return_value="log-id"),
+            patch.object(config_server, "save_run_artifacts", return_value=saved_run_fields()),
             patch.object(config_server, "_persist_workspace_baseline", return_value=True),
         ):
             result = config_server.run_workspace_test_batch(
@@ -404,8 +360,7 @@ class BatchExecutionTests(unittest.TestCase):
                 "makespan": 20.0, "moveCount": 3, "validation": "passed",
                 "output": {"MoveList": []}, "reproductionLog": [],
             }),
-            patch.object(config_server, "save_result", return_value="result-id"),
-            patch.object(config_server, "save_reproduction_log", return_value="log-id"),
+            patch.object(config_server, "save_run_artifacts", return_value=saved_run_fields()),
             patch.object(config_server, "_persist_workspace_baseline", return_value=True),
         ):
             result = config_server.run_workspace_test_batch(
@@ -507,45 +462,6 @@ class BatchExecutionTests(unittest.TestCase):
         self.assertEqual("t01_案例_A.json", manifest["items"][0]["logFile"])
         self.assertEqual("", manifest["items"][1]["logFile"])
 
-    def test_non_heuristic_batch_creates_baseline_and_reports_improvement(self) -> None:
-        """其他策略首次运行时应先补算 Heuristic，并返回相对改善。"""
-        test_case = {
-            "id": "test-baseline", "name": "Baseline 案例", "group": "回归",
-            "roundCount": 1, "options": {},
-            "rounds": [{"currentTime": 0, "jobs": [_job("A", "BatchRoute", "LP1")]}],
-        }
-        device = {
-            "id": "device-baseline", "name": "fixture.json", "device": self.device,
-            "routes": [_route("BatchRoute", "PM1,PM2", "BatchRecipe")],
-            "cleans": [], "tests": [test_case],
-        }
-
-        def fake_execute(plan):
-            makespan = 100.0 if plan["strategy"] == "heuristic" else 80.0
-            return {
-                "ok": True, "totalElapsedMs": 12.0, "cpuTimeMs": 7.0,
-                "makespan": makespan, "moveCount": 3, "validation": "passed",
-                "output": {"MoveList": []}, "reproductionLog": [],
-            }
-
-        with (
-            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
-            patch.object(config_server, "execute_plan", side_effect=fake_execute),
-            patch.object(config_server, "_persist_workspace_baseline", return_value=True),
-            patch.object(config_server, "save_result", return_value="result-id"),
-            patch.object(config_server, "save_reproduction_log", return_value="log-id"),
-        ):
-            result = config_server.run_workspace_test_batch(
-                "device-baseline", "回归", "loadlock-macro", {}, maximum_workers=1, hongye_check=False,
-            )
-
-        item = result["items"][0]
-        self.assertEqual("succeeded", item["baseline"]["status"])
-        self.assertEqual(100.0, item["baseline"]["makespan"])
-        self.assertEqual(80.0, item["makespan"])
-        self.assertEqual(-20.0, item["makespanDelta"])
-        self.assertEqual(20.0, item["improvementPercent"])
-        self.assertEqual(0, item["robotWaferDwellTime"]["sampleCount"])
 
     def test_external_validation_failure_keeps_metrics_and_baseline_comparison(self) -> None:
         """外部算法校验失败后仍应保留原始指标和 Baseline 对比。"""
@@ -578,8 +494,7 @@ class BatchExecutionTests(unittest.TestCase):
             patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
             patch.object(config_server, "_persist_workspace_baseline", return_value=True),
-            patch.object(config_server, "save_result", return_value="result-id"),
-            patch.object(config_server, "save_reproduction_log", return_value="log-id"),
+            patch.object(config_server, "save_run_artifacts", return_value=saved_run_fields()),
         ):
             result = config_server.run_workspace_test_batch(
                 "device-external-invalid", "回归", "other_alg:demo", {}, maximum_workers=1, hongye_check=False,
@@ -639,126 +554,8 @@ class BatchExecutionTests(unittest.TestCase):
         self.assertTrue(fluctuation_plan["executionTimingEnabled"])
         self.assertNotIn("compatibilityMode", fluctuation_plan)
 
-    def test_batch_skip_baseline_skips_heuristic(self) -> None:
-        """勾选“跳过Baseline”后批量运行不再连带执行本地 heuristic。"""
-        test_case = {
-            "id": "test-skip-baseline", "name": "跳过基线案例", "group": "回归",
-            "roundCount": 1, "options": {},
-            "rounds": [{"currentTime": 0, "jobs": [_job("A", "BatchRoute", "LP1")]}],
-        }
-        device = {
-            "id": "device-skip-baseline", "name": "fixture.json", "device": self.device,
-            "routes": [_route("BatchRoute", "PM1,PM2", "BatchRecipe")],
-            "cleans": [], "tests": [test_case],
-        }
-        executed_strategies: list = []
 
-        def fake_execute(plan):
-            executed_strategies.append(str(plan["strategy"]))
-            return {
-                "ok": True, "totalElapsedMs": 12.0, "cpuTimeMs": 7.0,
-                "makespan": 80.0, "moveCount": 3, "validation": "passed",
-                "output": {"MoveList": []}, "reproductionLog": [],
-            }
 
-        with (
-            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
-            patch.object(config_server, "execute_plan", side_effect=fake_execute),
-            patch.object(config_server, "_persist_workspace_baseline", return_value=True),
-            patch.object(config_server, "save_result", return_value="result-id"),
-            patch.object(config_server, "save_reproduction_log", return_value="log-id"),
-        ):
-            result = config_server.run_workspace_test_batch(
-                "device-skip-baseline", "回归", "other_alg:demo", {},
-                skip_baseline=True, maximum_workers=1, hongye_check=False,
-            )
-
-        # 只执行主策略，不再补算 heuristic baseline。
-        self.assertEqual(["other_alg:demo"], executed_strategies)
-        item = result["items"][0]
-        self.assertEqual("succeeded", item["status"])
-        self.assertEqual("skipped", item["baseline"]["status"])
-        self.assertNotIn("improvementPercent", item)
-        self.assertNotIn("baseline", test_case)
-
-    def test_skip_baseline_ignores_existing_baseline(self) -> None:
-        """跳过 Baseline 时不读取已有基线记录，统一返回 skipped 占位。"""
-        test_case = {
-            "id": "test-skip-baseline-existing", "name": "已有基线跳过案例", "group": "回归",
-            "roundCount": 1, "options": {},
-            "rounds": [{"currentTime": 0, "jobs": [_job("A", "BatchRoute", "LP1")]}],
-        }
-        device = {
-            "id": "device-skip-baseline-existing", "name": "fixture.json", "device": self.device,
-            "routes": [_route("BatchRoute", "PM1,PM2", "BatchRecipe")],
-            "cleans": [], "tests": [test_case],
-        }
-        # 放入指纹匹配的有效旧基线，验证跳过时不读取它。
-        matching_fingerprint = config_server._workspace_baseline_fingerprint(device, test_case)
-        test_case["baseline"] = {
-            "status": "succeeded", "fingerprint": matching_fingerprint, "makespan": 1.0,
-        }
-        executed_strategies: list = []
-
-        def fake_execute(plan):
-            executed_strategies.append(str(plan["strategy"]))
-            return {
-                "ok": True, "totalElapsedMs": 12.0, "cpuTimeMs": 7.0,
-                "makespan": 80.0, "moveCount": 3, "validation": "passed",
-                "output": {"MoveList": []}, "reproductionLog": [],
-            }
-
-        with (
-            patch.object(config_server, "execute_plan", side_effect=fake_execute),
-            patch.object(config_server, "_persist_workspace_baseline", return_value=True),
-        ):
-            result, baseline, error = config_server._execute_workspace_test_with_baseline(
-                device, test_case, "other_alg:demo", {}, skip_baseline=True,
-            )
-
-        self.assertEqual(["other_alg:demo"], executed_strategies)
-        self.assertIsNotNone(result)
-        self.assertIsNone(error)
-        self.assertEqual("skipped", baseline["status"])
-        self.assertEqual(matching_fingerprint, test_case["baseline"]["fingerprint"])
-
-    def test_skip_baseline_heuristic_keeps_result_without_persisting(self) -> None:
-        """heuristic 主策略 + 跳过 Baseline：照常执行，但不回写基线记录。"""
-        test_case = {
-            "id": "test-skip-baseline-heuristic", "name": "启发式跳过基线案例", "group": "回归",
-            "roundCount": 1, "options": {},
-            "rounds": [{"currentTime": 0, "jobs": [_job("A", "BatchRoute", "LP1")]}],
-        }
-        device = {
-            "id": "device-skip-baseline-heuristic", "name": "fixture.json", "device": self.device,
-            "routes": [_route("BatchRoute", "PM1,PM2", "BatchRecipe")],
-            "cleans": [], "tests": [test_case],
-        }
-        executed_strategies: list = []
-
-        def fake_execute(plan):
-            executed_strategies.append(str(plan["strategy"]))
-            return {
-                "ok": True, "totalElapsedMs": 12.0, "cpuTimeMs": 7.0,
-                "makespan": 80.0, "moveCount": 3, "validation": "passed",
-                "output": {"MoveList": []}, "reproductionLog": [],
-            }
-
-        with (
-            patch.object(config_server, "execute_plan", side_effect=fake_execute),
-            patch.object(config_server, "_persist_workspace_baseline", return_value=True) as persist_mock,
-        ):
-            result, baseline, error = config_server._execute_workspace_test_with_baseline(
-                device, test_case, "heuristic", {}, skip_baseline=True,
-            )
-
-        self.assertIsNotNone(result)
-        self.assertIsNone(error)
-        # 只执行一次 heuristic 主策略；结果不落库、不写入工作区基线。
-        self.assertEqual(["heuristic"], executed_strategies)
-        self.assertEqual("skipped", baseline["status"])
-        persist_mock.assert_not_called()
-        self.assertNotIn("baseline", test_case)
 
     def test_robot_wafer_dwell_time_tracks_pick_place_and_swap_waits(self) -> None:
         """机器人持片驻留应统计 Pick/Place 间隙，并正确衔接 Swap 的收发晶圆。"""
@@ -780,112 +577,8 @@ class BatchExecutionTests(unittest.TestCase):
         self.assertAlmostEqual(3.0, metrics["medianSeconds"])
         self.assertAlmostEqual(4.0, metrics["maxSeconds"])
 
-    def test_heuristic_refreshes_changed_baseline_result(self) -> None:
-        """再次运行 Heuristic 时，应以本次 makespan 和 CPU Time 覆盖旧值。"""
-        test_case = {
-            "id": "test-refresh", "name": "刷新案例", "group": "回归",
-            "roundCount": 1, "options": {},
-            "rounds": [{"currentTime": 0, "jobs": [_job("A", "BatchRoute", "LP1")]}],
-        }
-        device = {
-            "id": "device-refresh", "name": "fixture.json", "device": self.device,
-            "routes": [_route("BatchRoute", "PM1,PM2", "BatchRecipe")],
-            "cleans": [], "tests": [test_case],
-        }
-        fingerprint = config_server._workspace_baseline_fingerprint(device, test_case)
-        test_case["baseline"] = {
-            "status": "succeeded", "fingerprint": fingerprint,
-            "makespan": 90.0, "cpuTimeMs": 4.0,
-        }
-        refreshed = {
-            "ok": True, "totalElapsedMs": 13.0, "cpuTimeMs": 8.0,
-            "makespan": 100.0, "moveCount": 3, "validation": "passed",
-            "output": {"MoveList": []}, "reproductionLog": [],
-        }
 
-        with (
-            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
-            patch.object(config_server, "execute_plan", return_value=refreshed),
-            patch.object(config_server, "_persist_workspace_baseline", return_value=True),
-            patch.object(config_server, "save_result", return_value="result-id"),
-            patch.object(config_server, "save_reproduction_log", return_value="log-id"),
-        ):
-            result = config_server.run_workspace_test_batch(
-                "device-refresh", "回归", "heuristic", {}, maximum_workers=1, hongye_check=False,
-            )
 
-        baseline = result["items"][0]["baseline"]
-        self.assertEqual(100.0, baseline["makespan"])
-        self.assertEqual(8.0, baseline["cpuTimeMs"])
-
-    def test_failed_baseline_replaces_old_data_and_reports_reason(self) -> None:
-        """Baseline 重算失败时不能继续返回旧数据，但其他策略结果仍可展示。"""
-        test_case = {
-            "id": "test-failed-base", "name": "失败案例", "group": "回归",
-            "roundCount": 1, "options": {"seed": 2},
-            "rounds": [{"currentTime": 0, "jobs": [_job("A", "BatchRoute", "LP1")]}],
-            "baseline": {
-                "status": "succeeded", "fingerprint": "stale",
-                "makespan": 50.0, "cpuTimeMs": 2.0,
-            },
-        }
-        device = {
-            "id": "device-failed-base", "name": "fixture.json", "device": self.device,
-            "routes": [_route("BatchRoute", "PM1,PM2", "BatchRecipe")],
-            "cleans": [], "tests": [test_case],
-        }
-
-        def fake_execute(plan):
-            if plan["strategy"] == "heuristic":
-                raise LoggedPlanError("Baseline 无可行解", [])
-            return {
-                "ok": True, "totalElapsedMs": 12.0, "cpuTimeMs": 7.0,
-                "makespan": 80.0, "moveCount": 3, "validation": "passed",
-                "output": {"MoveList": []}, "reproductionLog": [],
-            }
-
-        with (
-            patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
-            patch.object(config_server, "execute_plan", side_effect=fake_execute),
-            patch.object(config_server, "_persist_workspace_baseline", return_value=True),
-            patch.object(config_server, "save_result", return_value="result-id"),
-            patch.object(config_server, "save_reproduction_log", return_value="log-id"),
-        ):
-            result = config_server.run_workspace_test_batch(
-                "device-failed-base", "回归", "loadlock-macro", {}, maximum_workers=1, hongye_check=False,
-            )
-
-        item = result["items"][0]
-        self.assertTrue(item["ok"])
-        self.assertEqual("failed", item["baseline"]["status"])
-        self.assertIn("Baseline 无可行解", item["baseline"]["error"])
-        self.assertNotIn("improvementPercent", item)
-        self.assertNotIn("makespan", item["baseline"])
-
-    def test_configuration_change_invalidates_baseline_fingerprint(self) -> None:
-        """测试配置变化后，旧 Baseline 应立即变为 invalid。"""
-        test_case = {
-            "id": "test-invalid", "name": "失效案例", "group": "回归",
-            "roundCount": 1, "options": {"seed": 1},
-            "rounds": [{"currentTime": 0, "jobs": [_job("A", "BatchRoute", "LP1")]}],
-        }
-        device = {
-            "id": "device-invalid", "name": "fixture.json", "device": self.device,
-            "routes": [_route("BatchRoute", "PM1,PM2", "BatchRecipe")],
-            "cleans": [], "tests": [test_case],
-        }
-        test_case["baseline"] = {
-            "status": "succeeded",
-            "fingerprint": config_server._workspace_baseline_fingerprint(device, test_case),
-            "makespan": 100.0,
-            "cpuTimeMs": 5.0,
-        }
-        test_case["options"]["seed"] = 9
-        config_server._invalidate_stale_device_baselines(device)
-
-        self.assertEqual("invalid", test_case["baseline"]["status"])
-        self.assertNotIn("makespan", test_case["baseline"])
-        self.assertIn("配置已修改", test_case["baseline"]["error"])
 
     def test_background_batch_can_be_cancelled_without_overwriting_status(self) -> None:
         """取消后排队和运行项都应立即终止，迟到的算法结果不能覆盖状态。"""
@@ -919,6 +612,7 @@ class BatchExecutionTests(unittest.TestCase):
         with (
             patch.object(config_server, "get_workspace_batch_run_context", return_value=device),
             patch.object(config_server, "execute_plan", side_effect=fake_execute),
+            patch.object(config_server, "save_run_artifacts", return_value=saved_run_fields(has_output=False)),
         ):
             initial = config_server.start_workspace_test_batch(
                 "device-cancel", "回归", "heuristic", {}, maximum_workers=1, hongye_check=False,
@@ -964,65 +658,3 @@ class BatchExecutionTests(unittest.TestCase):
         self.assertIn("read_analysis_preferences()", get_source)
         self.assertIn('path == "/api/preferences/analysis-settings"', put_source)
         self.assertIn("update_analysis_preferences", put_source)
-
-    def test_single_external_failure_keeps_elapsed_time_and_baseline_visible(self) -> None:
-        """单次外部算法失败也应返回并绘制耗时及 Baseline 对比。"""
-        html = _editor_source()
-        post_source = inspect.getsource(config_server.ConfigEditorHandler.do_POST)
-
-        self.assertIn('"metricsAvailable": True', post_source)
-        self.assertIn('strategy.casefold().startswith("other_alg:")', post_source)
-        self.assertIn("showFailedResultMetrics(runResult)", html)
-        self.assertIn('setResultMetric("Time", "失败前耗时"', html)
-        self.assertIn('setResultMetric("Makespan", "Makespan / Baseline"', html)
-
-    def test_single_failure_result_keeps_machine_replay_context(self) -> None:
-        """单次算法失败的部分 MoveList 应保存计划与 update，供拓扑回放。"""
-        error = LoggedPlanError(
-            "Machine 死锁",
-            [{
-                "Describe": "AlgSchedule",
-                "Info": {"CurrentTime": 0, "Materials": [{"ID": 101}]},
-            }],
-            failure_output={
-                "MoveList": [{"MoveID": 1, "StartTime": 0, "EndTime": 8}],
-                "Feedback": ["调度失败: Machine 无可执行搬运意图"],
-                "FailureContext": {
-                    "Stage": "algorithm-deadlock",
-                    "Code": "DEADLOCK.NO_EXECUTABLE_ACTION",
-                    "Category": "no-executable-action",
-                    "Message": "Machine 无可执行搬运意图",
-                },
-            },
-        )
-        replay_plan = {"strategy": "heuristic", "rounds": [{"currentTime": 0}]}
-        saved_artifacts = []
-
-        def fake_save_result(artifact):
-            """捕获单次失败结果文件，避免写入真实导出目录。"""
-            saved_artifacts.append(artifact)
-            return "deadlock-result"
-
-        with patch.object(config_server, "save_result", side_effect=fake_save_result):
-            fields = config_server._logged_failure_result_fields(
-                error,
-                replay_plan=replay_plan,
-            )
-
-        self.assertEqual("/api/results/deadlock-result", fields["resultUrl"])
-        self.assertEqual(1, fields["moveCount"])
-        self.assertEqual(
-            "DEADLOCK.NO_EXECUTABLE_ACTION",
-            fields["deadlock"]["Code"],
-        )
-        artifact = saved_artifacts[0]
-        self.assertEqual("heuristic", artifact["ReplayContext"]["plan"]["strategy"])
-        self.assertEqual(101, artifact["ReplayContext"]["updates"][0]["Materials"][0]["ID"])
-        post_source = inspect.getsource(config_server.ConfigEditorHandler.do_POST)
-        self.assertIn("replay_plan=replay_plan", post_source)
-
-        editor_source = _editor_source()
-        self.assertLess(
-            editor_source.index("prepareWorkspaceView(runResult)"),
-            editor_source.index("if (!response.ok || !runResult.ok)"),
-        )

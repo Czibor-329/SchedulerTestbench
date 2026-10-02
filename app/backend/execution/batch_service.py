@@ -25,7 +25,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from app.backend.execution.batch_results import BatchResultAssembler
+from app.backend.execution.batch_results import BatchResultAssembler, build_failure_result_artifact
 from app.backend.execution.plan_builder import (
     _finite_number,
     _round_cjob_rows,
@@ -52,6 +52,7 @@ class BatchServiceDependencies:
     get_workspace_batch_run_context: Callable[..., Dict[str, Any]]
     save_result: Callable[[Dict[str, Any]], str]
     save_reproduction_log: Callable[[Sequence[Mapping[str, Any]]], str]
+    save_run_artifacts: Callable[..., Dict[str, Any]]
     persist_workspace_baseline: Callable[..., bool]
     workspace_catalog_guard: Callable[..., Any]
     read_workspace_catalog_unlocked: Callable[[Path], Dict[str, Any]]
@@ -283,46 +284,30 @@ def _log_response_fields(log_id: str) -> Dict[str, str]:
     return {"logUrl": f"/api/logs/{log_id}", "logFileName": filename}
 
 
-def _failure_replay_updates(error: LoggedPlanError) -> List[Dict[str, Any]]:
-    """从失败运行的复现事件中恢复已经发送给算法的各轮 update。"""
-    return [
-        deepcopy(dict(entry["Info"]))
-        for entry in error.reproduction_log
-        if isinstance(entry, Mapping)
-        and entry.get("Describe") == "AlgSchedule"
-        and isinstance(entry.get("Info"), Mapping)
-    ]
-
-
 def _logged_failure_result_fields(
     error: LoggedPlanError,
     *,
     replay_plan: Optional[Mapping[str, Any]] = None,
+    persist: bool = True,
 ) -> Dict[str, Any]:
-    """保存失败 MoveList 及回放上下文，并生成稳定的诊断入口字段。"""
+    """提取失败指标和死锁字段；persist=False 供统一运行制品事务使用。"""
     if error.failure_output is None:
         return {}
-    artifact = deepcopy(dict(error.failure_output))
-    if replay_plan is not None:
-        artifact["ReplayContext"] = {
-            "schema": "machine-replay-context-v1",
-            "plan": deepcopy(dict(replay_plan)),
-            "updates": _failure_replay_updates(error),
-        }
-    result_id = save_result(artifact)
+    artifact = build_failure_result_artifact(error, replay_plan)
     moves = list(artifact.get("MoveList") or [])
     result = {
-        "resultId": result_id,
-        "resultUrl": f"/api/results/{result_id}",
-        "ganttUrl": (
-            "/movelist_gantt_viewer.html?"
-            f"src=/api/results/{result_id}"
-        ),
         "validation": "failed",
         "validationIssues": deepcopy(error.validation_issues),
         "moveCount": len(moves),
         "makespan": _segment_end(moves),
     }
+    if persist:
+        result_id = save_result(artifact)
+        result.update({
+            "resultId": result_id,
+            "resultUrl": f"/api/results/{result_id}",
+            "ganttUrl": f"/movelist_gantt_viewer.html?src=/api/results/{result_id}",
+        })
     failure_context = artifact.get("FailureContext")
     deadlock = (
         {
@@ -1115,6 +1100,7 @@ def _execute_workspace_test_batch(
     cancel_event: Optional[threading.Event] = None,
     execution_timing_enabled: bool = False,
     clean_validation_types: Optional[Sequence[str]] = None,
+    batch_id: str = "",
 ) -> Dict[str, Any]:
     """执行已解析的批量测试，并通过回调报告每项状态变化。
 
@@ -1123,6 +1109,7 @@ def _execute_workspace_test_batch(
     自动补算的 Baseline 使用同一闸门，不会绕过内存上限。
     """
     worker_count = max(1, min(int(maximum_workers), MAXIMUM_BATCH_WORKERS, len(tests)))
+    batch_id = batch_id or uuid.uuid4().hex
     validation_count = max(
         1, min(int(validation_workers), MAXIMUM_VALIDATION_WORKERS, len(tests)),
     )
@@ -1160,13 +1147,18 @@ def _execute_workspace_test_batch(
         validation_limiter.semaphore if validation_limiter is not None else None
     )
     result_assembler = BatchResultAssembler(
-        save_result=save_result,
-        save_reproduction_log=save_reproduction_log,
-        log_response_fields=_log_response_fields,
+        save_run_artifacts=_services().save_run_artifacts,
         logged_failure_fields=_logged_failure_result_fields,
         baseline_comparison=_baseline_comparison,
         robot_wafer_dwell_time=_robot_wafer_dwell_time,
         is_external_algorithm=_is_external_algorithm,
+        run_context={
+            "batchId": batch_id,
+            "deviceId": str(device.get("id") or ""),
+            "deviceName": str(device.get("name") or ""),
+            "group": group,
+            "strategy": strategy,
+        },
     )
 
     def run_one(index: int, test_case: Mapping[str, Any]) -> Dict[str, Any]:
@@ -1181,6 +1173,7 @@ def _execute_workspace_test_batch(
                 "testName": str(test_case.get("name") or f"测试 {index + 1}"),
             })
         run_started = time.perf_counter()
+        selected_plan = None
         try:
             selected_plan = build_workspace_batch_plan(
                 device, test_case, strategy, options,
@@ -1221,17 +1214,16 @@ def _execute_workspace_test_batch(
                         index, test_case, error, baseline, selected_plan,
                         strategy, run_started,
                     )
-                return {
-                    **result_assembler.plain_failure(index, test_case, error),
-                    "baseline": deepcopy(baseline),
-                }
+                return result_assembler.plain_failure(
+                    index, test_case, error, selected_plan, baseline,
+                )
             if cancel_event is not None and cancel_event.is_set():
-                return result_assembler.cancelled(index, test_case)
+                return result_assembler.cancelled(index, test_case, selected_plan)
             return result_assembler.success(
                 index, test_case, result, baseline, selected_plan,
             )
         except Exception as error:  # noqa: BLE001
-            return result_assembler.plain_failure(index, test_case, error)
+            return result_assembler.plain_failure(index, test_case, error, selected_plan)
 
     items: List[Dict[str, Any]] = []
     executor = ThreadPoolExecutor(max_workers=worker_count)
@@ -1239,6 +1231,18 @@ def _execute_workspace_test_batch(
         executor.submit(run_one, index, test_case): index
         for index, test_case in enumerate(tests)
     }
+    def report_finished_item(future: Any) -> None:
+        """即使用户已取消批次，也把迟到的制品地址交还结果卡片，不恢复运行状态。"""
+        if future.cancelled() or progress_callback is None:
+            return
+        try:
+            item = future.result()
+        except Exception:
+            return
+        progress_callback(int(item["index"]), item)
+
+    for future in futures:
+        future.add_done_callback(report_finished_item)
     pending = set(futures)
     cancelled = False
     try:
@@ -1250,12 +1254,15 @@ def _execute_workspace_test_batch(
             for future in done:
                 item = future.result()
                 items.append(item)
-                if progress_callback is not None:
-                    progress_callback(int(item["index"]), item)
     finally:
         if cancelled:
             for future in pending:
-                future.cancel()
+                if future.cancel():
+                    index = futures[future]
+                    item = result_assembler.cancelled(index, tests[index])
+                    items.append(item)
+                    if progress_callback is not None:
+                        progress_callback(index, item)
             executor.shutdown(wait=False, cancel_futures=True)
         else:
             executor.shutdown(wait=True)
@@ -1266,18 +1273,23 @@ def _execute_workspace_test_batch(
             )
         if validation_limiter is not None:
             validation_limiter.close()
+    cancelled = cancelled or bool(cancel_event is not None and cancel_event.is_set())
     items.sort(key=lambda item: int(item["index"]))
     succeeded = sum(bool(item["ok"]) for item in items)
     batch_result = {
+        "batchId": batch_id,
         "ok": not cancelled and succeeded == len(items),
         "strategy": strategy,
         "group": group,
         "status": "cancelled" if cancelled else "completed",
         "completed": len(items),
-        "testCount": len(items),
+        "testCount": len(tests),
         "succeeded": succeeded,
-        "failed": len(items) - succeeded,
-        "cancelled": len(tests) - len(items) if cancelled else 0,
+        "failed": sum(item.get("status") == "failed" for item in items),
+        "cancelled": (
+            len(tests) - sum(item.get("status") != "cancelled" for item in items)
+            if cancelled else 0
+        ),
         "workerCount": worker_count,
         "validationWorkers": validation_count if validation_limited else 0,
         "processIsolation": process_isolation_enabled,
@@ -1423,7 +1435,16 @@ def start_workspace_test_batch(
         """原子更新批处理条目与汇总计数。"""
         with _BATCH_RUNS_LOCK:
             batch = _BATCH_RUNS.get(batch_id)
-            if batch is None or cancel_event.is_set() or batch.get("status") == "cancelled":
+            if batch is None:
+                return
+            if cancel_event.is_set() or batch.get("status") == "cancelled":
+                artifact_fields = {
+                    "artifactId", "summaryUrl", "contextUrl", "resultId", "resultUrl",
+                    "ganttUrl", "logUrl", "logFileName",
+                }
+                batch["items"][index].update({
+                    key: value for key, value in values.items() if key in artifact_fields
+                })
                 return
             batch["status"] = "running"
             batch["items"][index].update(deepcopy(dict(values)))
@@ -1452,6 +1473,7 @@ def start_workspace_test_batch(
                 cancel_event=cancel_event,
                 execution_timing_enabled=execution_timing_enabled,
                 clean_validation_types=clean_validation_types,
+                batch_id=batch_id,
             )
             with _BATCH_RUNS_LOCK:
                 batch = _BATCH_RUNS.get(batch_id)

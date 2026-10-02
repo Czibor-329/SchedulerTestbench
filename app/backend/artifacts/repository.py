@@ -1,4 +1,8 @@
-"""调度结果、复现日志、Baseline 与批量服务装配。"""
+"""运行制品的公共访问、临时数据清理、批量日志下载与 Baseline 持久化。
+
+结构化运行目录由 run_artifacts 拥有；本模块协调旧平铺制品的兼容
+读取和统一保留期，不参与算法执行、回放指标计算或设备交换包编码。
+"""
 
 from __future__ import annotations
 
@@ -8,6 +12,21 @@ from app.backend.execution.run_state import *
 from app.backend.execution.service import execute_plan
 from app.backend.workspace.repository import *
 from app.backend.workspace.catalog_service import *
+from app.backend.artifacts.run_artifacts import (
+    clear_run_artifacts,
+    read_run_manifest,
+    read_run_output,
+    read_run_replay_context,
+    read_run_reproduction_log,
+    read_run_summary,
+    remove_expired_run_artifacts,
+    save_run_artifacts as _save_run_artifacts,
+)
+
+
+def _shared_export_root() -> bool:
+    """限定结构化清理与旧平铺目录属于同一导出根，支持隔离的旧接口测试。"""
+    return RESULT_EXPORT_DIR.parent == LOG_EXPORT_DIR.parent == RUN_EXPORT_DIR.parent == EXPORT_DIR
 
 
 def remove_expired_artifacts(
@@ -36,6 +55,11 @@ def remove_expired_artifacts(
         "logs": _REPRODUCTION_LOGS_LOCK,
     }
     with _EXPORTS_LOCK:
+        if _shared_export_root():
+            deleted_counts.update(remove_expired_run_artifacts(
+                maximum_age_seconds=maximum_age_seconds,
+                current_time=current_time,
+            ))
         for name, directory in (("results", RESULT_EXPORT_DIR), ("logs", LOG_EXPORT_DIR)):
             if not directory.is_dir():
                 continue
@@ -70,18 +94,62 @@ def save_result(output: Dict[str, Any]) -> str:
     return result_id
 
 
-def read_result(result_id: str) -> Optional[Dict[str, Any]]:
-    """读取一次运行的甘特图数据；服务重启后可从磁盘恢复。"""
+def save_run_artifacts(
+    output: Optional[Mapping[str, Any]],
+    reproduction_log: Sequence[Mapping[str, Any]],
+    summary: Mapping[str, Any],
+    *,
+    execution_logs: Sequence[Any] = (),
+) -> Dict[str, str]:
+    """以一个事务保存运行制品，写入前统一清理新目录和旧平铺格式。
+
+    输出可为空；摘要提供测试归属和指标，可读阶段日志与复现事件分开保存。
+    返回值保持结果和日志 API 字段，并追加制品 ID、摘要及上下文地址。
+    """
+    with _EXPORTS_LOCK:
+        remove_expired_artifacts()
+        return _save_run_artifacts(output, reproduction_log, summary, execution_logs=execution_logs)
+
+
+def read_result(result_id: str, *, include_replay_context: bool = True) -> Optional[Dict[str, Any]]:
+    """读取累计输出；轻量模式不读取独立上下文，旧平铺格式仍可恢复。"""
+    value = read_run_output(result_id, include_replay_context=include_replay_context)
+    if value is not None:
+        return value
     with _RESULTS_LOCK:
         value = _RESULTS.get(result_id)
         if value is not None:
-            return deepcopy(value)
+            value = deepcopy(value)
+            if not include_replay_context:
+                value.pop("ReplayContext", None)
+            return value
     if len(result_id) == 32 and all(char in "0123456789abcdef" for char in result_id.lower()):
         path = RESULT_EXPORT_DIR / f"{result_id}.json"
         if path.is_file():
             value = json.loads(path.read_text(encoding="utf-8"))
-            return deepcopy(value) if isinstance(value, Mapping) else None
+            if isinstance(value, Mapping):
+                value = dict(value)
+                if not include_replay_context:
+                    value.pop("ReplayContext", None)
+                return value
     return None
+
+
+def read_replay_context(result_id: str) -> Optional[Dict[str, Any]]:
+    """读取冻结回放输入；只有旧平铺格式才需要解析完整结果。"""
+    context = read_run_replay_context(result_id)
+    if context is not None:
+        return context
+    if read_run_manifest(result_id) is not None:
+        return None
+    result = read_result(result_id)
+    context = result.get("ReplayContext") if isinstance(result, Mapping) else None
+    return deepcopy(dict(context)) if isinstance(context, Mapping) else None
+
+
+def read_result_summary(result_id: str) -> Optional[Dict[str, Any]]:
+    """读取运行摘要，不加载完整 MoveList 或复现事件。"""
+    return read_run_summary(result_id)
 
 
 def save_reproduction_log(entries: Sequence[Mapping[str, Any]]) -> str:
@@ -101,6 +169,9 @@ def save_reproduction_log(entries: Sequence[Mapping[str, Any]]) -> str:
 
 def read_reproduction_log(log_id: str) -> Optional[List[Dict[str, Any]]]:
     """读取一次运行的可复现日志；服务重启后可从磁盘恢复。"""
+    value = read_run_reproduction_log(log_id)
+    if value is not None:
+        return value
     with _REPRODUCTION_LOGS_LOCK:
         value = _REPRODUCTION_LOGS.get(log_id)
         if value is not None:
@@ -179,11 +250,13 @@ def build_workspace_batch_log_archive(batch_id: str) -> Tuple[bytes, str]:
 def clear_exported_artifacts() -> Dict[str, int]:
     """删除全部已导出的结果和复现日志，并同步清空内存缓存。
 
-    返回值包含结果和日志各自删除的 JSON 文件数量。该操作只处理两个专用导出
-    目录顶层的 JSON 文件，不会影响设备、测试集或其他运行数据。
+    返回值包含结果和日志各自删除的制品数量。该操作处理专用运行目录和旧平铺
+    JSON，不会影响设备、测试集、迁移备份或其他导出文件。
     """
     deleted_counts = {"results": 0, "logs": 0}
     with _EXPORTS_LOCK:
+        if _shared_export_root():
+            deleted_counts.update(clear_run_artifacts())
         for name, directory in (("results", RESULT_EXPORT_DIR), ("logs", LOG_EXPORT_DIR)):
             if not directory.is_dir():
                 continue

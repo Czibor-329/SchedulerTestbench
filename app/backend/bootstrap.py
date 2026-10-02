@@ -246,6 +246,9 @@ WORKSPACE_STORE_PATH = DATA_DIR / "datasets"
 LEGACY_WORKSPACE_STORE_PATH = ALGORITHM_ROOT / "results" / "config_editor_workspaces.json"
 RESULT_EXPORT_DIR = EXPORT_DIR / "results"
 LOG_EXPORT_DIR = EXPORT_DIR / "logs"
+RUN_EXPORT_DIR = EXPORT_DIR / "runs"
+# 运行制品独立于设备主数据版本；旧版 results/logs 平铺文件视为 v1。
+ARTIFACT_SCHEMA_VERSION = 2
 MODEL_CHECKPOINT_DIR = DATA_DIR / "checkpoints"
 ALLOWED_CHECKPOINT_SUFFIXES = frozenset({".npz", ".pt", ".pth", ".ckpt"})
 _RESULTS: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()

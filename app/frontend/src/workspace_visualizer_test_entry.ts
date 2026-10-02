@@ -38,3 +38,4 @@ export { mountReplayInspectorDock, setReplayDockExpanded, setReplayInspectorExpa
 export { projectTopologyTransfers } from "./topology_transfer_projection";
 export { waferDispatchProgress, renderWaferDispatchProgress, updateWaferProgressPanel } from "./wafer_dispatch_progress";
 export { testGroupSummaryCsv } from "./group_analysis_view";
+export { movelistResultSourceUrl } from "./result_artifact_urls";

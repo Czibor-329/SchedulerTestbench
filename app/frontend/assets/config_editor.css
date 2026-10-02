@@ -177,7 +177,7 @@
     .heuristic-weight-toggle small { margin-top: 2px; color: var(--muted); font-size: 11px; }
     .heuristic-weight-grid { display: grid; margin-top: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
     .heuristic-weight-grid > label { display: grid; gap: 5px; color: #334966; font-size: 12px; font-weight: 700; }
-    .heuristic-weight-grid input { width: 100%; min-height: 38px; margin: 0; padding: 7px 9px; border: 1px solid #cdd6e2; border-radius: 8px; background: #fff; font: inherit; }
+    .heuristic-weight-grid input, .heuristic-weight-grid select { width: 100%; min-height: 38px; margin: 0; padding: 7px 9px; border: 1px solid #cdd6e2; border-radius: 8px; background: #fff; font: inherit; }
     .heuristic-weight-grid small { color: var(--muted); font-size: 10px; font-weight: 500; line-height: 1.35; }
     .heuristic-weight-grid.is-disabled { opacity: .55; }
     .heuristic-settings-error { min-height: 16px; color: var(--red); font-size: 11px; }

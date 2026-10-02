@@ -3692,7 +3692,9 @@ function openHeuristicSettingsDialog() {
   document.getElementById("heuristicSettingsError").textContent = "";
   const configured = state.options.heuristicConfig && typeof state.options.heuristicConfig === "object"
     ? state.options.heuristicConfig : null;
-  document.getElementById("heuristicCustomWeightsEnabled").checked = Boolean(configured);
+  document.getElementById("heuristicSelectionMode").value = configured?.selection_mode || "priority";
+  document.getElementById("heuristicRandomSeed").value = configured?.random_seed ?? 0;
+  document.getElementById("heuristicCustomWeightsEnabled").checked = Boolean(configured && Object.keys(DEFAULT_HEURISTIC_WEIGHTS).some(key => key in configured));
   document.querySelectorAll("[data-heuristic-weight]").forEach(input => {
     const key = input.dataset.heuristicWeight;
     input.value = configured?.[key] ?? DEFAULT_HEURISTIC_WEIGHTS[key];
@@ -3708,18 +3710,27 @@ function openHeuristicSettingsDialog() {
 
 /** 根据自定义开关启用或禁用权重输入，避免未启用时造成已生效的误解。 */
 function updateHeuristicWeightEditorState() {
-  const enabled = document.getElementById("heuristicCustomWeightsEnabled")?.checked === true;
+  const random = document.getElementById("heuristicSelectionMode").value === "random";
+  document.getElementById("heuristicRandomSeed").disabled = !random;
+  document.getElementById("heuristicCustomWeightsEnabled").disabled = random;
+  const enabled = !random && document.getElementById("heuristicCustomWeightsEnabled")?.checked === true;
   document.querySelectorAll("[data-heuristic-weight]").forEach(input => { input.disabled = !enabled; });
   document.getElementById("heuristicWeightFields")?.classList.toggle("is-disabled", !enabled);
 }
 
 /** 校验并提交 Heuristic 设置；所有权重仅随当前测试请求发送。 */
 function saveHeuristicSettings() {
+  const random = document.getElementById("heuristicSelectionMode").value === "random";
+  const seedText = document.getElementById("heuristicRandomSeed").value.trim();
+  const seed = Number(seedText);
+  if (random && (!seedText || !Number.isSafeInteger(seed))) throw new Error("随机种子必须是安全范围内的整数");
   for (const key of ["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"]) {
     const input = document.querySelector(`[data-heuristic-dialog-option="${key}"]:checked`);
     state.options[key] = Number(input?.value);
   }
-  if (document.getElementById("heuristicCustomWeightsEnabled").checked) {
+  if (random) {
+    state.options.heuristicConfig = { selection_mode: "random", random_seed: seed };
+  } else if (document.getElementById("heuristicCustomWeightsEnabled").checked) {
     const weights = {};
     document.querySelectorAll("[data-heuristic-weight]").forEach(input => {
       const value = Number(input.value);
@@ -5631,6 +5642,7 @@ document.getElementById("openSearchTreeOptionsDialogButton").addEventListener("c
 document.getElementById("openHeuristicSettingsDialogButton").addEventListener("click", openHeuristicSettingsDialog);
 document.getElementById("heuristicSettingsDialogCancel").addEventListener("click", () => document.getElementById("heuristicSettingsDialog").close());
 document.getElementById("heuristicCustomWeightsEnabled").addEventListener("change", updateHeuristicWeightEditorState);
+document.getElementById("heuristicSelectionMode").addEventListener("change", updateHeuristicWeightEditorState);
 document.getElementById("heuristicSettingsForm").addEventListener("submit", event => {
   event.preventDefault();
   try { saveHeuristicSettings(); } catch (error) { document.getElementById("heuristicSettingsError").textContent = error.message; }

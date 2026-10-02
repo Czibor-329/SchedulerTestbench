@@ -34,6 +34,8 @@ from app.backend import bootstrap as _bootstrap_module
 from app.backend.algorithms import interface as _algorithm_interface_module
 from app.backend.api import http as _http_module
 from app.backend.artifacts import repository as _artifacts_module
+from app.backend.artifacts import run_artifacts as _run_artifacts_module
+from app.backend import schedule_analysis_service as _schedule_analysis_service_module
 from app.backend.preferences import repository as _preferences_module
 from app.backend.execution import algorithm_runtime as _algorithm_runtime_module
 from app.backend.execution import batch_service as _batch_service_module
@@ -59,6 +61,8 @@ _APPLICATION_MODULES = (
     _workspace_exchange_module,
     _workspace_transfer_jobs_module,
     _artifacts_module,
+    _run_artifacts_module,
+    _schedule_analysis_service_module,
     _preferences_module,
     _wiring_module,
     _http_module,
@@ -68,6 +72,7 @@ _BATCH_DEPENDENCY_NAMES = frozenset({
     "get_workspace_batch_run_context",
     "save_result",
     "save_reproduction_log",
+    "save_run_artifacts",
     "_persist_workspace_baseline",
     "_workspace_catalog_guard",
     "_read_workspace_catalog_unlocked",

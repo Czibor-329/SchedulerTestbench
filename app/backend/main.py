@@ -41,6 +41,7 @@ def main() -> None:
     if legacy_directory_present:
         log_startup(f"已自动迁移旧版目录：workspaces/ + devices/ → {WORKSPACE_STORE_PATH.name}/ v{WORKSPACE_STORE_VERSION}")
         log_startup("原目录已移入 data/migration-backups/，确认新版数据正常后可清理")
+    # 旧结果原地兼容读取；启动只按保留期清理，不解析或转换历史大文件。
     removed_artifacts = remove_expired_artifacts()
     removed_artifact_count = sum(removed_artifacts.values())
     if removed_artifact_count:

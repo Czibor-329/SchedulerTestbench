@@ -31,6 +31,7 @@ from app.backend.artifacts.repository import (
     _persist_workspace_baseline,
     save_reproduction_log,
     save_result,
+    save_run_artifacts,
 )
 
 
@@ -41,6 +42,7 @@ def build_batch_service_dependencies() -> _batch_service.BatchServiceDependencie
         get_workspace_batch_run_context=get_workspace_batch_run_context,
         save_result=save_result,
         save_reproduction_log=save_reproduction_log,
+        save_run_artifacts=save_run_artifacts,
         persist_workspace_baseline=_persist_workspace_baseline,
         workspace_catalog_guard=_workspace_catalog_guard,
         read_workspace_catalog_unlocked=_read_workspace_catalog_unlocked,

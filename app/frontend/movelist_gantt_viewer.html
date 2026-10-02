@@ -1273,6 +1273,7 @@
   <div class="tooltip" id="tooltip"></div>
 
   <script src="/assets/gantt_execution_compare.js"></script>
+  <script src="/assets/result_artifact_urls.js"></script>
   <script>
     "use strict";
 
@@ -3172,7 +3173,8 @@
       const sources = params.getAll("src"), names = params.getAll("name");
       if (!sources.length) return;
       const loaded = await Promise.allSettled(sources.map(async (source, index) => {
-        const response = await fetch(source, { cache: "no-store" });
+        const resultSource = window.ResultArtifactUrls.movelistResultSourceUrl(source, window.location.href);
+        const response = await fetch(resultSource, { cache: "no-store" });
         if (!response.ok) throw new Error(`${names[index] || source}: HTTP ${response.status}`);
         const content = await response.blob();
         const safeName = String(names[index] || `scheduler-result-${index + 1}`)
