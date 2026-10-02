@@ -79,12 +79,14 @@ def _run_frontend(*, fail_fast: bool) -> int:
         workspace_output = build_root / "workspace_visualizer_logic.js"
         route_output = build_root / "route_editor_logic.js"
         gantt_output = build_root / "gantt_execution_compare.js"
+        gantt_semantics_output = build_root / "gantt_move_semantics.js"
         run_workspace_output = build_root / "run_workspace.js"
         result_card_run_queue_output = build_root / "result_card_run_queue.js"
         entries = (
             (FRONTEND_ROOT / "src" / "workspace_visualizer_test_entry.ts", workspace_output),
             (FRONTEND_ROOT / "src" / "route_editor_logic.ts", route_output),
             (FRONTEND_ROOT / "src" / "gantt_execution_compare.ts", gantt_output),
+            (FRONTEND_ROOT / "src" / "gantt_move_semantics.ts", gantt_semantics_output),
             (FRONTEND_ROOT / "src" / "run_workspace_test_entry.ts", run_workspace_output),
             (
                 FRONTEND_ROOT / "src" / "result_card_run_queue_test_entry.ts",
@@ -111,6 +113,7 @@ def _run_frontend(*, fail_fast: bool) -> int:
         environment["CT_WORKSPACE_VISUALIZER_TEST_BUILD"] = str(workspace_output)
         environment["CT_ROUTE_EDITOR_TEST_BUILD"] = str(route_output)
         environment["CT_GANTT_COMPARE_TEST_BUILD"] = str(gantt_output)
+        environment["CT_GANTT_SEMANTICS_TEST_BUILD"] = str(gantt_semantics_output)
         environment["CT_RUN_WORKSPACE_TEST_BUILD"] = str(run_workspace_output)
         environment["CT_RESULT_CARD_RUN_QUEUE_TEST_BUILD"] = str(
             result_card_run_queue_output
