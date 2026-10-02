@@ -330,16 +330,22 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         self.assertIn('id="nextDiffBtn"', viewer)
         self.assertIn("function timeWithPlan(current, planned, estimated = false)", viewer)
         self.assertIn("hasExecutionTimeDifference(bar.rec, durationOnly)", viewer)
-        self.assertIn("function describeMove(raw)", viewer)
-        self.assertIn("max-width: 320px", viewer)
-        self.assertIn('class="tooltip-description"', viewer)
-        self.assertIn('class="tooltip-description">${escapeHtml(describeMove(raw))}', viewer)
-        self.assertIn('旋转${destination ? `到 ${destination}` : ""}', viewer)
-        self.assertNotIn("Move描述:", viewer)
-        self.assertIn("case 4:", viewer)
-        self.assertIn("const robot = firstTooltipText(raw && raw.Robot", viewer)
-        self.assertIn("dom.tooltip.innerHTML = header + rows + description", viewer)
-        self.assertNotIn("GanttMoveSemantics", viewer)
+
+    def test_gantt_uses_shared_move_descriptions_in_tooltip_and_selection(self) -> None:
+        """悬浮和选中详情共用当前可测试的 Move 语义模块，页面只负责安全显示。"""
+        viewer = (
+            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('src="/assets/gantt_move_semantics.js"', viewer)
+        self.assertIn('id="tooltip"', viewer)
+        self.assertIn('id="moveDescription"', viewer)
+        self.assertGreaterEqual(
+            len(re.findall(r"escapeHtml\(\s*GanttMoveSemantics\.describeMove\(", viewer)),
+            2,
+            "悬浮提示和选中详情都必须转义共用语义模块返回的纯文本",
+        )
+        self.assertNotIn("function describeMove(raw)", viewer)
 
     def test_result_preview_and_group_analysis_use_main_area(self) -> None:
         """结果预览应保持简洁，并提供独立的测试组分析入口。"""
