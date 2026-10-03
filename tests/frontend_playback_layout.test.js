@@ -51,12 +51,13 @@ test("时间轴与四项指标位于顶层紧凑状态条，观察窗口默认�
   assert.match(css, /\.replay-inspector-dock \{[^}]*position: absolute;[^}]*right: 0;/);
 });
 
-test("回放底层保留大网格，机器内部无重复网格和装饰", () => {
+test("回放底图与机器内部均不显示网格，机器内部无重复装饰", () => {
   const css = fs.readFileSync(
     path.join(__dirname, "../app/frontend/assets/config_editor.css"), "utf8",
   );
   assert.match(css, /\.reference-grid-canvas \{[^}]*background-image:\s*none;/);
-  assert.match(css, /\.topology-canvas-area \{[^}]*background-size: 75px 75px;/);
+  assert.match(css, /\.topology-canvas-area \{[^}]*background-image:\s*none;/);
+  assert.match(css, /\.topology-unified-canvas \{[^}]*background-image:\s*none;/);
   assert.match(css, /\.topology-machine-frame::before, \.topology-machine-frame > span \{ display: none; \}/);
   assert.match(css, /\.equipment-external-name-port \{ top:\s*108px; \}/);
   assert.match(css, /\.petri-control-panel \.decision-lens-panel:empty \{ display: none; \}/);

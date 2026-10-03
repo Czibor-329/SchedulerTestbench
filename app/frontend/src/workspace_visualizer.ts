@@ -2,7 +2,8 @@
  * MoveList 结果展示与回放页面。
  *
  * 本模块负责把调度输出回放成设备、机器人、晶圆和腔室门的可观察状态，并管理
- * 时间轴、播放控制、结果加载和本地文件导入。性能指标通过服务端 API 获取；
+ * 时间轴、播放控制、结果加载和本地文件导入。摄影输入在这里冻结，图片及 ZIP
+ * 导出由 topology_photography_export 管理。性能指标通过服务端 API 获取；
  * 本文件不实现分析规则，也不持久化业务数据。
  */
 
@@ -25,6 +26,12 @@ import { replayLogContext, replayCommittedGenerations } from "./replay_log_conte
 import { ReplayObjectInspectorController, type ReplayObjectSelection, replayActionMatchesObject, replayObjectIsCurrent } from "./replay_object_inspector";
 import { projectReplayWaferDestinations, type ReplayPlanGeneration } from "./replay_wafer_destinations";
 import { annotateReplayTopology } from "./topology_scene_annotations";
+import { photographyCandidateTimes } from "./topology_photography";
+import {
+  mountTopologyPhotography,
+  type TopologyPhotographyController,
+  type TopologyPhotographySession,
+} from "./topology_photography_export";
 import type {
   ActivityCategory,
   BottleneckUtilizationSummary,
@@ -3252,9 +3259,10 @@ export function renderEquipmentTopology(
     ? Math.max(...allPositions.map(position => position.topPixels + (position.heightPixels ?? TOPOLOGY_ITEM_SIZE) / 2))
     : TOPOLOGY_ITEM_SIZE;
   const verticalOffset = TOPOLOGY_CANVAS_PADDING - minimumTop;
-  let canvasHeight = Math.max(
+  // 底部 LoadPort 外置名称超出设备外框，回放和摄影都需保留标签留白。
+  const canvasHeight = Math.max(
     520,
-    Math.ceil(maximumBottom + verticalOffset + TOPOLOGY_CANVAS_PADDING),
+    Math.ceil(maximumBottom + verticalOffset + TOPOLOGY_CANVAS_PADDING + TOPOLOGY_EXTERNAL_LABEL_CLEARANCE),
   );
   for (const [name, position] of modulePositions) {
     modulePositions.set(name, { ...position, topPixels: position.topPixels + verticalOffset });
@@ -4019,6 +4027,7 @@ export function renderSchedulePerformance(performance: SchedulePerformance): str
 export class VisualizationWorkspace {
   private readonly root: Document;
   private readonly elements: WorkspaceElements;
+  private readonly photography: TopologyPhotographyController;
   private device: DeviceDefinition | null = null;
   private analysisRoutes: Array<Record<string, any>> = [];
   private analysisRounds: Array<Record<string, any>> = [];
@@ -4081,6 +4090,10 @@ export class VisualizationWorkspace {
         this.render();
       },
     });
+    this.photography = mountTopologyPhotography(
+      root, startTime => this.createPhotographySession(startTime), () => this.pause(),
+      () => ({ currentTime: this.time, endTime: finiteNumber(this.elements.range.max) }),
+    );
     const selectedFilters = this.elements.actionStatusFilters
       .filter(item => item.checked)
       .map(item => item.value as ActionDiagnosticStatus);
@@ -4107,6 +4120,7 @@ export class VisualizationWorkspace {
 
   /** 更新当前设备拓扑；已有 MoveList 会立即按新拓扑重绘。 */
   setDevice(device: DeviceDefinition | null): void {
+    this.photography.cancel();
     this.device = device ? structuredClone(device) : null;
     if (this.moves.length) {
       this.render();
@@ -4290,6 +4304,8 @@ export class VisualizationWorkspace {
     this.analysisRequestVersion += 1;
     this.replaySourceLoading = false;
     this.pause();
+    this.photography.cancel();
+    this.photography.setAvailable(false);
     this.liveSolving = true;
     this.objectInspector.clear();
     this.moves = [];
@@ -4402,6 +4418,7 @@ export class VisualizationWorkspace {
     this.analysisRequestVersion += 1;
     this.replaySourceLoading = false;
     this.pause();
+    this.photography.destroy();
   }
 
   /** 清除旧测试结果，避免切换测试后继续误看上一份 MoveList。 */
@@ -4410,6 +4427,8 @@ export class VisualizationWorkspace {
     this.analysisRequestVersion += 1;
     this.replaySourceLoading = false;
     this.pause();
+    this.photography.cancel();
+    this.photography.setAvailable(false);
     this.liveSolving = false;
     this.moves = [];
     this.objectInspector.clear();
@@ -4469,6 +4488,7 @@ export class VisualizationWorkspace {
   ): Promise<void> {
     if (!moves.length) throw new Error("MoveList 为空，无法建立可视化回放");
     this.pause();
+    this.photography.cancel();
     this.liveSolving = false;
     this.moves = moves;
     this.loadPortReplenishments = loadPortReplenishments;
@@ -4508,6 +4528,38 @@ export class VisualizationWorkspace {
     this.setTopologyVisible(true);
     this.render(snapshot);
     void this.renderPerformance();
+  }
+
+  /** 冻结回放输入供离屏摄影；startTime 缺省时拍当前帧，指定时独立生成该时刻画面，不推进页面时间轴。 */
+  private createPhotographySession(startTime?: number): TopologyPhotographySession | null {
+    if (!this.moves.length || this.liveSolving) return null;
+    const moves = structuredClone(this.moves);
+    const device = structuredClone(this.device);
+    const replenishments = structuredClone(this.loadPortReplenishments);
+    const plan = structuredClone(this.replayPlan);
+    const generations = structuredClone(this.replayGenerations);
+    const current = buildWorkspaceSnapshot(moves, device, startTime ?? this.time, replenishments);
+    // 播放时 DOM 有刷新节流，摄影前同步当前快照，避免照片与文件时刻相差一个边界。
+    if (startTime === undefined) this.render(current);
+    const renderSnapshot = (snapshot: WorkspaceSnapshot): string => {
+      const topologySnapshot = snapshotWithFullDeviceModules(snapshot, device);
+      const stage = this.elements.stage.ownerDocument.createElement("div");
+      stage.innerHTML = renderEquipmentTopology(topologySnapshot, null, undefined, device);
+      // 离屏画面使用冻结的计划注释，与当前画布保持相同的晶圆下一站和等待信息。
+      const replayInput = {
+        snapshot: topologySnapshot, moves, device, plan, generations,
+        resolveRoute: (job: string) => routeByPJobName(plan, job),
+      };
+      annotateReplayTopology(stage, topologySnapshot, projectReplayWaferDestinations(replayInput), replayInput);
+      return stage.innerHTML;
+    };
+    return {
+      sourceName: this.sourceName,
+      times: photographyCandidateTimes(moves, replenishments.map(item => item.time), current.time, current.endTime, device),
+      currentMarkup: startTime === undefined ? this.elements.stage.innerHTML : renderSnapshot(current),
+      snapshotAt: time => buildWorkspaceSnapshot(moves, device, time, replenishments),
+      renderSnapshot,
+    };
   }
 
   /** 绑定文件、时间轴、播放和快捷控制事件。 */
@@ -4670,6 +4722,7 @@ export class VisualizationWorkspace {
   /** 绘制当前时间对应的设备快照。 */
   private render(prebuiltSnapshot?: WorkspaceSnapshot): void {
     if (!this.moves.length && !this.liveSolving) return;
+    this.photography.setAvailable(!this.liveSolving && Boolean(this.moves.length));
     const snapshot = prebuiltSnapshot ?? buildWorkspaceSnapshot(
       this.moves,
       this.device,
@@ -4927,6 +4980,8 @@ export class VisualizationWorkspace {
   /** 显示加载状态并保留明确的系统反馈。 */
   private setLoading(loading: boolean, message: string): void {
     this.pause();
+    this.photography.cancel();
+    this.photography.setAvailable(false);
     this.setTopologyVisible(false);
     this.elements.toolbar.hidden = false;
     this.elements.content.hidden = true;
@@ -4942,6 +4997,8 @@ export class VisualizationWorkspace {
   /** 在工作台空状态中显示可恢复的错误。 */
   private showError(message: string): void {
     this.pause();
+    this.photography.cancel();
+    this.photography.setAvailable(false);
     this.setTopologyVisible(false);
     this.elements.toolbar.hidden = false;
     this.elements.content.hidden = true;

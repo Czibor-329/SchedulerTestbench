@@ -1689,9 +1689,20 @@
     /* -------- 参考 PySide 拓扑控制台：中央画布 + 右侧控制面板 -------- */
     .playback-toolbar-placeholder { display: none !important; }
     .playback-workbench { position: relative; }
-    .playback-log-import { position: absolute; z-index: 70; top: 8px; right: 8px; }
+    .playback-log-import { position: absolute; z-index: 70; top: 8px; right: 8px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; max-width: calc(100% - 16px); }
     .playback-log-import .btn { min-height: 36px; padding: 0 13px; border-radius: 4px; box-shadow: 0 2px 7px rgba(35, 58, 91, .12); }
     .playback-log-import .btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+    .topology-photography { position: relative; }
+    .topology-photography-menu { position: absolute; top: calc(100% + 6px); right: 0; width: 290px; max-width: calc(100vw - 32px); padding: 5px; border: 1px solid var(--line); border-radius: 5px; background: #fff; box-shadow: 0 5px 18px rgba(35,58,91,.16); }
+    .topology-photography-menu button { display: block; width: 100%; padding: 10px; border: 0; border-radius: 3px; color: var(--ink); background: #fff; text-align: left; }
+    .topology-photography-menu button:hover, .topology-photography-menu button:focus-visible { background: var(--brand-soft); outline: 2px solid var(--brand); outline-offset: -2px; }
+    .topology-photography-menu button span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+    .topology-photography-options { display: grid; gap: 5px; padding: 10px; border-block: 1px solid var(--line); }
+    .topology-photography-options label { font-size: 12px; }
+    .topology-photography-options input { width: 100%; min-height: 32px; margin: 0 0 5px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 3px; }
+    .topology-photography-feedback { display: flex; width: 100%; justify-content: flex-end; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+    .topology-photography-feedback:has(#visualPhotographyStatus:empty) { display: none; }
+    .topology-photography-feedback [data-error="true"] { max-width: 360px; color: var(--red); }
     /* 回放诊断取消页脚留白；分析面板留在正常文档流，在短页时自动靠下。 */
     body:has([data-tab-view="playback"].active) .app-content { width: 100%; max-width: none; padding-right: 0; padding-left: 0; padding-bottom: 0; }
     [data-tab-view="playback"].active .playback-workbench { display: flex; flex-direction: column; min-height: calc(100dvh - 28px); }
@@ -2278,7 +2289,7 @@
 .petri-console-layout .petri-control-panel { position: sticky; top: 18px; grid-column: 2; grid-row: 1; max-height: none; width: auto; margin-top: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
 .topology-canvas-area { min-width: 0; grid-column: 1; grid-row: 1; }
 .petri-console-layout .petri-control-panel .model-evaluation-section { grid-column: auto; }
-.topology-unified-canvas { display: grid; grid-template-columns: 180px minmax(1000px, 1fr); gap: 0; border: 1px solid var(--line); background: #f6f8fb; background-image: linear-gradient(rgba(112,132,156,.09) 1px, transparent 1px), linear-gradient(90deg, rgba(112,132,156,.09) 1px, transparent 1px); background-size: 75px 75px; overflow: visible; }
+.topology-unified-canvas { display: grid; grid-template-columns: 180px minmax(1000px, 1fr); gap: 0; border: 1px solid var(--line); background: #f6f8fb; background-image: none; overflow: visible; }
 .topology-unified-canvas .topology-front-slot-card { position: static; width: auto; max-height: none; overflow: visible; margin: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 10px; }
 .topology-unified-canvas .device-stage { min-width: 0; overflow: visible; border: 0; }
 .topology-unified-canvas .reference-grid-canvas { background: transparent; border: 0; }
@@ -2429,7 +2440,7 @@
 .petri-console-layout {
   position: relative; display: block; width: 100%; height: 100%; min-width: 0; margin: 0;
 }
-.topology-canvas-area { position: absolute; inset: 0; overflow: auto; box-sizing: border-box; background: #f6f8fb; background-image: linear-gradient(rgba(112,132,156,.09) 1px, transparent 1px), linear-gradient(90deg, rgba(112,132,156,.09) 1px, transparent 1px); background-size: 75px 75px; padding: 44px 420px 80px 0; }
+.topology-canvas-area { position: absolute; inset: 0; overflow: auto; box-sizing: border-box; background: #f6f8fb; background-image: none; padding: 44px 420px 80px 0; }
 .topology-canvas-area .topology-unified-canvas { margin: 0 auto; border: 0; background: transparent; }
 .replay-inspector-dock {
   position: absolute; z-index: 50; top: 44px; right: 0; bottom: 36px;
