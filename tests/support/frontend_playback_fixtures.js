@@ -9,12 +9,12 @@ function playbackDocument() {
     "visualDecisionLens", "visualActiveMoves", "visualSource", "visualCurrentTime",
     "visualTotalTime", "visualProgressText", "visualMoveText", "visualWaferText",
     "visualTimeline", "visualPlayButton", "visualSpeed", "visualFileInput", "visualOpenGantt",
-    "visualPerformance", "performanceWindow", "visualReplayKpis",
+    "visualPerformance", "performanceWindow", "visualReplayKpis", "visualReplayObjectDetails",
   ];
   const elements = new Map(identifiers.map(id => {
     const attributes = new Map();
     return [id, {
-      id, hidden: false, innerHTML: "", textContent: "", value: "", disabled: false,
+      id, dataset: {}, hidden: false, innerHTML: "", textContent: "", value: "", disabled: false,
       style: { setProperty() {}, getPropertyValue: () => "" },
       classList: { add() {}, remove() {}, toggle() {} },
       addEventListener() {},
@@ -25,11 +25,14 @@ function playbackDocument() {
       closest: () => null,
     }];
   }));
-  return {
+  const document = {
+    activeElement: null,
     getElementById: id => elements.get(id) ?? null,
     querySelector: () => null,
     querySelectorAll: () => [],
   };
+  for (const element of elements.values()) element.ownerDocument = document;
+  return document;
 }
 
 /** 构造只有一个加工动作的结果；endTime 明确表示时间轴终点。 */

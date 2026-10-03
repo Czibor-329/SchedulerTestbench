@@ -961,7 +961,7 @@ function applyDeviceTopology(device, deviceName, rawRobotSlots = {}) {
     .sort(natural);
   state.robotNames = Object.keys(state.device.Robots).sort(natural);
   state.robotScopes = Object.fromEntries(Object.entries(state.device.Robots).map(([name, robot]) => [name, [...new Set(Object.values(robot.ArmInfo || {}).filter(arm => arm.IsEnable !== false).flatMap(arm => arm.AccessibleStations || []))]]));
-  if (!activeRunContext && !state.batchResult) visualizationWorkspace.setDevice(state.device);
+  if (!activeRunContext && !state.batchResult && !visualizationWorkspace.hasReplaySource) visualizationWorkspace.setDevice(state.device);
   if (!state.loadPorts.length || !state.processModules.length) throw new Error("设备必须包含 LoadPort 和 ProcessChamber");
 }
 
@@ -2256,7 +2256,7 @@ function applyTestCase(testCase) {
   state.times.length = state.roundCount; state.rounds.length = state.roundCount; state.times[0] = 0;
   normalizeRounds(); normalizePJobRouteConfigs(); state.drawer = null; state.routeDirty = false; state.routeNameChanges.clear();
   state.routeEditingIndex = -1; state.routeEditSnapshot = null; state.routeEditGroupingProfile = null; state.routeEditIsNew = false;
-  if (!activeRunContext && !state.batchResult) {
+  if (!activeRunContext && !state.batchResult && !visualizationWorkspace.hasReplaySource) {
     const visualizationPlan = runtimePJobRouteInstances();
     visualizationWorkspace.setAnalysisConfiguration(visualizationPlan.routes, visualizationPlan.rounds);
     visualizationWorkspace.setReplayPlan(buildPayload());
@@ -4346,7 +4346,7 @@ async function prepareWorkspaceView(result) {
   visualizationWorkspace.setDevice(context.payload.device);
   visualizationWorkspace.setAnalysisConfiguration(context.payload.routes, context.payload.rounds);
   visualizationWorkspace.setReplayPlan(context.payload);
-  await visualizationWorkspace.loadResult(result.resultId, context.name);
+  await visualizationWorkspace.loadResult(result.resultId, context.name, result.logUrl || "");
   const replayDeadlock = visualizationWorkspace.getTerminalDeadlock();
   if (result.deadlock) {
     const serverCode = String(result.deadlock.Code || "").toUpperCase();
@@ -5060,7 +5060,7 @@ function renderBatchItems(items) {
           <div class="batch-result-meta">
             <span class="batch-status">${statusLabels[item.status] || "等待中"}</span>
             ${item.logUrl ? `<a class="btn" href="${escapeHtml(item.logUrl)}" download="${escapeHtml(readableLogFileName(item.testName || `测试-${index + 1}`))}">日志</a>` : `<span class="btn" aria-disabled="true">日志</span>`}
-            ${item.resultUrl ? `<button class="btn primary" type="button" data-playback-result="${escapeHtml(item.resultUrl)}" data-playback-name="${escapeHtml(item.testName || `测试 ${index + 1}`)}">回放</button>` : `<span class="btn" aria-disabled="true">回放</span>`}
+            ${item.resultUrl ? `<button class="btn primary" type="button" data-playback-result="${escapeHtml(item.resultUrl)}" data-playback-name="${escapeHtml(item.testName || `测试 ${index + 1}`)}" data-playback-log="${escapeHtml(item.logUrl || "")}">回放</button>` : `<span class="btn" aria-disabled="true">回放</span>`}
             ${item.ganttUrl ? `<a class="btn" href="${escapeHtml(item.ganttUrl)}" target="_blank">甘特图</a>` : `<span class="btn" aria-disabled="true">甘特图</span>`}
             ${failed ? `<button class="btn danger" type="button" data-batch-error="${escapeHtml(testId)}" aria-label="查看 ${escapeHtml(displayId)} 的报错信息">报错</button>` : ""}
           </div>
@@ -5866,7 +5866,7 @@ document.addEventListener("click", event => {
   }
   const playbackResult = event.target.closest("[data-playback-result]");
   if (playbackResult) {
-    visualizationWorkspace.loadResult(playbackResult.dataset.playbackResult, playbackResult.dataset.playbackName)
+    visualizationWorkspace.loadResult(playbackResult.dataset.playbackResult, playbackResult.dataset.playbackName, playbackResult.dataset.playbackLog || "")
       .then(() => visualizationWorkspace.showPlayback())
       .catch(error => writeTerminal(`$ 回放诊断加载失败\n  ${error.message || "未知错误"}`, true));
     return;

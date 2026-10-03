@@ -39,3 +39,8 @@ export { projectTopologyTransfers } from "./topology_transfer_projection";
 export { waferDispatchProgress, renderWaferDispatchProgress, updateWaferProgressPanel } from "./wafer_dispatch_progress";
 export { testGroupSummaryCsv } from "./group_analysis_view";
 export { movelistResultSourceUrl } from "./result_artifact_urls";
+export { projectReplayWaferDestinations, replayMaterialInstanceKey, replayMoveMaterials, replayWaferWaitingSeconds } from "./replay_wafer_destinations";
+export { replayObjectKey, replayObjectIsCurrent, replayObjectEvents, replayMoveMatchesObject, replayActionMatchesObject, replayObjectGanttUrl,
+  projectReplayObjectDetails, renderReplayObjectDetails, applyReplayObjectSelection, ReplayObjectInspectorController } from "./replay_object_inspector";
+export { annotateReplayTopology } from "./topology_scene_annotations";
+export { replayLogContext, replayCommittedGenerations } from "./replay_log_context";

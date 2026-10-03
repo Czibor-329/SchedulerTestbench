@@ -14,13 +14,17 @@ import {
 import { renderWaferDispatchProgress, updateWaferProgressPanel } from "./wafer_dispatch_progress";
 import { updateReplayThroughput } from "./replay_throughput";
 import { mountAnalysisWorkspace } from "./analysis_workspace";
-import { mountReplayInspectorDock } from "./replay_inspector_dock";
+import { mountReplayInspectorDock, setReplayInspectorExpanded } from "./replay_inspector_dock";
 import { configuredRobotArms, renderParallelRobotArms, robotSlotWafers, type RobotArmDefinition } from "./topology_robot_mechanism";
 import { projectTopologyTransfers } from "./topology_transfer_projection";
 import { projectLoadLockDoors, type LoadLockDoors } from "./topology_loadlock_doors";
 import { atmosphereRailMotion, type AtmosphereRailMotion } from "./topology_atmosphere_rail";
 import { renderRobotSlotRow } from "./topology_robot_slots";
 import { reconstructExecutionLog } from "./gantt_execution_compare";
+import { replayLogContext, replayCommittedGenerations } from "./replay_log_context";
+import { ReplayObjectInspectorController, type ReplayObjectSelection, replayActionMatchesObject, replayObjectIsCurrent } from "./replay_object_inspector";
+import { projectReplayWaferDestinations, type ReplayPlanGeneration } from "./replay_wafer_destinations";
+import { annotateReplayTopology } from "./topology_scene_annotations";
 import type {
   ActivityCategory,
   BottleneckUtilizationSummary,
@@ -353,6 +357,9 @@ export interface ReplayLogPayload {
   moves: MoveRecord[];
   device: DeviceDefinition | null;
   loadPortReplenishments: LoadPortReplenishment[];
+  plan: Record<string, any> | null;
+  updates: Record<string, any>[];
+  generations: ReplayPlanGeneration[];
 }
 
 /**
@@ -411,6 +418,7 @@ export function normalizeReplayLogPayload(payload: unknown): ReplayLogPayload {
   return {
     moves,
     device,
+    ...replayLogContext(entries, topologyInfo),
     loadPortReplenishments: normalizeLoadPortReplenishments({
       ReplayContext: { updates: scheduleUpdates },
     }),
@@ -670,17 +678,18 @@ function materialInstanceId(move: MoveRecord, material: string, index: number): 
 /**
  * 判断算法是否以 ProcessMove 形式记录清洁。
  *
- * 部分算法包不会输出 MoveType=14，而是用没有产品晶圆的 ProcessMove 或附带
- * 清洁配方元数据的 ProcessMove 表达清洁。回放需把两种协议形态统一成清洁状态。
+ * 标准 ProcessMove 以 CleanTaskName 区分清洁与产品加工，普通配方名不参与推断。
+ * 旧结果兼容独立 CleanRecipe 字段及显式空材料列表，不能将配方名称中的 clean
+ * 字样或尚未执行的清洁预告当成当前清洁状态。
  */
 function isCleaningMove(move: MoveRecord): boolean {
   if (move.MoveType === CLEAN_MOVE) return true;
   if (move.MoveType !== PROCESS_MOVE) return false;
   const materialList = move.MatIDList;
   const explicitlyEmpty = Array.isArray(materialList) && materialList.length === 0;
-  const cleanMetadata = [move.CleanRecipe, move.CleanTaskName, move.RecipeName, move.ProcessRecipe]
-    .some(value => /clean|wac|dummy/i.test(String(value ?? "")));
-  return explicitlyEmpty || cleanMetadata;
+  if (String(move.CleanTaskName ?? "").trim()) return true;
+  if (Object.prototype.hasOwnProperty.call(move, "CleanTaskName")) return explicitlyEmpty;
+  return explicitlyEmpty || Boolean(String(move.CleanRecipe ?? "").trim());
 }
 
 /** 返回动作引用的第一个站点。 */
@@ -2017,7 +2026,7 @@ function renderWaferToken(
   const originLabel = origin || "来源未知";
   const surfaceLabel = waferSurfaceLabel(wafer, origin);
   const dummyClass = isDummyWafer(wafer, origin) ? " wafer-dummy" : "";
-  return `<span class="wafer-token wafer-${state}${dummyClass}" style="--wafer-progress:${normalizedProgress * 360}deg" title="晶圆 ${escapeHtml(wafer)}，来源 ${escapeHtml(originLabel)}，${processed ? "已加工" : "未加工"}"><span><b class="wafer-origin-label">${escapeHtml(surfaceLabel)}</b></span></span>`;
+  return `<span class="wafer-token wafer-${state}${dummyClass}" data-replay-kind="wafer" data-replay-wafer="${escapeHtml(wafer)}" role="button" tabindex="0" style="--wafer-progress:${normalizedProgress * 360}deg" title="晶圆 ${escapeHtml(wafer)}，来源 ${escapeHtml(originLabel)}，${processed ? "已加工" : "未加工"}"><span><b class="wafer-origin-label">${escapeHtml(surfaceLabel)}</b></span></span>`;
 }
 
 /** 门始终朝向对应机械手；LoadLock 的上下门由俯视结构单独表达。 */
@@ -2141,7 +2150,7 @@ export function renderFrontSlotOverview(
       const detail = slot.wafer
         ? `${identity} · 晶圆 ${waferSurfaceLabel(slot.wafer, waferOrigins[slot.wafer] ?? "")}，${slot.processed ? "已加工" : "未加工"}`
         : `${identity} · 空槽`;
-      return `<span class="front-slot is-${state}${dummy ? " is-dummy" : ""}" tabindex="0" title="${escapeHtml(detail)}" aria-label="${escapeHtml(detail)}"></span>`;
+      return `<span class="front-slot is-${state}${dummy ? " is-dummy" : ""}" data-replay-kind="slot" data-replay-name="${escapeHtml(module.name)}" data-replay-slot="${slot.slot}" data-replay-wafer="${escapeHtml(slot.wafer)}" role="button" tabindex="0" title="${escapeHtml(detail)}" aria-label="${escapeHtml(detail)}"></span>`;
     }).join("")
   );
   if (!slotRows.length && !robots.length) return "";
@@ -3283,10 +3292,16 @@ export function renderEquipmentTopology(
     if (!position) return "";
     /* 展开后的腔室卡片仍用原 PM 模块名查询候选动作高亮。 */
     const candidateSource = processSourceNames.get(module.name) ?? module.name;
+    const physicalSlot = candidateSource !== module.name ? Number(module.name.slice(candidateSource.length + 1)) : 0;
+    // 名称锚点只取决于设备布局，不受晶圆状态、清洁计数或文字宽度影响。
+    const lowerSingleChamber = layout === "single" && role === "process" && /^PM(?:2|4)$/i.test(module.name);
+    const lowerPairedChamber = physicalSlot === 2 && /@(left|right)$/.test(position.attachmentId ?? "");
+    const nameSide = role === "auxiliary" && isCoolerModule(module.name, module.type) ? "right"
+      : role === "port" || lowerSingleChamber || lowerPairedChamber ? "bottom" : "top";
     const fixedLeft = position.fixedLeftOffsetPixels === undefined
       ? ""
       : `;--fixed-left:calc(50% ${position.fixedLeftOffsetPixels < 0 ? "-" : "+"} ${Math.abs(position.fixedLeftOffsetPixels)}px)`;
-    return `<div class="reference-module-position" style="--module-left:${position.leftPercent}%;--module-top:${position.topPixels}px${fixedLeft}">${renderModule(module, snapshot.waferOrigins, role, destinations.get(candidateSource), layout, roleIndex, position.attachmentId)}</div>`;
+    return `<div class="reference-module-position" data-replay-kind="${physicalSlot ? "slot" : "module"}" data-replay-name="${escapeHtml(candidateSource)}"${physicalSlot ? ` data-replay-slot="${physicalSlot}"` : ""} data-topology-name-side="${nameSide}" role="button" tabindex="0" aria-label="查看 ${escapeHtml(module.name)} 信息" style="--module-left:${position.leftPercent}%;--module-top:${position.topPixels}px${fixedLeft}">${renderModule(module, snapshot.waferOrigins, role, destinations.get(candidateSource), layout, roleIndex, position.attachmentId)}</div>`;
   }).join("");
   const moduleMarkup = [
     renderModuleGroup(processChamberViews.map(item => item.view), "process"),
@@ -3384,7 +3399,7 @@ export function renderEquipmentTopology(
     const fixedLeft = position.fixedLeftOffsetPixels === undefined
       ? ""
       : `;--fixed-left:calc(50% ${position.fixedLeftOffsetPixels < 0 ? "-" : "+"} ${Math.abs(position.fixedLeftOffsetPixels)}px)`;
-    return `<div class="reference-robot-position" style="--robot-left:${position.leftPercent}%;--robot-top:${position.topPixels}px${fixedLeft}">${renderRobotHub(robot, snapshot.waferOrigins, environment, angleDegrees, mechanism)}</div>`;
+    return `<div class="reference-robot-position" data-replay-kind="robot" data-replay-name="${escapeHtml(robot.name)}" role="button" tabindex="0" aria-label="查看 ${escapeHtml(robot.name)} 信息" style="--robot-left:${position.leftPercent}%;--robot-top:${position.topPixels}px${fixedLeft}">${renderRobotHub(robot, snapshot.waferOrigins, environment, angleDegrees, mechanism)}</div>`;
   }).join("");
   const robotMarkup = renderRobotGroup(vacuumRobots, "vacuum")
     + renderRobotGroup(atmosphereRobots, "atmosphere");
@@ -4010,6 +4025,12 @@ export class VisualizationWorkspace {
   private moves: MoveRecord[] = [];
   private loadPortReplenishments: LoadPortReplenishment[] = [];
   private replayPlan: Record<string, any> | null = null;
+  private replayUpdates: Record<string, any>[] = [];
+  private replayGenerations: ReplayPlanGeneration[] = [];
+  private relatedObjectFilter: ReplayObjectSelection | null = null;
+  private readonly objectInspector: ReplayObjectInspectorController;
+  private replaySourceRevision = 0;
+  private replaySourceLoading = false;
   private actionsEnabled = false;
   private waferProgressEnabled = false;
   private actionStatusFilters: ActionDiagnosticStatus[] = [...ALL_ACTION_DIAGNOSTIC_STATUSES];
@@ -4029,7 +4050,6 @@ export class VisualizationWorkspace {
   private recomputeCount = 0;
   private bottleneckSummary: BottleneckUtilizationSummary | null = null;
   /** 新结果或清空操作会让之前的文件读取和 HTTP 响应失效。 */
-  private resultLoadVersion = 0;
   private analysisRequestVersion = 0;
   private time = 0;
   private playing = false;
@@ -4043,6 +4063,24 @@ export class VisualizationWorkspace {
   constructor(root: Document) {
     this.root = root;
     this.elements = collectElements(root);
+    const objectPanel = root.getElementById("visualReplayObjectDetails");
+    if (!objectPanel) throw new Error("缺少回放对象信息容器");
+    this.objectInspector = new ReplayObjectInspectorController({
+      root: this.elements.topologyPlayback,
+      panel: objectPanel,
+      onSeek: time => { this.pause(); this.seekTo(time); },
+      onFilter: selection => {
+        this.relatedObjectFilter = selection;
+        if (selection) {
+          this.actionsEnabled = true;
+          const queryToggle = root.getElementById("visualActionsEnabled") as HTMLInputElement | null;
+          if (queryToggle) queryToggle.checked = true;
+          const dock = root.querySelector<HTMLElement>(".replay-inspector-dock");
+          if (dock) setReplayInspectorExpanded(dock, true);
+        }
+        this.render();
+      },
+    });
     const selectedFilters = this.elements.actionStatusFilters
       .filter(item => item.checked)
       .map(item => item.value as ActionDiagnosticStatus);
@@ -4078,50 +4116,67 @@ export class VisualizationWorkspace {
 
   /** 加载内部调用或测试夹具提供的 MoveList 文件；页面文件入口不调用此方法。 */
   async loadFile(file: File): Promise<void> {
-    const loadVersion = ++this.resultLoadVersion;
+    const sourceRevision = ++this.replaySourceRevision;
     this.analysisRequestVersion += 1;
-    const payload = JSON.parse(await file.text()) as unknown;
-    if (loadVersion !== this.resultLoadVersion) return;
-    await this.loadMoves(
-      normalizeMovePayload(payload),
-      normalizeDecisionTrace(payload),
-      normalizeLoadPortReplenishments(payload),
-      file.name,
-      "",
-      "",
-      null,
-      0,
-    );
+    this.replaySourceLoading = true;
+    try {
+      const source = await file.text();
+      if (sourceRevision !== this.replaySourceRevision) return;
+      const payload = JSON.parse(source) as unknown;
+      await this.loadMoves(
+        normalizeMovePayload(payload),
+        normalizeDecisionTrace(payload),
+        normalizeLoadPortReplenishments(payload),
+        file.name,
+        "",
+        "",
+        null,
+        0,
+      );
+    } finally {
+      if (sourceRevision === this.replaySourceRevision) this.replaySourceLoading = false;
+    }
   }
 
   /** 加载用户在回放页选择的平台复现日志。 */
   private async loadReplayLogFile(file: File): Promise<void> {
-    const loadVersion = ++this.resultLoadVersion;
+    const sourceRevision = ++this.replaySourceRevision;
     this.analysisRequestVersion += 1;
+    this.replaySourceLoading = true;
     this.setLoading(true, "正在解析复现日志…");
-    const payload = JSON.parse(await file.text()) as unknown;
-    if (loadVersion !== this.resultLoadVersion) return;
-    const replayLog = normalizeReplayLogPayload(payload);
-    if (replayLog.device) this.device = replayLog.device;
-    this.setReplayPlan(null);
-    this.analysisRoutes = [];
-    this.analysisRounds = [];
-    await this.loadMoves(
-      replayLog.moves,
-      [],
-      replayLog.loadPortReplenishments,
-      file.name,
-      "",
-      "",
-      null,
-      0,
-    );
+    try {
+      const source = await file.text();
+      if (sourceRevision !== this.replaySourceRevision) return;
+      const payload = JSON.parse(source) as unknown;
+      const replayLog = normalizeReplayLogPayload(payload);
+      if (replayLog.device) this.device = replayLog.device;
+      this.setReplayPlan(replayLog.plan);
+      this.replayUpdates = replayLog.updates;
+      this.replayGenerations = replayLog.generations;
+      this.analysisRoutes = [];
+      this.analysisRounds = [];
+      await this.loadMoves(
+        replayLog.moves,
+        [],
+        replayLog.loadPortReplenishments,
+        file.name,
+        "",
+        "",
+        null,
+        0,
+      );
+    } catch (error) {
+      if (sourceRevision === this.replaySourceRevision) throw error;
+    } finally {
+      if (sourceRevision === this.replaySourceRevision) this.replaySourceLoading = false;
+    }
   }
 
   /** 从后端保存的运行结果加载 MoveList。 */
-  async loadResult(resultIdOrUrl: string, sourceName = "当前运行结果"): Promise<void> {
-    const loadVersion = ++this.resultLoadVersion;
+  async loadResult(resultIdOrUrl: string, sourceName = "当前运行结果", logUrl = ""): Promise<void> {
+    const sourceRevision = ++this.replaySourceRevision;
     this.analysisRequestVersion += 1;
+    this.replaySourceLoading = true;
     const resultUrl = resultIdOrUrl.startsWith("/")
       ? resultIdOrUrl
       : `/api/results/${encodeURIComponent(resultIdOrUrl)}`;
@@ -4129,7 +4184,7 @@ export class VisualizationWorkspace {
     try {
       const response = await fetch(resultUrl, { cache: "no-store" });
       const payload = await response.json() as unknown;
-      if (loadVersion !== this.resultLoadVersion) return;
+      if (sourceRevision !== this.replaySourceRevision) return;
       if (!response.ok) {
         const message = payload && typeof payload === "object"
           ? String((payload as UnknownRecord).error ?? "")
@@ -4139,6 +4194,7 @@ export class VisualizationWorkspace {
       const resultId = resultUrl.startsWith("/api/results/")
         ? decodeURIComponent(resultUrl.slice("/api/results/".length))
         : "";
+      let hasEmbeddedPlan = false;
       if (payload && typeof payload === "object" && !Array.isArray(payload)) {
         const replayContext = (payload as UnknownRecord).ReplayContext;
         if (replayContext && typeof replayContext === "object" && !Array.isArray(replayContext)) {
@@ -4149,9 +4205,29 @@ export class VisualizationWorkspace {
             this.analysisRoutes = structuredClone(plan.routes || []);
             this.analysisRounds = structuredClone(plan.rounds || []);
             this.setReplayPlan(plan);
+            hasEmbeddedPlan = true;
+            this.replayUpdates = structuredClone((replayContext as UnknownRecord).updates ?? []) as Record<string, any>[];
+            this.replayGenerations = replayCommittedGenerations(this.replayUpdates, normalizeMovePayload(payload));
           }
         }
       }
+      if (!hasEmbeddedPlan) this.setReplayPlan(null);
+      if (logUrl) {
+        // 复现日志保留每代已发布计划；没有日志时只确认结果中已承诺的旧代动作。
+        try {
+          const logResponse = await fetch(logUrl, { cache: "no-store" });
+          if (logResponse.ok) {
+            const logPayload = await logResponse.json();
+            if (sourceRevision !== this.replaySourceRevision) return;
+            const entries = Array.isArray(logPayload) ? logPayload : logPayload?.input_data;
+            const exactGenerations = Array.isArray(entries) ? replayLogContext(entries, undefined).generations : [];
+            if (exactGenerations.length) this.replayGenerations = exactGenerations;
+          }
+        } catch {
+          // 日志可能已过保留期；保持已保存结果与保守承诺计划可浏览。
+        }
+      }
+      if (sourceRevision !== this.replaySourceRevision) return;
       await this.loadMoves(
         normalizeMovePayload(payload),
         normalizeDecisionTrace(payload),
@@ -4163,10 +4239,17 @@ export class VisualizationWorkspace {
         0,
       );
     } catch (error) {
-      if (loadVersion !== this.resultLoadVersion) return;
+      if (sourceRevision !== this.replaySourceRevision) return;
       this.showError(error instanceof Error ? error.message : String(error));
       throw error;
+    } finally {
+      if (sourceRevision === this.replaySourceRevision) this.replaySourceLoading = false;
     }
+  }
+
+  /** 已载入或正在载入的结果拥有独立上下文，编辑下一次测试不能覆盖其设备与代历史。 */
+  get hasReplaySource(): boolean {
+    return this.replaySourceLoading || this.liveSolving || this.moves.length > 0;
   }
 
   /** 提供后端构建工序容量上下文所需的原始 Route 和轮次配置。 */
@@ -4179,9 +4262,11 @@ export class VisualizationWorkspace {
     if (this.moves.length) void this.renderPerformance();
   }
 
-  /** 保存 Machine 回放所需的完整计划；任意来源 MoveList 都使用该计划实时评分。 */
+  /** 保存当前结果的计划；替换时重置动作查询与代历史。 */
   setReplayPlan(plan: Record<string, any> | null): void {
     this.replayPlan = plan ? structuredClone(plan) : null;
+    this.replayUpdates = [];
+    this.replayGenerations = [];
     this.replayDecisionCache.clear();
     this.pendingReplayDecisionKeys.clear();
     this.replayDecisionErrorKey = "";
@@ -4201,12 +4286,13 @@ export class VisualizationWorkspace {
     plan: Record<string, any>,
     sourceName = "Search Tree 实时求解",
   ): void {
-    this.resultLoadVersion += 1;
+    this.replaySourceRevision += 1;
     this.analysisRequestVersion += 1;
+    this.replaySourceLoading = false;
     this.pause();
     this.liveSolving = true;
+    this.objectInspector.clear();
     this.moves = [];
-    this.loadPortReplenishments = [];
     this.loadPortReplenishments = [];
     this.sourceName = sourceName;
     this.resultUrl = "";
@@ -4312,17 +4398,23 @@ export class VisualizationWorkspace {
 
   /** 停止播放并释放动画帧。 */
   destroy(): void {
-    this.resultLoadVersion += 1;
+    this.replaySourceRevision += 1;
     this.analysisRequestVersion += 1;
+    this.replaySourceLoading = false;
     this.pause();
   }
 
   /** 清除旧测试结果，避免切换测试后继续误看上一份 MoveList。 */
   clear(): void {
-    this.resultLoadVersion += 1;
+    this.replaySourceRevision += 1;
+    this.analysisRequestVersion += 1;
+    this.replaySourceLoading = false;
     this.pause();
     this.liveSolving = false;
     this.moves = [];
+    this.objectInspector.clear();
+    this.replayUpdates = [];
+    this.replayGenerations = [];
     this.liveDecision = null;
     this.liveDecisionKey = "";
     this.primitiveDecisionBoundaries = [];
@@ -4391,6 +4483,7 @@ export class VisualizationWorkspace {
     this.sourceName = sourceName;
     this.resultUrl = resultUrl;
     this.analysisResultId = analysisResultId;
+    this.objectInspector.clear();
     this.analysis = null;
     this.cpuTimeMs = cpuTimeMs;
     this.recomputeCount = recomputeCount;
@@ -4489,6 +4582,7 @@ export class VisualizationWorkspace {
         resultId: this.analysisResultId || undefined,
         moves: this.analysisResultId ? undefined : this.moves,
         plan: this.analysisResultId ? undefined : this.replayPlan,
+        updates: this.analysisResultId ? undefined : this.replayUpdates,
         time: this.time,
         includeActions: this.actionsEnabled,
         snapshot: snapshot as unknown as Record<string, any>,
@@ -4635,11 +4729,31 @@ export class VisualizationWorkspace {
       this.device,
     );
     this.configureTopologyCanvas();
+    const replayInput = {
+      snapshot: topologySnapshot, moves: this.moves, device: this.device,
+      plan: this.replayPlan, generations: this.replayGenerations,
+      resolveRoute: (job: string) => routeByPJobName(this.replayPlan, job),
+    };
+    const destinations = projectReplayWaferDestinations(replayInput);
+    annotateReplayTopology(this.elements.stage, topologySnapshot, destinations, replayInput);
+    this.objectInspector.update({ ...replayInput, destinations,
+      decision: currentDecision, resultUrl: this.resultUrl });
     const requestState = this.pendingReplayDecisionKeys.has(replayKey)
       ? "loading"
       : this.replayDecisionErrorKey === replayKey ? "error" : "idle";
+    const relatedActions = currentDecision?.actionDiagnostics.filter(action => !this.relatedObjectFilter
+      || replayObjectIsCurrent(replayInput, this.relatedObjectFilter)
+        && replayActionMatchesObject(action, this.relatedObjectFilter)) ?? [];
     this.elements.decisionLens.innerHTML = !this.actionsEnabled ? "" : renderDecisionLens(
-      currentDecision,
+      currentDecision && this.relatedObjectFilter ? {
+        ...currentDecision,
+        actionDiagnostics: relatedActions,
+        actionCounts: {
+          enabled: relatedActions.filter(action => action.status === "enabled").length,
+          "physical-blocked": relatedActions.filter(action => action.status === "physical-blocked").length,
+          "deadlock-blocked": relatedActions.filter(action => action.status === "deadlock-blocked").length,
+        },
+      } : currentDecision,
       requestState,
       this.replayDecisionErrorMessage,
       this.actionStatusFilters,
@@ -4701,6 +4815,7 @@ export class VisualizationWorkspace {
         resultId: this.analysisResultId || undefined,
         moves: this.analysisResultId ? undefined : this.moves,
         plan: this.replayPlan,
+        updates: this.analysisResultId ? undefined : this.replayUpdates,
         time: replayTime,
       });
       const decision = normalizeDecisionTrace({ DecisionTrace: [rawDecision] })[0] ?? null;

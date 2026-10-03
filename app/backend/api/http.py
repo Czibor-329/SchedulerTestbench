@@ -64,7 +64,7 @@ def _evaluate_replay_action_context(payload: Mapping[str, Any]) -> Dict[str, Any
     replay_updates = (
         replay_context.get("updates") or []
         if isinstance(replay_context, Mapping)
-        else []
+        else payload.get("updates") or []
     )
     replay_machine = ReplayMachine(raw_plan, moves, replay_updates)
     update_params = replay_machine.replay_update_at(replay_time)
