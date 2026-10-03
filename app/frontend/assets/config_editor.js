@@ -1953,18 +1953,443 @@ function annotateReplayTopology(stage, snapshot, destinations, replayInput) {
   }
 }
 
+// src/topology_photography.ts
+var MAX_TOPOLOGY_PHOTOGRAPHS = 20;
+var PICK_MOVE_TYPES = /* @__PURE__ */ new Set([0, 2]);
+var POSITION_CHANGE_MOVE_TYPES = /* @__PURE__ */ new Set([0, 1, 2, 3, 4]);
+var ZIP_LOCAL_SIGNATURE = 67324752;
+var ZIP_CENTRAL_SIGNATURE = 33639248;
+var ZIP_END_SIGNATURE = 101010256;
+var ZIP_VERSION = 20;
+var ZIP_UTF8_FLAG = 2048;
+var ZIP_LOCAL_HEADER_BYTES = 30;
+var ZIP_CENTRAL_HEADER_BYTES = 46;
+var ZIP_END_HEADER_BYTES = 22;
+var ZIP_MAXIMUM_UINT16 = 65535;
+var ZIP_MAXIMUM_UINT32 = 4294967295;
+var ZIP_DOS_EPOCH_DATE = 33;
+var CRC32_POLYNOMIAL = 3988292384;
+var CRC32_YIELD_BYTES = 1024 * 1024;
+var PHOTO_SEQUENCE_MINIMUM_DIGITS = 4;
+function finiteNumber2(value, fallback = 0) {
+  const result = Number(value);
+  return Number.isFinite(result) ? result : fallback;
+}
+function listValues(value) {
+  return Array.isArray(value) ? value : [];
+}
+function indexedText(move, field, index) {
+  const values4 = listValues(move[field]);
+  return String(values4[index] ?? values4[0] ?? "");
+}
+function isLoadPort(name, device) {
+  const type = String(device?.Stations?.[name]?.Type ?? "").trim().toLowerCase();
+  return type === "loadport" || type === "dummyport" || /DUMMY/i.test(name) && /PORT/i.test(name) || /^(LP\d*|P\d+|.*PORT)$/i.test(name);
+}
+function inferredReplenishmentTimes(records, device) {
+  const ordered = records.map((move, index) => ({
+    move,
+    start: finiteNumber2(move.StartTime),
+    end: Math.max(finiteNumber2(move.StartTime), finiteNumber2(move.EndTime, finiteNumber2(move.StartTime))),
+    id: finiteNumber2(move.MoveID, index + 1)
+  })).sort((left, right) => left.start - right.start || left.end - right.end || left.id - right.id);
+  const slotHistories = /* @__PURE__ */ new Map();
+  const generationStarts = /* @__PURE__ */ new Map();
+  for (const { move, start } of ordered) {
+    if (!PICK_MOVE_TYPES.has(finiteNumber2(move.MoveType, -1))) continue;
+    listValues(move.MatIDList).map(String).filter(Boolean).forEach((wafer, index) => {
+      const station2 = indexedText(move, "SrcStationList", index);
+      const slot = finiteNumber2(indexedText(move, "SrcSlotList", index));
+      if (!station2 || !isLoadPort(station2, device) || !Number.isInteger(slot) || slot <= 0) return;
+      const tasks = listValues(move.TaskID).map(String).filter(Boolean);
+      const jobs = listValues(move.PJobName).map(String).filter(Boolean);
+      const task = tasks[index] ?? tasks[0] ?? jobs[index] ?? jobs[0] ?? "";
+      const instance = task ? `${wafer}\0${task}` : wafer;
+      const slotKey = JSON.stringify([station2, slot]);
+      const history = slotHistories.get(slotKey) ?? [];
+      let generation = history.indexOf(instance);
+      if (generation < 0) {
+        generation = history.length;
+        history.push(instance);
+        slotHistories.set(slotKey, history);
+      }
+      if (generation === 0) return;
+      const generationKey = JSON.stringify([station2, generation]);
+      generationStarts.set(generationKey, Math.min(generationStarts.get(generationKey) ?? Infinity, start));
+    });
+  }
+  return [...generationStarts.values()];
+}
+function photographyCandidateTimes(records, replenishmentTimes, startTime, endTime, device) {
+  const end = Math.max(0, finiteNumber2(endTime));
+  const start = Math.min(end, Math.max(0, finiteNumber2(startTime)));
+  const candidates = /* @__PURE__ */ new Set([start]);
+  const addBoundary = (time) => {
+    if (Number.isFinite(time) && time > start && time <= end) candidates.add(time);
+  };
+  for (const move of records) {
+    if (!POSITION_CHANGE_MOVE_TYPES.has(finiteNumber2(move.MoveType, -1))) continue;
+    const moveStart = finiteNumber2(move.StartTime);
+    addBoundary(Math.max(moveStart, finiteNumber2(move.EndTime, moveStart)));
+  }
+  for (const time of replenishmentTimes) addBoundary(time);
+  for (const time of inferredReplenishmentTimes(records, device)) addBoundary(time);
+  return [...candidates].sort((left, right) => left - right);
+}
+function occupiedSlots(slots) {
+  return slots.filter((slot) => Boolean(slot.wafer)).map((slot) => [slot.slot, slot.wafer]).sort((left, right) => left[0] - right[0] || left[1].localeCompare(right[1]));
+}
+function waferPositionSignature(snapshot) {
+  const positions = [];
+  for (const module of snapshot.modules) {
+    const slots = module.loadPortSlots?.length ? module.loadPortSlots : module.loadLockSlots?.length ? module.loadLockSlots : module.processSlots?.length ? module.processSlots : null;
+    const occupancy = slots ? occupiedSlots(slots) : module.wafers.filter(Boolean).slice().sort().map((wafer) => [null, wafer]);
+    if (occupancy.length) positions.push(["module", module.name, occupancy]);
+  }
+  for (const robot of snapshot.robots) {
+    const occupancy = robot.slotWafers ? Object.entries(robot.slotWafers).filter(([, wafer]) => Boolean(wafer)).map(([slot, wafer]) => [Number(slot), wafer]).sort((left, right) => Number(left[0]) - Number(right[0]) || left[1].localeCompare(right[1])) : robot.wafers.filter(Boolean).slice().sort().map((wafer) => [null, wafer]);
+    if (occupancy.length) positions.push(["robot", robot.name, occupancy]);
+  }
+  positions.sort((left, right) => left[0].localeCompare(right[0]) || left[1].localeCompare(right[1]));
+  return JSON.stringify(positions);
+}
+function photographyFileName(index, time) {
+  const sequence = Math.max(1, Math.trunc(finiteNumber2(index, 1)));
+  const seconds2 = Math.max(0, finiteNumber2(time));
+  return `topology-${String(sequence).padStart(PHOTO_SEQUENCE_MINIMUM_DIGITS, "0")}-t${seconds2}s.png`;
+}
+function crc32Table() {
+  const table = new Uint32Array(256);
+  for (let index = 0; index < table.length; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) value = value >>> 1 ^ (value & 1 ? CRC32_POLYNOMIAL : 0);
+    table[index] = value >>> 0;
+  }
+  return table;
+}
+var CRC32_TABLE = crc32Table();
+function checkArchiveCancellation(signal) {
+  if (signal?.aborted) throw new DOMException("\u7167\u7247\u5F52\u6863\u5DF2\u53D6\u6D88\u3002", "AbortError");
+}
+async function yieldArchiveWork(signal) {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  checkArchiveCancellation(signal);
+}
+async function crc32(bytes, signal) {
+  let value = ZIP_MAXIMUM_UINT32;
+  for (let start = 0; start < bytes.byteLength; start += CRC32_YIELD_BYTES) {
+    checkArchiveCancellation(signal);
+    const end = Math.min(start + CRC32_YIELD_BYTES, bytes.byteLength);
+    for (let index = start; index < end; index += 1) {
+      value = value >>> 8 ^ CRC32_TABLE[(value ^ bytes[index]) & 255];
+    }
+    if (end < bytes.byteLength) await yieldArchiveWork(signal);
+  }
+  return (value ^ ZIP_MAXIMUM_UINT32) >>> 0;
+}
+function blobBuffer(bytes) {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+function zipFileHeader(central, nameLength, dataLength, checksum, localOffset) {
+  const buffer = new ArrayBuffer(central ? ZIP_CENTRAL_HEADER_BYTES : ZIP_LOCAL_HEADER_BYTES);
+  const view = new DataView(buffer);
+  view.setUint32(0, central ? ZIP_CENTRAL_SIGNATURE : ZIP_LOCAL_SIGNATURE, true);
+  if (central) view.setUint16(4, ZIP_VERSION, true);
+  const offset = central ? 2 : 0;
+  view.setUint16(4 + offset, ZIP_VERSION, true);
+  view.setUint16(6 + offset, ZIP_UTF8_FLAG, true);
+  view.setUint16(12 + offset, ZIP_DOS_EPOCH_DATE, true);
+  view.setUint32(14 + offset, checksum, true);
+  view.setUint32(18 + offset, dataLength, true);
+  view.setUint32(22 + offset, dataLength, true);
+  view.setUint16(26 + offset, nameLength, true);
+  if (central) view.setUint32(42, localOffset, true);
+  return buffer;
+}
+async function createPhotographyArchive(files, signal) {
+  checkArchiveCancellation(signal);
+  if (files.length > ZIP_MAXIMUM_UINT16) throw new Error("\u7167\u7247\u6570\u91CF\u8D85\u51FA\u6807\u51C6 ZIP \u7684 65535 \u5F20\u9650\u5236\u3002");
+  const encoder = new TextEncoder();
+  const localParts = [];
+  const centralParts = [];
+  const names = /* @__PURE__ */ new Set();
+  let localOffset = 0;
+  let centralSize = 0;
+  for (const file of files) {
+    checkArchiveCancellation(signal);
+    const normalizedName = file.name.replace(/\\/g, "/");
+    if (!normalizedName || normalizedName.startsWith("/") || /^[A-Za-z]:/.test(normalizedName) || normalizedName.split("/").some((part) => !part || part === "." || part === "..") || normalizedName.includes("\0")) throw new Error("\u7167\u7247\u540D\u79F0\u5FC5\u987B\u662F\u6709\u6548\u7684 ZIP \u76F8\u5BF9\u8DEF\u5F84\u3002");
+    if (names.has(normalizedName)) throw new Error("\u7167\u7247\u5F52\u6863\u4E2D\u4E0D\u80FD\u5305\u542B\u91CD\u590D\u540D\u79F0\u3002");
+    names.add(normalizedName);
+    const name = encoder.encode(normalizedName);
+    if (name.byteLength > ZIP_MAXIMUM_UINT16) throw new Error("\u7167\u7247\u540D\u79F0\u8D85\u51FA\u6807\u51C6 ZIP \u7684\u957F\u5EA6\u9650\u5236\u3002");
+    const data = file.data instanceof Uint8Array ? new Uint8Array(file.data) : file.data;
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(await data.arrayBuffer());
+    checkArchiveCancellation(signal);
+    const nextLocalOffset = localOffset + ZIP_LOCAL_HEADER_BYTES + name.byteLength + bytes.byteLength;
+    const nextCentralSize = centralSize + ZIP_CENTRAL_HEADER_BYTES + name.byteLength;
+    if (bytes.byteLength > ZIP_MAXIMUM_UINT32 || nextLocalOffset + nextCentralSize + ZIP_END_HEADER_BYTES > ZIP_MAXIMUM_UINT32) {
+      throw new Error("\u7167\u7247\u5F52\u6863\u8D85\u51FA\u6807\u51C6 ZIP \u7684 4 GiB \u9650\u5236\uFF0C\u8BF7\u7F29\u77ED\u62CD\u6444\u8303\u56F4\u3002");
+    }
+    const checksum = await crc32(bytes, signal);
+    const dataPart = data instanceof Uint8Array ? data.buffer : data;
+    localParts.push(
+      zipFileHeader(false, name.byteLength, bytes.byteLength, checksum, localOffset),
+      blobBuffer(name),
+      dataPart
+    );
+    centralParts.push(zipFileHeader(true, name.byteLength, bytes.byteLength, checksum, localOffset), blobBuffer(name));
+    localOffset = nextLocalOffset;
+    centralSize = nextCentralSize;
+    await yieldArchiveWork(signal);
+  }
+  checkArchiveCancellation(signal);
+  const end = new ArrayBuffer(ZIP_END_HEADER_BYTES);
+  const view = new DataView(end);
+  view.setUint32(0, ZIP_END_SIGNATURE, true);
+  view.setUint16(8, files.length, true);
+  view.setUint16(10, files.length, true);
+  view.setUint32(12, centralSize, true);
+  view.setUint32(16, localOffset, true);
+  return new Blob([...localParts, ...centralParts, end], { type: "application/zip" });
+}
+
+// src/topology_photography_export.ts
+var TOPOLOGY_PHOTO_WIDTH = 1e3;
+var PHOTO_PIXEL_SCALE = 2;
+var MAX_PHOTOGRAPHY_BYTES = 512 * 1024 * 1024;
+var DOWNLOAD_URL_LIFETIME_MS = 6e4;
+var XHTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+function topologyPhotographyStyles(root) {
+  const sheets = Array.from(root.styleSheets).filter((sheet) => !sheet.href || new URL(sheet.href, root.baseURI).pathname.endsWith("/assets/config_editor.css"));
+  const styles = sheets.map((sheet) => Array.from(sheet.cssRules, (rule) => rule.cssText).join("\n")).join("\n");
+  if (!styles) throw new Error("\u65E0\u6CD5\u8BFB\u53D6\u62D3\u6251\u6837\u5F0F\uFF0C\u8BF7\u5237\u65B0\u9875\u9762\u540E\u91CD\u8BD5");
+  return styles;
+}
+async function captureTopologyPng(root, markup, styles) {
+  const container = root.createElementNS(XHTML_NAMESPACE, "div");
+  container.dataset.topologyPhoto = "true";
+  container.innerHTML = markup;
+  container.querySelectorAll(".topology-status-legend").forEach((legend) => legend.remove());
+  const topology = container.querySelector(".reference-grid-canvas");
+  if (!topology) throw new Error("\u5F53\u524D\u6CA1\u6709\u53EF\u62CD\u6444\u7684\u8BBE\u5907\u62D3\u6251");
+  const height = Number.parseFloat(topology.style.getPropertyValue("--topology-canvas-height"));
+  if (!Number.isFinite(height) || height <= 0) throw new Error("\u62D3\u6251\u753B\u9762\u5C3A\u5BF8\u65E0\u6548");
+  const view = root.defaultView;
+  if (!view) throw new Error("\u5F53\u524D\u6D4F\u89C8\u5668\u65E0\u6CD5\u521B\u5EFA\u62D3\u6251\u7167\u7247");
+  container.style.font = view.getComputedStyle(root.body).font;
+  const variables = view.getComputedStyle(root.documentElement);
+  Array.from(variables).filter((name) => name.startsWith("--")).forEach((name) => container.style.setProperty(name, variables.getPropertyValue(name)));
+  container.style.width = `${TOPOLOGY_PHOTO_WIDTH}px`;
+  container.style.height = `${height}px`;
+  const style = root.createElementNS(XHTML_NAMESPACE, "style");
+  style.textContent = `${styles ?? topologyPhotographyStyles(root)}
+    [data-topology-photo], [data-topology-photo] .equipment-schematic {
+      width: ${TOPOLOGY_PHOTO_WIDTH}px !important; height: ${height}px !important;
+      margin: 0 !important; border: 0 !important; border-radius: 0 !important;
+      background: #f6f8fb !important; box-shadow: none !important;
+    }
+    [data-topology-photo] .reference-grid-canvas {
+      width: ${TOPOLOGY_PHOTO_WIDTH}px !important; margin: 0 !important;
+      background: #f6f8fb !important; background-image: none !important;
+    }
+    [data-topology-photo] *, [data-topology-photo] *::before, [data-topology-photo] *::after {
+      animation: none !important; transition: none !important;
+    }`;
+  container.prepend(style);
+  const xhtml = new XMLSerializer().serializeToString(container);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${TOPOLOGY_PHOTO_WIDTH}" height="${height}"><foreignObject width="100%" height="100%">${xhtml}</foreignObject></svg>`;
+  const image = new view.Image();
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  await image.decode();
+  const canvas = root.createElement("canvas");
+  canvas.width = TOPOLOGY_PHOTO_WIDTH * PHOTO_PIXEL_SCALE;
+  canvas.height = Math.ceil(height * PHOTO_PIXEL_SCALE);
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("\u5F53\u524D\u6D4F\u89C8\u5668\u4E0D\u652F\u6301 PNG \u6444\u5F71");
+  context.fillStyle = "#f6f8fb";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => {
+    if (blob) resolve(blob);
+    else reject(new Error("PNG \u751F\u6210\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5"));
+  }, "image/png"));
+}
+function downloadPhotography(root, blob, name) {
+  const url = URL.createObjectURL(blob);
+  const anchor = root.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  root.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_URL_LIFETIME_MS);
+}
+function photographySourceName(source) {
+  return source.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").replace(/[. ]+$/g, "").slice(0, 80) || "\u62D3\u6251\u56DE\u653E";
+}
+function mountTopologyPhotography(root, createSession, pausePlayback, getTimeRange) {
+  const button = root.getElementById("visualPhotographyButton");
+  const menu = root.getElementById("visualPhotographyMenu");
+  const currentButton = root.getElementById("visualPhotographyCurrent");
+  const sequenceButton = root.getElementById("visualPhotographySequence");
+  const status = root.getElementById("visualPhotographyStatus");
+  const cancelButton = root.getElementById("visualPhotographyCancel");
+  const startInput = root.getElementById("visualPhotographyStartTime");
+  const countInput = root.getElementById("visualPhotographyCount");
+  if (!button) return {
+    setAvailable() {
+    },
+    cancel() {
+    },
+    destroy() {
+    }
+  };
+  const controls = new AbortController();
+  let task = null;
+  let available = false;
+  let startTimeEdited = false;
+  const updateControls = () => {
+    if (button) button.disabled = !available || Boolean(task);
+    if (currentButton) currentButton.disabled = !available || Boolean(task);
+    if (sequenceButton) sequenceButton.disabled = !available || Boolean(task);
+    if (cancelButton) cancelButton.hidden = !task;
+  };
+  const showMenu = (open) => {
+    if (menu) menu.hidden = !open;
+    button?.setAttribute("aria-expanded", String(open));
+  };
+  const report = (message, error = false) => {
+    if (!status) return;
+    status.textContent = message;
+    status.dataset.error = String(error);
+  };
+  const photograph = async (sequence) => {
+    if (task || !available) return;
+    const bounds = getTimeRange();
+    const startTime = sequence ? startInput?.valueAsNumber : void 0;
+    const photoLimit = sequence ? countInput?.valueAsNumber : 1;
+    if (sequence && (!Number.isFinite(startTime) || startTime < 0 || startTime > bounds.endTime)) {
+      report(`\u8D77\u59CB\u65F6\u95F4\u987B\u5728 0 \u81F3 ${bounds.endTime} \u79D2\u4E4B\u95F4`, true);
+      startInput?.focus();
+      return;
+    }
+    if (!Number.isInteger(photoLimit) || photoLimit < 1 || photoLimit > MAX_TOPOLOGY_PHOTOGRAPHS) {
+      report(`\u62CD\u6444\u5F20\u6570\u987B\u4E3A 1 \u81F3 ${MAX_TOPOLOGY_PHOTOGRAPHS} \u7684\u6574\u6570`, true);
+      countInput?.focus();
+      return;
+    }
+    pausePlayback();
+    const session = createSession(startTime);
+    if (!session) return;
+    showMenu(false);
+    const activeTask = new AbortController();
+    task = activeTask;
+    updateControls();
+    try {
+      const styles = topologyPhotographyStyles(root);
+      const times = sequence ? session.times : session.times.slice(0, 1);
+      const photos = [];
+      let signature = null;
+      let totalBytes = 0;
+      for (let index = 0; index < times.length; index += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        activeTask.signal.throwIfAborted();
+        const snapshot = session.snapshotAt(times[index]);
+        const nextSignature = waferPositionSignature(snapshot);
+        report(`\u6B63\u5728\u62CD\u6444\uFF1A${photos.length} \u5F20 \xB7 ${index + 1}/${times.length}`);
+        if (index > 0 && nextSignature === signature) continue;
+        const markup = index === 0 ? session.currentMarkup : session.renderSnapshot(snapshot);
+        const photo = await captureTopologyPng(root, markup, styles);
+        activeTask.signal.throwIfAborted();
+        totalBytes += photo.size;
+        if (totalBytes > MAX_PHOTOGRAPHY_BYTES) {
+          throw new Error("\u7167\u7247\u603B\u91CF\u8D85\u8FC7 512 MB\uFF0C\u8BF7\u5C06\u65F6\u95F4\u8F74\u79FB\u5230\u9760\u540E\u4F4D\u7F6E\u5206\u6BB5\u62CD\u6444");
+        }
+        photos.push({ name: photographyFileName(photos.length + 1, times[index]), data: photo });
+        signature = nextSignature;
+        if (photos.length >= photoLimit) break;
+      }
+      activeTask.signal.throwIfAborted();
+      const source = photographySourceName(session.sourceName);
+      if (sequence) {
+        report(`\u6B63\u5728\u6253\u5305 ${photos.length} \u5F20\u7167\u7247\u2026`);
+        const archive = await createPhotographyArchive(photos, activeTask.signal);
+        activeTask.signal.throwIfAborted();
+        downloadPhotography(root, archive, `${source}-\u8FDE\u7EED\u62CD\u7167.zip`);
+      } else {
+        downloadPhotography(root, photos[0].data, `${source}-${photos[0].name}`);
+      }
+      report(sequence ? `\u5DF2\u4E0B\u8F7D ${photos.length} \u5F20\u7167\u7247` : "\u5DF2\u4E0B\u8F7D\u5F53\u524D\u7167\u7247");
+    } catch (error) {
+      if (activeTask.signal.aborted) report("\u62CD\u6444\u5DF2\u53D6\u6D88");
+      else report(error instanceof Error ? error.message : String(error), true);
+    } finally {
+      if (task === activeTask) task = null;
+      updateControls();
+    }
+  };
+  button?.addEventListener("click", () => {
+    const bounds = getTimeRange();
+    if (startInput) {
+      startInput.max = String(bounds.endTime);
+      if (!startTimeEdited) startInput.value = String(bounds.currentTime);
+    }
+    showMenu(Boolean(menu?.hidden));
+    if (menu && !menu.hidden) currentButton?.focus();
+  }, { signal: controls.signal });
+  startInput?.addEventListener("input", () => {
+    startTimeEdited = true;
+  }, { signal: controls.signal });
+  currentButton?.addEventListener("click", () => void photograph(false), { signal: controls.signal });
+  sequenceButton?.addEventListener("click", () => void photograph(true), { signal: controls.signal });
+  cancelButton?.addEventListener("click", () => task?.abort(), { signal: controls.signal });
+  root.addEventListener("click", (event) => {
+    if (!event.target.closest(".topology-photography")) showMenu(false);
+  }, { signal: controls.signal });
+  root.addEventListener("focusin", (event) => {
+    if (!event.target.closest(".topology-photography")) showMenu(false);
+  }, { signal: controls.signal });
+  root.addEventListener("keydown", (event) => {
+    if (menu?.hidden || !root.activeElement?.closest(".topology-photography")) return;
+    if (event.key === "Escape") {
+      showMenu(false);
+      button?.focus();
+    }
+  }, { signal: controls.signal });
+  updateControls();
+  return {
+    setAvailable(value) {
+      available = value;
+      if (!value) startTimeEdited = false;
+      updateControls();
+    },
+    cancel() {
+      task?.abort();
+      showMenu(false);
+    },
+    destroy() {
+      task?.abort();
+      controls.abort();
+      showMenu(false);
+    }
+  };
+}
+
 // src/workspace_visualizer.ts
 var ALL_ACTION_DIAGNOSTIC_STATUSES = [
   "enabled",
   "physical-blocked",
   "deadlock-blocked"
 ];
-var PICK_MOVE_TYPES = /* @__PURE__ */ new Set([0, 2]);
+var PICK_MOVE_TYPES2 = /* @__PURE__ */ new Set([0, 2]);
 var PLACE_MOVE_TYPES = /* @__PURE__ */ new Set([1, 3]);
 var SWAP_MOVE2 = 4;
 var DECISION_COMPLETION_MOVE_TYPES = /* @__PURE__ */ new Set([...PLACE_MOVE_TYPES, SWAP_MOVE2]);
 var PRIMITIVE_DECISION_COMPLETION_MOVE_TYPES = /* @__PURE__ */ new Set([
-  ...PICK_MOVE_TYPES,
+  ...PICK_MOVE_TYPES2,
   ...PLACE_MOVE_TYPES,
   SWAP_MOVE2
 ]);
@@ -2030,7 +2455,7 @@ var DOOR_LABELS = {
   closing: "\u6B63\u5728\u5173\u95E8",
   doorless: "\u65E0\u95E8\u7ED3\u6784"
 };
-function finiteNumber2(value, fallback = 0) {
+function finiteNumber3(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 }
@@ -2088,20 +2513,20 @@ function normalizeDecisionCandidate(candidate, actor = "") {
     flowKind: String(candidate.flowKind ?? candidate.kind ?? ""),
     robot: String(candidate.robot ?? ""),
     materialIds: listValue(candidate.materialIds).map(String),
-    waferId: finiteNumber2(candidate.waferId),
-    stageIndex: finiteNumber2(candidate.stageIndex),
+    waferId: finiteNumber3(candidate.waferId),
+    stageIndex: finiteNumber3(candidate.stageIndex),
     source: String(candidate.source ?? ""),
-    sourceSlot: finiteNumber2(candidate.sourceSlot),
+    sourceSlot: finiteNumber3(candidate.sourceSlot),
     destination: String(candidate.destination ?? ""),
-    destinationSlot: finiteNumber2(candidate.destinationSlot),
-    earliestStart: finiteNumber2(candidate.earliestStart),
-    finishTime: finiteNumber2(candidate.finishTime),
-    rank: finiteNumber2(candidate.rank),
+    destinationSlot: finiteNumber3(candidate.destinationSlot),
+    earliestStart: finiteNumber3(candidate.earliestStart),
+    finishTime: finiteNumber3(candidate.finishTime),
+    rank: finiteNumber3(candidate.rank),
     selected: Boolean(candidate.selected),
     executed: Boolean(candidate.executed),
     priorityDeferred: Boolean(candidate.priorityDeferred),
-    policyScore: finiteNumber2(candidate.policyScore),
-    policyPreference: Math.max(0, Math.min(1, finiteNumber2(candidate.policyPreference))),
+    policyScore: finiteNumber3(candidate.policyScore),
+    policyPreference: Math.max(0, Math.min(1, finiteNumber3(candidate.policyPreference))),
     expectedRemainingMakespan: nullableFiniteNumber(candidate.expectedRemainingMakespan),
     expectedRemainingCost: nullableFiniteNumber(candidate.expectedRemainingCost),
     medianRemainingMakespan: nullableFiniteNumber(candidate.medianRemainingMakespan),
@@ -2124,12 +2549,12 @@ function normalizeReplayActionDiagnostic(value) {
     robot: String(value.robot ?? ""),
     materialIds: listValue(value.materialIds).map(String),
     source: String(value.source ?? ""),
-    sourceSlot: finiteNumber2(value.sourceSlot),
+    sourceSlot: finiteNumber3(value.sourceSlot),
     destination: String(value.destination ?? ""),
-    destinationSlot: finiteNumber2(value.destinationSlot),
-    duplicateCount: Math.max(0, Math.round(finiteNumber2(value.duplicateCount))),
-    earliestStart: finiteNumber2(value.earliestStart),
-    finishTime: finiteNumber2(value.finishTime)
+    destinationSlot: finiteNumber3(value.destinationSlot),
+    duplicateCount: Math.max(0, Math.round(finiteNumber3(value.duplicateCount))),
+    earliestStart: finiteNumber3(value.earliestStart),
+    finishTime: finiteNumber3(value.finishTime)
   };
 }
 function normalizeDecisionTrace(payload) {
@@ -2156,8 +2581,8 @@ function normalizeDecisionTrace(payload) {
         label: String(group.label ?? (actor === "atmosphere" ? "\u5927\u6C14\u7AEF Actor" : "\u771F\u7A7A\u7AEF Actor")),
         selectedActionId: String(group.selectedActionId ?? ""),
         executedActionId: String(group.executedActionId ?? ""),
-        candidateCount: Math.max(groupCandidates.length, finiteNumber2(group.candidateCount, groupCandidates.length)),
-        shownCandidateCount: Math.max(groupCandidates.length, finiteNumber2(group.shownCandidateCount, groupCandidates.length)),
+        candidateCount: Math.max(groupCandidates.length, finiteNumber3(group.candidateCount, groupCandidates.length)),
+        shownCandidateCount: Math.max(groupCandidates.length, finiteNumber3(group.shownCandidateCount, groupCandidates.length)),
         candidatesTruncated: Boolean(group.candidatesTruncated),
         candidates: groupCandidates
       };
@@ -2168,15 +2593,15 @@ function normalizeDecisionTrace(payload) {
     return {
       model,
       modelLabel: String(step.modelLabel ?? meta.model ?? "\u52A8\u4F5C\u8BCA\u65AD"),
-      decisionIndex: finiteNumber2(step.decisionIndex),
-      time: finiteNumber2(step.time),
-      revision: finiteNumber2(step.revision),
-      roundIndex: finiteNumber2(step.roundIndex),
+      decisionIndex: finiteNumber3(step.decisionIndex),
+      time: finiteNumber3(step.time),
+      revision: finiteNumber3(step.revision),
+      roundIndex: finiteNumber3(step.roundIndex),
       roundKind: String(step.roundKind ?? ""),
       selectedActionId: String(step.selectedActionId ?? ""),
       executedActionId: String(step.executedActionId ?? ""),
-      candidateCount: Math.max(candidates.length, finiteNumber2(step.candidateCount, candidates.length)),
-      shownCandidateCount: Math.max(candidates.length, finiteNumber2(step.shownCandidateCount, candidates.length)),
+      candidateCount: Math.max(candidates.length, finiteNumber3(step.candidateCount, candidates.length)),
+      shownCandidateCount: Math.max(candidates.length, finiteNumber3(step.shownCandidateCount, candidates.length)),
       candidatesTruncated: Boolean(step.candidatesTruncated),
       modelEvaluated: Boolean(step.modelEvaluated),
       replayEvaluated: Boolean(step.replayEvaluated),
@@ -2185,9 +2610,9 @@ function normalizeDecisionTrace(payload) {
       actionDiagnosticsSource: String(step.actionDiagnosticsSource ?? ""),
       actionDiagnosticsProvider: String(step.actionDiagnosticsProvider ?? ""),
       actionCounts: {
-        enabled: finiteNumber2(rawActionCounts.enabled),
-        "physical-blocked": finiteNumber2(rawActionCounts["physical-blocked"]),
-        "deadlock-blocked": finiteNumber2(rawActionCounts["deadlock-blocked"])
+        enabled: finiteNumber3(rawActionCounts.enabled),
+        "physical-blocked": finiteNumber3(rawActionCounts["physical-blocked"]),
+        "deadlock-blocked": finiteNumber3(rawActionCounts["deadlock-blocked"])
       },
       actionDiagnostics
     };
@@ -2209,7 +2634,7 @@ function normalizeLoadPortReplenishments(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
   const replayContext = payload.ReplayContext;
   if (!replayContext || typeof replayContext !== "object" || Array.isArray(replayContext)) return [];
-  const updates = listValue(replayContext.updates).filter((update) => Boolean(update) && typeof update === "object" && !Array.isArray(update)).sort((left, right) => finiteNumber2(left.CurrentTime) - finiteNumber2(right.CurrentTime));
+  const updates = listValue(replayContext.updates).filter((update) => Boolean(update) && typeof update === "object" && !Array.isArray(update)).sort((left, right) => finiteNumber3(left.CurrentTime) - finiteNumber3(right.CurrentTime));
   const knownTaskIdsByPort = /* @__PURE__ */ new Map();
   const replenishments = [];
   updates.forEach((update, updateIndex) => {
@@ -2220,7 +2645,7 @@ function normalizeLoadPortReplenishments(payload) {
       const currentModule = String(material.CurrentModuleName ?? "").trim();
       const taskId = String(material.TaskID ?? "").trim();
       const wafer = String(material.ID ?? material.Name ?? "").trim();
-      const slot = Math.trunc(finiteNumber2(material.SlotID));
+      const slot = Math.trunc(finiteNumber3(material.SlotID));
       if (!port || currentModule !== port || !taskId || !wafer || slot < 1) continue;
       const byTask = currentByPortAndTask.get(port) ?? /* @__PURE__ */ new Map();
       const taskMaterials = byTask.get(taskId) ?? [];
@@ -2233,7 +2658,7 @@ function normalizeLoadPortReplenishments(payload) {
       for (const [taskId, taskMaterials] of byTask) {
         if (updateIndex > 0 && !knownTaskIds.has(taskId)) {
           replenishments.push({
-            time: finiteNumber2(update.CurrentTime),
+            time: finiteNumber3(update.CurrentTime),
             moduleName: port,
             materials: taskMaterials.sort((left, right) => left.slot - right.slot)
           });
@@ -2274,7 +2699,7 @@ function robotEnvironment(name, definition = {}) {
   return "vacuum";
 }
 function robotCapacity(definition, holdingCount = 0) {
-  const declaredCapacity = finiteNumber2(definition.Capacity, 0);
+  const declaredCapacity = finiteNumber3(definition.Capacity, 0);
   const armSlotCount = Object.values(definition.ArmInfo ?? {}).reduce((maximum, arm) => {
     if (!arm || typeof arm !== "object") return maximum;
     return Math.max(maximum, listValue(arm.SlotIDs).length);
@@ -2349,12 +2774,12 @@ function isProcessModule(name, type = "") {
 }
 function normalizeMoves(moves) {
   return moves.map((move, index) => {
-    const startTime = finiteNumber2(move.StartTime);
-    const endTime = Math.max(startTime, finiteNumber2(move.EndTime, startTime));
+    const startTime = finiteNumber3(move.StartTime);
+    const endTime = Math.max(startTime, finiteNumber3(move.EndTime, startTime));
     return {
       ...move,
-      MoveID: finiteNumber2(move.MoveID, index + 1),
-      MoveType: finiteNumber2(move.MoveType, -1),
+      MoveID: finiteNumber3(move.MoveID, index + 1),
+      MoveType: finiteNumber3(move.MoveType, -1),
       ModuleName: String(move.ModuleName ?? ""),
       StartTime: startTime,
       EndTime: endTime
@@ -2404,7 +2829,7 @@ function initialMaterialLocations(moves) {
       }
       continue;
     }
-    const fallback = PICK_MOVE_TYPES.has(move.MoveType) ? firstStation(move, "SrcStationList") : PLACE_MOVE_TYPES.has(move.MoveType) ? move.ModuleName : move.MoveType === PROCESS_MOVE ? move.ModuleName : "";
+    const fallback = PICK_MOVE_TYPES2.has(move.MoveType) ? firstStation(move, "SrcStationList") : PLACE_MOVE_TYPES.has(move.MoveType) ? move.ModuleName : move.MoveType === PROCESS_MOVE ? move.ModuleName : "";
     for (const material of materialIds(move)) {
       if (!locations.has(material) && fallback) locations.set(material, fallback);
     }
@@ -2431,7 +2856,7 @@ function initialMaterialOrigins(moves) {
       }
       continue;
     }
-    const source = PICK_MOVE_TYPES.has(move.MoveType) ? "SrcStationList" : "";
+    const source = PICK_MOVE_TYPES2.has(move.MoveType) ? "SrcStationList" : "";
     const fallback = source ? "" : PLACE_MOVE_TYPES.has(move.MoveType) || move.MoveType === PROCESS_MOVE ? move.ModuleName : "";
     materialIds(move).forEach((material, index) => {
       setOrigin(
@@ -2444,7 +2869,7 @@ function initialMaterialOrigins(moves) {
   return origins;
 }
 function applyCompletedTransfer(move, locations) {
-  if (PICK_MOVE_TYPES.has(move.MoveType)) {
+  if (PICK_MOVE_TYPES2.has(move.MoveType)) {
     for (const material of materialIds(move)) locations.set(material, move.ModuleName);
     return;
   }
@@ -2467,14 +2892,14 @@ function indexedStation(move, field, index) {
 }
 function indexedSlot(move, field, index) {
   const slots = listValue(move[field]);
-  const slot = finiteNumber2(slots[index] ?? slots[0], 0);
+  const slot = finiteNumber3(slots[index] ?? slots[0], 0);
   return Number.isInteger(slot) && slot > 0 ? slot : 0;
 }
 function loadPortCapacity(device, name, observedMaximum) {
   const definition = device?.Stations?.[name] ?? {};
-  const declaredSlots = listValue(definition.Slots).map((value) => finiteNumber2(value, 0));
+  const declaredSlots = listValue(definition.Slots).map((value) => finiteNumber3(value, 0));
   const declaredCapacity = Math.max(
-    finiteNumber2(definition.Capacity, 0),
+    finiteNumber3(definition.Capacity, 0),
     declaredSlots.length,
     ...declaredSlots
   );
@@ -2486,11 +2911,11 @@ function loadPortCapacity(device, name, observedMaximum) {
 }
 function stationSlotCapacity(device, name, defaultCapacity = 1) {
   const definition = device?.Stations?.[name] ?? {};
-  const declaredSlots = listValue(definition.Slots).map((value) => finiteNumber2(value, 0));
+  const declaredSlots = listValue(definition.Slots).map((value) => finiteNumber3(value, 0));
   return Math.max(
     1,
     defaultCapacity,
-    finiteNumber2(definition.Capacity, 0),
+    finiteNumber3(definition.Capacity, 0),
     declaredSlots.length,
     ...declaredSlots
   );
@@ -2505,7 +2930,7 @@ function buildLoadPortSlots(records, device, time, initialLocations, processedMa
   }
   const observedMaximum = /* @__PURE__ */ new Map();
   for (const move of records) {
-    if (!PICK_MOVE_TYPES.has(move.MoveType)) continue;
+    if (!PICK_MOVE_TYPES2.has(move.MoveType)) continue;
     materialIds(move).forEach((material, index) => {
       const source = indexedStation(move, "SrcStationList", index);
       const type = String(device?.Stations?.[source]?.Type ?? "");
@@ -2523,7 +2948,7 @@ function buildLoadPortSlots(records, device, time, initialLocations, processedMa
     const generationStartTimes = /* @__PURE__ */ new Map([[0, 0]]);
     const materialGenerations = /* @__PURE__ */ new Map();
     for (const move of records) {
-      if (!PICK_MOVE_TYPES.has(move.MoveType)) continue;
+      if (!PICK_MOVE_TYPES2.has(move.MoveType)) continue;
       materialIds(move).forEach((material, index) => {
         if (indexedStation(move, "SrcStationList", index) !== name) return;
         const slot = indexedSlot(move, "SrcSlotList", index);
@@ -2573,7 +2998,7 @@ function buildLoadPortSlots(records, device, time, initialLocations, processedMa
     }
     for (const move of records) {
       const materials = materialIds(move);
-      if (PICK_MOVE_TYPES.has(move.MoveType)) {
+      if (PICK_MOVE_TYPES2.has(move.MoveType)) {
         if (move.EndTime > time) continue;
         materials.forEach((material, index) => {
           if (indexedStation(move, "SrcStationList", index) !== name) return;
@@ -2638,7 +3063,7 @@ function buildReplayStationSlots(records, device, time, initialLocations, proces
     observedMaximum.set(station2, Math.max(observedMaximum.get(station2) ?? 0, slot));
   };
   for (const move of records) {
-    if (PICK_MOVE_TYPES.has(move.MoveType)) {
+    if (PICK_MOVE_TYPES2.has(move.MoveType)) {
       materialIds(move).forEach((material, index) => {
         const source = indexedStation(move, "SrcStationList", index);
         if (!isSlottedStation(source, String(device?.Stations?.[source]?.Type ?? ""))) return;
@@ -2667,7 +3092,7 @@ function buildReplayStationSlots(records, device, time, initialLocations, proces
     for (const move of records) {
       if (move.EndTime > time) continue;
       const materials = materialIds(move);
-      if (PICK_MOVE_TYPES.has(move.MoveType)) {
+      if (PICK_MOVE_TYPES2.has(move.MoveType)) {
         materials.forEach((material, index) => {
           if (indexedStation(move, "SrcStationList", index) !== name) return;
           const slot = indexedSlot(move, "SrcSlotList", index);
@@ -2735,7 +3160,7 @@ function activeTarget(move) {
 function buildWorkspaceSnapshot(moves, device, requestedTime, replenishments = []) {
   const records = normalizeMoves(moves);
   const endTime = records.reduce((maximum, move) => Math.max(maximum, move.EndTime), 0);
-  const normalizedRequestedTime = requestedTime === Number.POSITIVE_INFINITY ? endTime : finiteNumber2(requestedTime);
+  const normalizedRequestedTime = requestedTime === Number.POSITIVE_INFINITY ? endTime : finiteNumber3(requestedTime);
   const time = Math.max(0, Math.min(normalizedRequestedTime, endTime));
   const robotNames = collectRobotNames(records, device);
   const robotNameSet = new Set(robotNames);
@@ -2918,8 +3343,8 @@ function buildWorkspaceSnapshot(moves, device, requestedTime, replenishments = [
 }
 function stationCapacity(device, name) {
   const definition = device?.Stations?.[name] ?? {};
-  const slots = listValue(definition.Slots).map((value) => finiteNumber2(value, 0)).filter((value) => Number.isInteger(value) && value > 0);
-  return Math.max(1, finiteNumber2(definition.Capacity, 0), slots.length);
+  const slots = listValue(definition.Slots).map((value) => finiteNumber3(value, 0)).filter((value) => Number.isInteger(value) && value > 0);
+  return Math.max(1, finiteNumber3(definition.Capacity, 0), slots.length);
 }
 function routeByPJobName(plan, pjobName) {
   const routes = Array.isArray(plan?.routes) ? plan.routes : [];
@@ -2985,9 +3410,9 @@ function hasConsistentTransferReplay(records, device) {
   const locations = initialMaterialLocations(records);
   const robotNames = new Set(Object.keys(device.Robots ?? {}));
   const locationCount = (location) => [...locations.values()].filter((current) => current === location).length;
-  const orderedTransfers = records.filter((move) => PICK_MOVE_TYPES.has(move.MoveType) || PLACE_MOVE_TYPES.has(move.MoveType) || move.MoveType === SWAP_MOVE2).sort((left, right) => left.EndTime - right.EndTime || left.MoveID - right.MoveID);
+  const orderedTransfers = records.filter((move) => PICK_MOVE_TYPES2.has(move.MoveType) || PLACE_MOVE_TYPES.has(move.MoveType) || move.MoveType === SWAP_MOVE2).sort((left, right) => left.EndTime - right.EndTime || left.MoveID - right.MoveID);
   for (const move of orderedTransfers) {
-    if (PICK_MOVE_TYPES.has(move.MoveType)) {
+    if (PICK_MOVE_TYPES2.has(move.MoveType)) {
       const materials = materialIds(move);
       for (let index = 0; index < materials.length; index += 1) {
         const material = materials[index];
@@ -3508,6 +3933,7 @@ var TOPOLOGY_LOADLOCK_ROW_TOP_PIXELS = [664, 740];
 var TOPOLOGY_ATMOSPHERE_ROW_TOP_PIXELS = 866;
 var TOPOLOGY_LOADPORT_ROW_TOP_PIXELS = 1006;
 var TOPOLOGY_CANVAS_PADDING = 28;
+var TOPOLOGY_EXTERNAL_LABEL_CLEARANCE = 22;
 var TOPOLOGY_MACHINE_FRAMES = {
   single: [{
     id: "vacuum-main",
@@ -3682,7 +4108,7 @@ function detectDeviceTopologyLayout(device) {
   if (robotCount > 2) return "cascade";
   const hasMultiProcessChamber = Object.values(device?.Stations ?? {}).some((station2) => {
     const type = String(station2.Type ?? "");
-    return isMultiProcessChamberType(type) || /process|chamber/i.test(type) && finiteNumber2(station2.Capacity, 1) > 1;
+    return isMultiProcessChamberType(type) || /process|chamber/i.test(type) && finiteNumber3(station2.Capacity, 1) > 1;
   });
   return hasMultiProcessChamber ? "dual" : "single";
 }
@@ -4088,9 +4514,9 @@ function renderEquipmentTopology(snapshot, decision, hiddenFilters, device) {
   const minimumTop = allPositions.length ? Math.min(...allPositions.map((position) => position.topPixels - (position.heightPixels ?? TOPOLOGY_ITEM_SIZE) / 2)) : 0;
   const maximumBottom = allPositions.length ? Math.max(...allPositions.map((position) => position.topPixels + (position.heightPixels ?? TOPOLOGY_ITEM_SIZE) / 2)) : TOPOLOGY_ITEM_SIZE;
   const verticalOffset = TOPOLOGY_CANVAS_PADDING - minimumTop;
-  let canvasHeight = Math.max(
+  const canvasHeight = Math.max(
     520,
-    Math.ceil(maximumBottom + verticalOffset + TOPOLOGY_CANVAS_PADDING)
+    Math.ceil(maximumBottom + verticalOffset + TOPOLOGY_CANVAS_PADDING + TOPOLOGY_EXTERNAL_LABEL_CLEARANCE)
   );
   for (const [name, position] of modulePositions) {
     modulePositions.set(name, { ...position, topPixels: position.topPixels + verticalOffset });
@@ -4145,7 +4571,7 @@ function renderEquipmentTopology(snapshot, decision, hiddenFilters, device) {
       position.leftPercent = 50 + offset / TOPOLOGY_VIEWBOX_WIDTH * 100;
     }
     const activeMove = snapshot.activeMoves.find((move) => move.ModuleName === robot.name);
-    const transferring = activeMove && (PICK_MOVE_TYPES.has(activeMove.MoveType) || PLACE_MOVE_TYPES.has(activeMove.MoveType) || activeMove.MoveType === SWAP_MOVE2);
+    const transferring = activeMove && (PICK_MOVE_TYPES2.has(activeMove.MoveType) || PLACE_MOVE_TYPES.has(activeMove.MoveType) || activeMove.MoveType === SWAP_MOVE2);
     const target = robot.target || decisionTargetForRobot(robot, decision);
     const pairedLoadLock = (station2) => layout === "dual" && environment === "vacuum" && /^(LA|LB|LC|LD)$/i.test(station2) && Boolean(activeMove) && ["RobotSlotList", "RecvSlotList", "SendSlotList"].some((field) => listValue(activeMove?.[field]).length >= 2);
     const transferPosition = (station2) => pairedLoadLock(station2) ? robotTargetTopologyPosition(robot, "LA", modulePositions) : modulePositions.get(station2);
@@ -4231,7 +4657,7 @@ function renderEquipmentTopology(snapshot, decision, hiddenFilters, device) {
 }
 function primitiveDecisionBoundaryTimes(moves) {
   return [...new Set(
-    moves.filter((move) => PRIMITIVE_DECISION_COMPLETION_MOVE_TYPES.has(finiteNumber2(move.MoveType, -1))).map((move) => finiteNumber2(move.EndTime)).filter((time) => time >= 0)
+    moves.filter((move) => PRIMITIVE_DECISION_COMPLETION_MOVE_TYPES.has(finiteNumber3(move.MoveType, -1))).map((move) => finiteNumber3(move.EndTime)).filter((time) => time >= 0)
   )].sort((left, right) => left - right);
 }
 function formatActionEndpoint(name, slot) {
@@ -4670,6 +5096,7 @@ function renderSchedulePerformance(performance2) {
 var VisualizationWorkspace = class {
   root;
   elements;
+  photography;
   device = null;
   analysisRoutes = [];
   analysisRounds = [];
@@ -4735,6 +5162,12 @@ var VisualizationWorkspace = class {
         this.render();
       }
     });
+    this.photography = mountTopologyPhotography(
+      root,
+      (startTime) => this.createPhotographySession(startTime),
+      () => this.pause(),
+      () => ({ currentTime: this.time, endTime: finiteNumber3(this.elements.range.max) })
+    );
     const selectedFilters = this.elements.actionStatusFilters.filter((item) => item.checked).map((item) => item.value);
     if (selectedFilters.length) this.actionStatusFilters = selectedFilters;
     this.bindEvents();
@@ -4757,6 +5190,7 @@ var VisualizationWorkspace = class {
   }
   /** 更新当前设备拓扑；已有 MoveList 会立即按新拓扑重绘。 */
   setDevice(device) {
+    this.photography.cancel();
     this.device = device ? structuredClone(device) : null;
     if (this.moves.length) {
       this.render();
@@ -4919,6 +5353,8 @@ var VisualizationWorkspace = class {
     this.analysisRequestVersion += 1;
     this.replaySourceLoading = false;
     this.pause();
+    this.photography.cancel();
+    this.photography.setAvailable(false);
     this.liveSolving = true;
     this.objectInspector.clear();
     this.moves = [];
@@ -4976,7 +5412,7 @@ var VisualizationWorkspace = class {
     if (!this.moves.length) return;
     const bounded = Math.max(
       0,
-      Math.min(finiteNumber2(time), finiteNumber2(this.elements.range.max))
+      Math.min(finiteNumber3(time), finiteNumber3(this.elements.range.max))
     );
     this.time = bounded;
     this.elements.range.value = String(bounded);
@@ -5013,6 +5449,7 @@ var VisualizationWorkspace = class {
     this.analysisRequestVersion += 1;
     this.replaySourceLoading = false;
     this.pause();
+    this.photography.destroy();
   }
   /** 清除旧测试结果，避免切换测试后继续误看上一份 MoveList。 */
   clear() {
@@ -5020,6 +5457,8 @@ var VisualizationWorkspace = class {
     this.analysisRequestVersion += 1;
     this.replaySourceLoading = false;
     this.pause();
+    this.photography.cancel();
+    this.photography.setAvailable(false);
     this.liveSolving = false;
     this.moves = [];
     this.objectInspector.clear();
@@ -5069,6 +5508,7 @@ var VisualizationWorkspace = class {
   async loadMoves(moves, _decisionTrace, loadPortReplenishments, sourceName, resultUrl, analysisResultId, cpuTimeMs = null, recomputeCount = 0) {
     if (!moves.length) throw new Error("MoveList \u4E3A\u7A7A\uFF0C\u65E0\u6CD5\u5EFA\u7ACB\u53EF\u89C6\u5316\u56DE\u653E");
     this.pause();
+    this.photography.cancel();
     this.liveSolving = false;
     this.moves = moves;
     this.loadPortReplenishments = loadPortReplenishments;
@@ -5107,6 +5547,39 @@ var VisualizationWorkspace = class {
     this.render(snapshot);
     void this.renderPerformance();
   }
+  /** 冻结回放输入供离屏摄影；startTime 缺省时拍当前帧，指定时独立生成该时刻画面，不推进页面时间轴。 */
+  createPhotographySession(startTime) {
+    if (!this.moves.length || this.liveSolving) return null;
+    const moves = structuredClone(this.moves);
+    const device = structuredClone(this.device);
+    const replenishments = structuredClone(this.loadPortReplenishments);
+    const plan = structuredClone(this.replayPlan);
+    const generations = structuredClone(this.replayGenerations);
+    const current = buildWorkspaceSnapshot(moves, device, startTime ?? this.time, replenishments);
+    if (startTime === void 0) this.render(current);
+    const renderSnapshot = (snapshot) => {
+      const topologySnapshot = snapshotWithFullDeviceModules(snapshot, device);
+      const stage = this.elements.stage.ownerDocument.createElement("div");
+      stage.innerHTML = renderEquipmentTopology(topologySnapshot, null, void 0, device);
+      const replayInput = {
+        snapshot: topologySnapshot,
+        moves,
+        device,
+        plan,
+        generations,
+        resolveRoute: (job) => routeByPJobName(plan, job)
+      };
+      annotateReplayTopology(stage, topologySnapshot, projectReplayWaferDestinations(replayInput), replayInput);
+      return stage.innerHTML;
+    };
+    return {
+      sourceName: this.sourceName,
+      times: photographyCandidateTimes(moves, replenishments.map((item) => item.time), current.time, current.endTime, device),
+      currentMarkup: startTime === void 0 ? this.elements.stage.innerHTML : renderSnapshot(current),
+      snapshotAt: (time) => buildWorkspaceSnapshot(moves, device, time, replenishments),
+      renderSnapshot
+    };
+  }
   /** 绑定文件、时间轴、播放和快捷控制事件。 */
   bindEvents() {
     this.elements.performance.addEventListener("change", () => {
@@ -5134,7 +5607,7 @@ var VisualizationWorkspace = class {
       });
     });
     this.elements.range.addEventListener("input", () => {
-      this.time = finiteNumber2(this.elements.range.value);
+      this.time = finiteNumber3(this.elements.range.value);
       this.render();
     });
     this.elements.playButton.addEventListener("click", () => {
@@ -5146,7 +5619,7 @@ var VisualizationWorkspace = class {
       this.render();
     }));
     this.elements.speed.addEventListener("change", () => {
-      this.playbackSpeed = Math.max(0.25, finiteNumber2(this.elements.speed.value, DEFAULT_PLAYBACK_SPEED));
+      this.playbackSpeed = Math.max(0.25, finiteNumber3(this.elements.speed.value, DEFAULT_PLAYBACK_SPEED));
     });
     this.elements.performanceWindow.addEventListener("change", () => {
       this.performanceWindowMode = this.elements.performanceWindow.value === "full" ? "full" : "steady";
@@ -5196,7 +5669,7 @@ var VisualizationWorkspace = class {
   /** 从当前时间开始播放；到达末尾时自动回到起点。 */
   play() {
     if (!this.moves.length || this.playing) return;
-    const endTime = finiteNumber2(this.elements.range.max);
+    const endTime = finiteNumber3(this.elements.range.max);
     if (this.time >= endTime) {
       this.time = 0;
       this.elements.range.value = "0";
@@ -5219,7 +5692,7 @@ var VisualizationWorkspace = class {
     if (!this.playing) return;
     const elapsedSeconds = Math.max(0, timestamp - this.previousFrameTime) / 1e3;
     this.previousFrameTime = timestamp;
-    const endTime = finiteNumber2(this.elements.range.max);
+    const endTime = finiteNumber3(this.elements.range.max);
     const advancedTime = Math.min(endTime, this.time + elapsedSeconds * this.playbackSpeed);
     this.time = advancedTime;
     this.elements.range.value = String(this.time);
@@ -5255,6 +5728,7 @@ var VisualizationWorkspace = class {
   /** 绘制当前时间对应的设备快照。 */
   render(prebuiltSnapshot) {
     if (!this.moves.length && !this.liveSolving) return;
+    this.photography.setAvailable(!this.liveSolving && Boolean(this.moves.length));
     const snapshot = prebuiltSnapshot ?? buildWorkspaceSnapshot(
       this.moves,
       this.device,
@@ -5349,10 +5823,10 @@ var VisualizationWorkspace = class {
     if (this.analysis) updateReplayThroughput(this.root, this.time, updateThroughputChartRange);
     this.elements.activeMoves.innerHTML = snapshot.activeMoves.length ? snapshot.activeMoves.map((move) => `
         <li>
-          <span class="active-move-id">#${finiteNumber2(move.MoveID)}</span>
-          <strong>${escapeHtml(MOVE_NAMES2[finiteNumber2(move.MoveType, -1)] ?? `\u52A8\u4F5C ${move.MoveType}`)}</strong>
+          <span class="active-move-id">#${finiteNumber3(move.MoveID)}</span>
+          <strong>${escapeHtml(MOVE_NAMES2[finiteNumber3(move.MoveType, -1)] ?? `\u52A8\u4F5C ${move.MoveType}`)}</strong>
           <span>${escapeHtml(move.ModuleName || activeTarget(move) || "\u2014")}</span>
-          <time>${formatSeconds2(finiteNumber2(move.StartTime))}\u2013${formatSeconds2(finiteNumber2(move.EndTime))} s</time>
+          <time>${formatSeconds2(finiteNumber3(move.StartTime))}\u2013${formatSeconds2(finiteNumber3(move.EndTime))} s</time>
         </li>`).join("") : '<li class="active-move-empty">\u5F53\u524D\u65F6\u523B\u6CA1\u6709\u6267\u884C\u4E2D\u7684\u52A8\u4F5C</li>';
   }
   /** 返回不晚于当前时刻的最近原子动作边界。 */
@@ -5489,6 +5963,8 @@ var VisualizationWorkspace = class {
   /** 显示加载状态并保留明确的系统反馈。 */
   setLoading(loading, message) {
     this.pause();
+    this.photography.cancel();
+    this.photography.setAvailable(false);
     this.setTopologyVisible(false);
     this.elements.toolbar.hidden = false;
     this.elements.content.hidden = true;
@@ -5501,6 +5977,8 @@ var VisualizationWorkspace = class {
   /** 在工作台空状态中显示可恢复的错误。 */
   showError(message) {
     this.pause();
+    this.photography.cancel();
+    this.photography.setAvailable(false);
     this.setTopologyVisible(false);
     this.elements.toolbar.hidden = false;
     this.elements.content.hidden = true;

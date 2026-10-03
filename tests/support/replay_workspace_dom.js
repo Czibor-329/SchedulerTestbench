@@ -16,7 +16,7 @@ function replayWorkspaceDocument() {
         querySelector(){return null;},querySelectorAll(){return [];},closest(){return null;},contains(){return false;},focus(){},click(){}});
     }
     return elements.get(id);
-  },querySelector(){return null;},querySelectorAll(){return [];} };
+  },addEventListener(){},querySelector(){return null;},querySelectorAll(){return [];} };
   return root;
 }
 module.exports={replayWorkspaceDocument};

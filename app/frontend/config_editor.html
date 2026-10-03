@@ -6,9 +6,8 @@
   <title>调度平台</title>
   <link rel="stylesheet" href="/assets/tabler.min.css">
   <link rel="stylesheet" href="/assets/katex.min.css?v=1.4.4">
-  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.15">
-  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.15">
-  <link rel="stylesheet" href="/assets/tabler-adapter.css">
+  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.16">
+  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.16">
 </head>
 <body class="theme-light" data-bs-theme="light">
   <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -42,7 +41,7 @@
       <div class="sidebar-footer">
         <span class="sidebar-footer-label">系统状态</span>
         <div class="service-pill" id="serviceState">本地服务</div>
-        <span class="frontend-version">V1.6.15</span>
+        <span class="frontend-version">V1.6.16</span>
       </div>
     </aside>
 
@@ -136,11 +135,28 @@
           <article class="visual-workbench playback-workbench">
             <div class="visual-toolbar playback-toolbar-placeholder" id="visualToolbar" aria-hidden="true"></div>
             <div class="playback-log-import">
+              <div class="topology-photography">
+                <button class="btn" id="visualPhotographyButton" type="button" aria-label="拓扑拍照" aria-haspopup="dialog" aria-controls="visualPhotographyMenu" aria-expanded="false" disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l2-3h4l2 3h4v13H4z"/><circle cx="12" cy="13" r="4"/></svg>
+                  拍照
+                </button>
+                <div class="topology-photography-menu" id="visualPhotographyMenu" role="dialog" aria-label="拓扑拍照方式" hidden>
+                  <button id="visualPhotographyCurrent" type="button">拍摄当前状态 <span>下载一张 PNG</span></button>
+                  <div class="topology-photography-options">
+                    <label for="visualPhotographyStartTime">连续拍摄起始时间（秒）</label>
+                    <input id="visualPhotographyStartTime" type="number" min="0" step="any" required>
+                    <label for="visualPhotographyCount">最多拍摄张数（1–20）</label>
+                    <input id="visualPhotographyCount" type="number" min="1" max="20" step="1" value="20" required>
+                  </div>
+                  <button id="visualPhotographySequence" type="button">连续拍照 <span>从指定时间开始，最多 20 张，下载 PNG 压缩包</span></button>
+                </div>
+              </div>
               <button class="btn primary playback-log-import-button" id="visualImportButton" type="button" aria-label="导入复现日志">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v5h14v-5"/></svg>
                 导入日志
               </button>
               <input id="visualFileInput" type="file" accept=".json,application/json" hidden>
+              <div class="topology-photography-feedback"><span id="visualPhotographyStatus" role="status" aria-live="polite"></span><button class="btn small" id="visualPhotographyCancel" type="button" hidden>取消拍摄</button></div>
             </div>
 
             <div class="visual-empty" id="visualPlaybackEmpty">
@@ -795,7 +811,7 @@
     </aside>
   </dialog>
 
-  <script type="module" src="/assets/config_editor.js?v=1.6.15"></script>
+  <script type="module" src="/assets/config_editor.js?v=1.6.16"></script>
   <dialog id="testDraftDialog" aria-labelledby="testDraftTitle">
     <h2 id="testDraftTitle">测试有未保存的修改</h2><p>保存后再离开，或放弃本次修改。</p>
     <form method="dialog" class="editor-save-actions"><button class="btn" value="cancel" autofocus>继续编辑</button><button class="btn" value="discard">放弃修改</button><button class="btn primary" value="save">保存并继续</button></form>
