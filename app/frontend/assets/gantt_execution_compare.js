@@ -24,11 +24,81 @@ var GanttExecutionCompare = (() => {
     MOVE_STATE_DONE: () => MOVE_STATE_DONE,
     MOVE_STATE_RUNNING: () => MOVE_STATE_RUNNING,
     TIME_TOLERANCE_SECONDS: () => TIME_TOLERANCE_SECONDS,
+    findReplayGanttTarget: () => findReplayGanttTarget,
     hasExecutionTimeDifference: () => hasExecutionTimeDifference,
     isExecutionLog: () => isExecutionLog,
+    matchesReplayGanttFocus: () => matchesReplayGanttFocus,
+    parseReplayGanttFocus: () => parseReplayGanttFocus,
     reconstructExecutionLog: () => reconstructExecutionLog,
     resolveMoveTimes: () => resolveMoveTimes
   });
+
+  // src/gantt_replay_focus.ts
+  function parseReplayGanttFocus(search) {
+    const parameters = new URLSearchParams(search);
+    const rawTime = parameters.get("time")?.trim() ?? "";
+    const time = rawTime ? Number(rawTime) : null;
+    return {
+      resource: parameters.get("resource")?.trim() ?? "",
+      wafer: parameters.get("wafer")?.trim() ?? "",
+      moveId: parameters.get("moveId")?.trim() ?? "",
+      time: time !== null && Number.isFinite(time) ? time : null
+    };
+  }
+  function identifierValues(values) {
+    return values.flatMap((value) => Array.isArray(value) ? value.flat(Infinity) : [value]).flatMap((value) => typeof value === "string" ? value.split(/[,;]+/) : [value]).filter((value) => value !== null && value !== void 0).map((value) => String(value).trim().toLowerCase()).filter(Boolean);
+  }
+  function matchesReplayGanttFocus(raw, focus) {
+    const resource = focus.resource.toLowerCase();
+    const wafer = focus.wafer.toLowerCase();
+    const resourceNames = identifierValues([
+      raw.ModuleName,
+      raw.Robot,
+      raw.RobotName,
+      raw.SrcStationList,
+      raw.DestStationList,
+      raw.StationList
+    ]);
+    if (resource && !resourceNames.includes(resource)) return false;
+    if (!wafer) return true;
+    const waferIds = identifierValues([
+      raw.MatIDList,
+      raw.MaterialID,
+      raw.MaterialId,
+      raw.MatID,
+      raw.MatId,
+      raw.RecvMatList,
+      raw.SendMatList,
+      raw.RecvMatIDList,
+      raw.SendMatIDList
+    ]);
+    return waferIds.includes(wafer);
+  }
+  function distanceToInterval(record, time) {
+    if (!Number.isFinite(record.start) || !Number.isFinite(record.end)) return Infinity;
+    return Math.max(record.start - time, time - record.end, 0);
+  }
+  function findReplayGanttTarget(records, focus) {
+    const moveId = focus.moveId.toLowerCase();
+    if (!moveId) return null;
+    const candidates = records.filter((record) => {
+      const identifiers = identifierValues([record.raw.MoveID, record.raw.MoveId, record.raw.Move_id]);
+      return identifiers.includes(moveId) && matchesReplayGanttFocus(record.raw, focus) && Number.isFinite(record.start) && Number.isFinite(record.end);
+    });
+    candidates.sort((left, right) => {
+      if (focus.time !== null) {
+        const distance = distanceToInterval(left, focus.time) - distanceToInterval(right, focus.time);
+        if (distance) return distance;
+      }
+      const removed = Number(left.removedByRecompute === true) - Number(right.removedByRecompute === true);
+      if (removed) return removed;
+      const startOrder = focus.time !== null ? right.start - left.start : left.start - right.start;
+      return startOrder || left.rawIndex - right.rawIndex;
+    });
+    return candidates[0] ?? null;
+  }
+
+  // src/gantt_execution_compare.ts
   var MOVE_STATE_RUNNING = 0;
   var MOVE_STATE_DONE = 1;
   var MOVE_STATE_ABORTED = 2;

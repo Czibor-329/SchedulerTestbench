@@ -69,6 +69,7 @@ export async function requestReplayDecision(input: {
   resultId?: string;
   moves?: MoveRecord[];
   plan?: Record<string, any> | null;
+  updates?: Record<string, any>[];
   time: number;
 }): Promise<Record<string, any>> {
   const result = await requestJson("/api/analysis/replay-decision", {
@@ -112,6 +113,7 @@ export async function requestDeadlockDiagnostic(input: {
   resultId?: string;
   moves?: MoveRecord[];
   plan?: Record<string, any> | null;
+  updates?: Record<string, any>[];
   time: number;
   snapshot: Record<string, any>;
   includeActions?: boolean;

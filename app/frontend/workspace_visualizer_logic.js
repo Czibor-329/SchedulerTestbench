@@ -19,6 +19,9 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/workspace_visualizer_test_entry.ts
 var workspace_visualizer_test_entry_exports = {};
 __export(workspace_visualizer_test_entry_exports, {
+  ReplayObjectInspectorController: () => ReplayObjectInspectorController,
+  annotateReplayTopology: () => annotateReplayTopology,
+  applyReplayObjectSelection: () => applyReplayObjectSelection,
   atmosphereRailMotion: () => atmosphereRailMotion,
   buildWorkspaceSnapshot: () => buildWorkspaceSnapshot,
   completedThroughputCount: () => completedThroughputCount,
@@ -40,15 +43,29 @@ __export(workspace_visualizer_test_entry_exports, {
   normalizeMovePayload: () => normalizeMovePayload,
   normalizeReplayLogPayload: () => normalizeReplayLogPayload,
   primitiveDecisionBoundaryTimes: () => primitiveDecisionBoundaryTimes,
+  projectReplayObjectDetails: () => projectReplayObjectDetails,
+  projectReplayWaferDestinations: () => projectReplayWaferDestinations,
   projectTopologyTransfers: () => projectTopologyTransfers,
   renderDecisionLens: () => renderDecisionLens,
   renderEquipmentTopology: () => renderEquipmentTopology,
   renderFrontSlotOverview: () => renderFrontSlotOverview,
   renderParallelRobotArms: () => renderParallelRobotArms,
+  renderReplayObjectDetails: () => renderReplayObjectDetails,
   renderSchedulePerformance: () => renderSchedulePerformance,
   renderThroughputChart: () => renderThroughputChart,
   renderWaferDispatchProgress: () => renderWaferDispatchProgress,
   renderWaferResidenceChart: () => renderWaferResidenceChart,
+  replayActionMatchesObject: () => replayActionMatchesObject,
+  replayCommittedGenerations: () => replayCommittedGenerations,
+  replayLogContext: () => replayLogContext,
+  replayMaterialInstanceKey: () => replayMaterialInstanceKey,
+  replayMoveMatchesObject: () => replayMoveMatchesObject,
+  replayMoveMaterials: () => replayMoveMaterials,
+  replayObjectEvents: () => replayObjectEvents,
+  replayObjectGanttUrl: () => replayObjectGanttUrl,
+  replayObjectIsCurrent: () => replayObjectIsCurrent,
+  replayObjectKey: () => replayObjectKey,
+  replayWaferWaitingSeconds: () => replayWaferWaitingSeconds,
   robotArmAnimation: () => robotArmAnimation,
   robotArmGeometry: () => robotArmGeometry,
   robotSlotWafers: () => robotSlotWafers,
@@ -621,7 +638,7 @@ function robotArmGeometry(reach, index, count, progress, targetSeparation = 0) {
     elbowY: (shoulder + tipY) / 2 + side * reach * bend
   };
 }
-function renderParallelRobotArms(arms, distance, renderWafer, escape2, targetGeometry, occlusions = [], maskPrefix = "robot", mechanism = "articulated", stackedArms = false) {
+function renderParallelRobotArms(arms, distance, renderWafer, escape3, targetGeometry, occlusions = [], maskPrefix = "robot", mechanism = "articulated", stackedArms = false) {
   const waferLayers = [];
   const moving = arms.some((arm) => extensionFraction(arm.progress) > 0);
   const markup = arms.map((arm, index) => {
@@ -677,7 +694,7 @@ function renderParallelRobotArms(arms, distance, renderWafer, escape2, targetGeo
     const maskId = `robot-mask-${Array.from(maskPrefix).map((character) => character.codePointAt(0)).join("-")}-${index}`;
     const radians = localAngle * Math.PI / 180;
     const holes = occlusions.map((point) => `<circle cx="${point.x * Math.cos(radians) + point.y * Math.sin(radians)}" cy="${-point.x * Math.sin(radians) + point.y * Math.cos(radians)}" r="${point.radius}" fill="black"/>`).join("");
-    return `<div class="parallel-robot-arm${arm.progress === null ? "" : " is-transferring"}${arm.enabled ? "" : " is-disabled"}" data-arm="${escape2(arm.name)}" style="--robot-reach:${reach.toFixed(2)}px;--robot-arm-local-angle:${localAngle}deg;${hidden ? "visibility:hidden;" : faded ? "opacity:.3;" : ""}">
+    return `<div class="parallel-robot-arm${arm.progress === null ? "" : " is-transferring"}${arm.enabled ? "" : " is-disabled"}" data-arm="${escape3(arm.name)}" style="--robot-reach:${reach.toFixed(2)}px;--robot-arm-local-angle:${localAngle}deg;${hidden ? "visibility:hidden;" : faded ? "opacity:.3;" : ""}">
       <svg class="parallel-robot-arms" overflow="visible" aria-hidden="true">
         <defs><mask id="${maskId}" maskUnits="userSpaceOnUse" x="-2000" y="-2000" width="4000" height="4000"><rect x="-2000" y="-2000" width="4000" height="4000" fill="white"/>${holes}</mask></defs>
         <g mask="url(#${maskId})"><path class="parallel-robot-link" d="${linkPath}${wristPath}"/>
@@ -867,7 +884,7 @@ function atmosphereRailMotion(moves, robot, time) {
 }
 
 // src/topology_robot_slots.ts
-function renderRobotSlotRow(robot, dual, renderSlots, escape2) {
+function renderRobotSlotRow(robot, dual, renderSlots, escape3) {
   const arms = robot.arms ?? configuredRobotArms({ Capacity: robot.capacity });
   const combined = dual && robot.environment === "vacuum";
   const slots = (ids) => ids.map((slot) => ({
@@ -875,8 +892,8 @@ function renderRobotSlotRow(robot, dual, renderSlots, escape2) {
     wafer: robot.slotWafers?.[slot] ?? "",
     processed: robot.processedWafers.includes(robot.slotWafers?.[slot] ?? "")
   }));
-  const boards = combined ? `<div class="front-module front-robot-combined"><strong>${escape2(robot.name)}</strong><div class="front-slot-board front-robot-combined-board" style="--front-slot-count:${arms.length}">${arms.map((arm) => `<div class="front-robot-arm-pair" role="group" aria-label="${escape2(arm.name)}">${renderSlots(slots(arm.slots))}</div>`).join("")}</div></div>` : arms.map((arm) => `<div class="front-module"><strong>${escape2(robot.name)}${dual ? "" : ` \xB7 ${escape2(arm.name)}`}</strong><div class="front-slot-board" style="--front-slot-count:${arm.slots.length}" role="group" aria-label="${escape2(robot.name + " " + arm.name)}">${renderSlots(slots(arm.slots))}</div></div>`).join("");
-  return `<div class="front-slot-row front-slot-row-robot" data-robot="${escape2(robot.name)}">${boards}</div>`;
+  const boards = combined ? `<div class="front-module front-robot-combined"><strong>${escape3(robot.name)}</strong><div class="front-slot-board front-robot-combined-board" style="--front-slot-count:${arms.length}">${arms.map((arm) => `<div class="front-robot-arm-pair" role="group" aria-label="${escape3(arm.name)}">${renderSlots(slots(arm.slots))}</div>`).join("")}</div></div>` : arms.map((arm) => `<div class="front-module"><strong>${escape3(robot.name)}${dual ? "" : ` \xB7 ${escape3(arm.name)}`}</strong><div class="front-slot-board" style="--front-slot-count:${arm.slots.length}" role="group" aria-label="${escape3(robot.name + " " + arm.name)}">${renderSlots(slots(arm.slots))}</div></div>`).join("");
+  return `<div class="front-slot-row front-slot-row-robot" data-robot="${escape3(robot.name)}">${boards}</div>`;
 }
 
 // src/gantt_execution_compare.ts
@@ -984,7 +1001,7 @@ function reconstructExecutionLog(entries) {
       if (planStart === null || planEnd === null) continue;
       if (Number.isFinite(cutoff) && !(planStart < cutoff - TIME_TOLERANCE_SECONDS)) continue;
       const moveId = finiteNumber(raw.MoveID) ?? Number.NaN;
-      const record = {
+      const record3 = {
         raw,
         rawIndex: records.length,
         generation: generationIndex + 1,
@@ -997,10 +1014,10 @@ function reconstructExecutionLog(entries) {
         executed: false,
         aborted: false
       };
-      records.push(record);
+      records.push(record3);
       if (Number.isFinite(moveId)) {
         const versions = versionsByMoveId.get(moveId) ?? [];
-        versions.push(record);
+        versions.push(record3);
         versionsByMoveId.set(moveId, versions);
       }
     }
@@ -1022,10 +1039,651 @@ function reconstructExecutionLog(entries) {
     target.aborted = interval.aborted;
   }
   records.sort((left, right) => left.planStart - right.planStart || left.moveId - right.moveId);
-  records.forEach((record, index) => {
-    record.rawIndex = index;
+  records.forEach((record3, index) => {
+    record3.rawIndex = index;
   });
   return { records, recomputePoints, warnings, unmatchedExecutions };
+}
+
+// src/replay_log_context.ts
+function record(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+function replayCommittedGenerations(updates, moves) {
+  const byTime = /* @__PURE__ */ new Map();
+  for (const update of updates) {
+    const time = Number(update.CurrentTime);
+    if (Number.isFinite(time) && time >= 0) byTime.set(time, update);
+  }
+  const published = [...byTime.entries()].sort((left, right) => left[0] - right[0]);
+  return published.map(([time, plan], index) => {
+    const cutoff = published[index + 1]?.[0] ?? Number.POSITIVE_INFINITY;
+    return { time, plan: structuredClone(plan), moves: structuredClone(moves.filter((move) => Number(move.StartTime) >= time && Number(move.StartTime) < cutoff)) };
+  });
+}
+function replayLogContext(entries, topology) {
+  const updates = [];
+  const generations = [];
+  let currentUpdate = null;
+  let currentTime = 0;
+  for (const entry of entries) {
+    const info = record(entry.Info);
+    if (!info) continue;
+    if (entry.Describe === "AlgSchedule") {
+      const value = Number(info.CurrentTime ?? entry.SimTime ?? 0);
+      currentTime = Number.isFinite(value) ? value : 0;
+      currentUpdate = structuredClone(info);
+      currentUpdate.CurrentTime = currentTime;
+      if (!updates.length && topology) {
+        currentUpdate.Stations ??= structuredClone(topology.Stations);
+        currentUpdate.Robots ??= structuredClone(topology.Robots);
+      }
+      updates.push(currentUpdate);
+    } else if (entry.Describe === "AlgOutput" && Array.isArray(info.MoveList)) {
+      const generation = { time: currentTime, moves: structuredClone(info.MoveList), plan: currentUpdate };
+      const previous = generations.findIndex((item) => item.time === currentTime);
+      if (previous >= 0) generations[previous] = generation;
+      else generations.push(generation);
+    }
+  }
+  const plan = topology && updates.length ? {
+    device: structuredClone(topology),
+    rounds: [],
+    strategy: ""
+  } : null;
+  return { plan, updates, generations };
+}
+
+// src/replay_wafer_destinations.ts
+var PICK_TYPES2 = /* @__PURE__ */ new Set([0, 2]);
+var PLACE_TYPES = /* @__PURE__ */ new Set([1, 3]);
+var SWAP_TYPE2 = 4;
+var PROCESS_TYPE = 9;
+var TIME_TOLERANCE2 = 1e-6;
+var materialTimelines = /* @__PURE__ */ new WeakMap();
+function list(value) {
+  return Array.isArray(value) ? value : [];
+}
+function record2(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+function stationAt(move, field, index) {
+  const entries = list(move[field]);
+  return String(entries[index] ?? (entries.length === 1 ? entries[0] : "") ?? "");
+}
+function materialTimeline(moves, wafer) {
+  let timelines = materialTimelines.get(moves);
+  if (!timelines) {
+    timelines = /* @__PURE__ */ new Map();
+    for (const move of moves) for (const material of replayMoveMaterials(move)) {
+      const timeline = timelines.get(material.wafer) ?? { starts: [], ends: [] };
+      timeline.starts.push({ move, material });
+      timeline.ends.push({ move, material });
+      timelines.set(material.wafer, timeline);
+    }
+    for (const timeline of timelines.values()) {
+      timeline.starts.sort((a, b) => Number(b.move.StartTime ?? b.move.EndTime ?? 0) - Number(a.move.StartTime ?? a.move.EndTime ?? 0) || Number(b.move.MoveID ?? 0) - Number(a.move.MoveID ?? 0));
+      timeline.ends.sort((a, b) => Number(b.move.EndTime ?? 0) - Number(a.move.EndTime ?? 0) || Number(b.move.MoveID ?? 0) - Number(a.move.MoveID ?? 0));
+    }
+    materialTimelines.set(moves, timelines);
+  }
+  return timelines.get(wafer) ?? { starts: [], ends: [] };
+}
+function replayMoveMaterials(move) {
+  const swap = Number(move.MoveType) === SWAP_TYPE2;
+  const receiveCount = list(move.RecvMatList).length;
+  const groups = swap ? [
+    { field: "RecvMatList", steps: "RecvMatStepIDList", direction: "receive", offset: 0 },
+    { field: "SendMatList", steps: "SendMatStepIDList", direction: "send", offset: receiveCount }
+  ] : [{ field: "MatIDList", steps: "StepIDList", direction: "material", offset: 0 }];
+  return groups.flatMap((group) => list(move[group.field]).map((wafer, index) => {
+    const commonIndex = group.offset + index;
+    const pick = PICK_TYPES2.has(Number(move.MoveType));
+    return {
+      wafer: String(wafer),
+      taskId: String(list(move.TaskID)[commonIndex] ?? ""),
+      pjobName: String(list(move.PJobName)[commonIndex] ?? ""),
+      stepId: String(list(move[group.steps])[index] ?? ""),
+      index: commonIndex,
+      direction: group.direction,
+      station: swap ? stationAt(move, "StationList", index) : stationAt(move, pick ? "SrcStationList" : PLACE_TYPES.has(Number(move.MoveType)) ? "DestStationList" : "StationList", index) || (!pick && !PLACE_TYPES.has(Number(move.MoveType)) ? String(move.ModuleName ?? "") : ""),
+      slot: Number(list(move[swap ? group.direction === "receive" ? "StnSendSlotList" : "StnRecvSlotList" : pick ? "SrcSlotList" : PLACE_TYPES.has(Number(move.MoveType)) ? "DestSlotList" : "SlotList"])[index] ?? 0),
+      robotSlot: Number(list(move[swap ? group.direction === "receive" ? "RecvSlotList" : "SendSlotList" : "RobotSlotList"])[index] ?? 0)
+    };
+  }));
+}
+function replayMaterialInstanceKey(material) {
+  return JSON.stringify([material.wafer, material.taskId, material.pjobName]);
+}
+function sameReplayMaterialInstance(left, right) {
+  return left.wafer === right.wafer && (!left.taskId || !right.taskId || left.taskId === right.taskId) && (!left.pjobName || !right.pjobName || left.pjobName === right.pjobName);
+}
+function replayGenerationAtTime(input) {
+  let selected = null;
+  for (const generation of input.generations ?? []) {
+    if (generation.time <= input.snapshot.time + TIME_TOLERANCE2 && (!selected || generation.time >= selected.time)) selected = generation;
+  }
+  return selected;
+}
+function replayWaferInstance(input, wafer) {
+  const time = input.snapshot.time;
+  const current = replayGenerationAtTime(input);
+  const started = materialTimeline(input.moves, wafer).starts.find((row) => Number(row.move.StartTime ?? row.move.EndTime ?? 0) <= time + TIME_TOLERANCE2);
+  let selected = started?.material;
+  const publishedMaterial = list(current?.plan?.Materials ?? input.plan?.Materials).map(record2).filter(Boolean).find((row) => String(row.ID ?? row.MatID ?? row.Name ?? "") === wafer);
+  if (publishedMaterial && (!started || current && Number(started.move.StartTime ?? 0) < current.time)) {
+    selected = {
+      wafer,
+      taskId: String(publishedMaterial.TaskID ?? selected?.taskId ?? ""),
+      pjobName: String(publishedMaterial.PJobName ?? selected?.pjobName ?? ""),
+      stepId: String(publishedMaterial.StepID ?? ""),
+      index: 0,
+      direction: "material",
+      station: String(publishedMaterial.CurrentModuleName ?? ""),
+      slot: Number(publishedMaterial.SlotID ?? 0),
+      robotSlot: 0
+    };
+  }
+  if (!selected) {
+    const future = materialTimeline(current?.moves ?? (input.generations?.length ? [] : input.moves), wafer).starts;
+    selected = future.at(-1)?.material;
+  }
+  return selected ?? { wafer, taskId: "", pjobName: "", stepId: "", index: 0, direction: "material", station: "", slot: 0, robotSlot: 0 };
+}
+function embeddedRoute(plan, material) {
+  const match = list(plan?.Materials).map(record2).find((row) => row && String(row.ID ?? row.MatID ?? row.Name ?? "") === material.wafer && (!material.taskId || !row.TaskID || String(row.TaskID) === material.taskId));
+  const materialRoute = record2(match?.Route);
+  if (materialRoute) return materialRoute;
+  const job = list(plan?.ProcessJobs).map(record2).find((row) => row && (String(row.JobName ?? row.PJobName ?? row.Name ?? "") === material.pjobName || list(row.MatList).map(String).includes(material.wafer)));
+  return record2(job?.OriginRoute) ?? record2(job?.Route);
+}
+function stationCandidates(route, stepId, device) {
+  const stages = list(route?.stages ?? route?.RouteSteps).map(record2).filter(Boolean);
+  const id = (stage) => String(stage.stepId ?? stage.StepID ?? "");
+  const currentIndex = stages.findIndex((stage) => id(stage) === stepId);
+  if (currentIndex < 0) return [];
+  const nextIds = (stage) => list(stage.postStepIds ?? stage.PostStepID).map(String);
+  const direct = nextIds(stages[currentIndex]);
+  const queue = direct.length ? direct : stages[currentIndex + 1] ? [id(stages[currentIndex + 1])] : [];
+  const visited = /* @__PURE__ */ new Set();
+  const stations = /* @__PURE__ */ new Set();
+  while (queue.length) {
+    const step = queue.shift();
+    if (visited.has(step)) continue;
+    visited.add(step);
+    const stage = stages.find((row) => id(row) === step);
+    if (!stage) continue;
+    const resources = list(stage.visits ?? stage.Visits).map(record2).map((visit) => String(visit?.stationName ?? visit?.ModuleName ?? visit?.StationName ?? "")).filter(Boolean);
+    const knownStations = resources.filter((name) => !device?.Robots?.[name]);
+    if (knownStations.length) knownStations.forEach((name) => stations.add(name));
+    else queue.push(...nextIds(stage));
+  }
+  return [...stations];
+}
+function projectReplayWaferDestinations(input) {
+  const result = /* @__PURE__ */ new Map();
+  const time = input.snapshot.time;
+  const generation = replayGenerationAtTime(input);
+  const scheduled = [...input.snapshot.activeMoves, ...generation?.moves ?? (input.generations?.length ? [] : input.moves)].filter((move) => Number(move.EndTime ?? 0) > time + TIME_TOLERANCE2).sort((a, b) => Number(a.StartTime ?? 0) - Number(b.StartTime ?? 0) || Number(a.MoveID ?? 0) - Number(b.MoveID ?? 0));
+  const placements = /* @__PURE__ */ new Map();
+  for (const move of scheduled) {
+    const type = Number(move.MoveType);
+    if (!PLACE_TYPES.has(type) && type !== SWAP_TYPE2) continue;
+    for (const material of replayMoveMaterials(move)) {
+      if (type === SWAP_TYPE2 && material.direction !== "send" || !material.station || input.device?.Robots?.[material.station]) continue;
+      const rows = placements.get(material.wafer) ?? [];
+      rows.push(material);
+      placements.set(material.wafer, rows);
+    }
+  }
+  const locations = /* @__PURE__ */ new Map();
+  for (const item of [...input.snapshot.modules, ...input.snapshot.robots]) item.wafers.forEach((wafer) => locations.set(wafer, item.name));
+  for (const [wafer, location] of locations) {
+    const material = replayWaferInstance(input, wafer);
+    const completed = materialTimeline(input.moves, wafer).ends.filter((row) => Number(row.move.EndTime ?? 0) <= time + TIME_TOLERANCE2 && sameReplayMaterialInstance(material, row.material));
+    const last = completed[0];
+    const confirmedStep = completed.find((row) => row.material.stepId)?.material.stepId ?? publishedStep(input, material);
+    const base = {
+      wafer,
+      taskId: material.taskId,
+      pjobName: material.pjobName,
+      stepId: confirmedStep,
+      instanceKey: replayMaterialInstanceKey(material),
+      station: "",
+      candidates: []
+    };
+    const placement = placements.get(wafer)?.find((row) => sameReplayMaterialInstance(material, row));
+    const station2 = placement?.station ?? "";
+    const stationSlot = placement?.slot ?? 0;
+    if (station2) {
+      result.set(wafer, { ...base, label: station2, station: station2, stationSlot, status: "confirmed" });
+      continue;
+    }
+    const stationType = String(input.device?.Stations?.[location]?.Type ?? "").toLowerCase();
+    if (["loadport", "dummyport"].includes(stationType) && last && (PLACE_TYPES.has(Number(last.move.MoveType)) || last.material.direction === "send") && last.material.station === location) {
+      result.set(wafer, { ...base, label: "\u5DF2\u56DE\u6E2F", status: "complete" });
+      continue;
+    }
+    const route = embeddedRoute(generation?.plan ?? input.plan, material) ?? input.resolveRoute?.(material.pjobName, time) ?? null;
+    const candidates = stationCandidates(route, confirmedStep, input.device);
+    result.set(wafer, {
+      ...base,
+      label: candidates.length ? "\u5F85\u5B9A" : "\u672A\u77E5",
+      candidates,
+      status: candidates.length ? "pending" : "unknown"
+    });
+  }
+  return result;
+}
+function publishedStep(input, material) {
+  const plan = replayGenerationAtTime(input)?.plan ?? input.plan;
+  const state = list(plan?.Materials).map(record2).find((row) => row && String(row.ID ?? row.MatID ?? row.Name ?? "") === material.wafer && (!material.taskId || !row.TaskID || String(row.TaskID) === material.taskId));
+  return state?.StepID === void 0 ? "" : String(state.StepID);
+}
+function replayWaferWaitingSeconds(input, wafer, station2) {
+  const module2 = input.snapshot.modules.find((item) => item.name === station2);
+  if (!module2?.wafers.includes(wafer)) return null;
+  const material = replayWaferInstance(input, wafer);
+  const completed = materialTimeline(input.moves, wafer).ends.filter(({ move, material: occurrence }) => Number(move.EndTime) <= input.snapshot.time + TIME_TOLERANCE2 && sameReplayMaterialInstance(material, occurrence));
+  const arrival = completed.find(({ move, material: occurrence }) => occurrence.station === station2 && (PLACE_TYPES.has(Number(move.MoveType)) || occurrence.direction === "send"));
+  const arrivalTime = Number(arrival?.move.EndTime ?? Number.NEGATIVE_INFINITY);
+  const finishes = completed.filter(({ move }) => Number(move.MoveType) === PROCESS_TYPE && move.ModuleName === station2 && Number(move.EndTime) >= arrivalTime).map(({ move }) => Number(move.EndTime));
+  if (input.snapshot.activeMoves.some((move) => Number(move.MoveType) === PROCESS_TYPE && move.ModuleName === station2 && replayMoveMaterials(move).some((row) => sameReplayMaterialInstance(material, row)))) return null;
+  return finishes.length ? Math.max(0, input.snapshot.time - Math.max(...finishes)) : null;
+}
+
+// src/replay_object_inspector.ts
+var TIME_TOLERANCE3 = 1e-6;
+var PICK_TYPES3 = /* @__PURE__ */ new Set([0, 2]);
+var STATUS_LABELS = {
+  idle: "\u7A7A\u95F2",
+  occupied: "\u5DF2\u8F7D\u7247",
+  door: "\u95E8\u52A8\u4F5C",
+  transfer: "\u4F20\u8F93\u4E2D",
+  processing: "\u52A0\u5DE5\u4E2D",
+  cleaning: "\u6E05\u6D01\u4E2D",
+  environment: "\u73AF\u5883\u5207\u6362",
+  closed: "\u5173\u95ED",
+  opening: "\u5F00\u95E8\u4E2D",
+  open: "\u5F00\u542F",
+  closing: "\u5173\u95E8\u4E2D",
+  doorless: "\u65E0\u95E8",
+  enabled: "\u4F7F\u80FD",
+  "physical-blocked": "\u7269\u7406\u62E6\u622A",
+  "deadlock-blocked": "\u6B7B\u9501\u89C4\u5219\u62E6\u622A"
+};
+var MOVE_NAMES = {
+  0: "\u53D6\u7247",
+  1: "\u653E\u7247",
+  2: "\u591A\u7247\u53D6\u7247",
+  3: "\u591A\u7247\u653E\u7247",
+  4: "\u6362\u7247",
+  5: "\u8F6C\u4F4D",
+  6: "\u5F00\u95E8",
+  7: "\u5173\u95E8",
+  8: "\u540E\u7F6E\u5B8C\u6210",
+  9: "\u52A0\u5DE5",
+  10: "\u73AF\u5883\u5207\u6362",
+  11: "\u5BF9\u51C6",
+  12: "\u62BD\u6C14",
+  13: "\u5145\u6C14",
+  14: "\u6E05\u6D01"
+};
+function escape2(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+}
+function seconds(value) {
+  return `${Math.max(0, value).toFixed(1)} s`;
+}
+function replayObjectKey(selection) {
+  return JSON.stringify(selection.kind === "wafer" ? [selection.kind, selection.wafer ?? "", selection.instanceKey ?? ""] : [selection.kind, selection.name ?? "", selection.kind === "slot" ? selection.slot ?? 0 : 0]);
+}
+function replayObjectIsCurrent(input, selection) {
+  if (selection.kind !== "wafer") return true;
+  if (!selection.wafer) return false;
+  return !selection.instanceKey || selection.instanceKey === replayMaterialInstanceKey(replayWaferInstance(input, selection.wafer));
+}
+function selectedMaterial(input, selection) {
+  if (!selection.wafer) return null;
+  const material = replayWaferInstance(input, selection.wafer);
+  if (!selection.instanceKey || replayMaterialInstanceKey(material) === selection.instanceKey) return material;
+  const saved = input.moves.flatMap(replayMoveMaterials).find((row) => replayMaterialInstanceKey(row) === selection.instanceKey);
+  return saved ?? null;
+}
+function replayMoveMatchesObject(input, move, selection) {
+  const materials = replayMoveMaterials(move);
+  if (selection.kind === "wafer") {
+    const material = selectedMaterial(input, selection);
+    return Boolean(material && materials.some((row) => sameReplayMaterialInstance(material, row)));
+  }
+  if (selection.kind === "slot") return materials.some((row) => row.station === selection.name && row.slot === selection.slot || move.ModuleName === selection.name && row.robotSlot === selection.slot);
+  return move.ModuleName === selection.name || materials.some((row) => row.station === selection.name) || ["SrcStationList", "DestStationList", "StationList"].some((field) => Array.isArray(move[field]) && move[field].map(String).includes(selection.name ?? ""));
+}
+function replayObjectEvents(input, selection) {
+  const events = input.moves.filter((move) => replayMoveMatchesObject(input, move, selection)).flatMap((move) => {
+    const label = MOVE_NAMES[Number(move.MoveType)] ?? `\u52A8\u4F5C ${move.MoveType}`;
+    return ["start", "end"].map((boundary) => ({
+      time: Number(move[boundary === "start" ? "StartTime" : "EndTime"]),
+      moveId: Number(move.MoveID ?? 0),
+      label: `${label}${boundary === "start" ? "\u5F00\u59CB" : "\u7ED3\u675F"}`,
+      boundary
+    }));
+  }).filter((event) => Number.isFinite(event.time)).sort((a, b) => a.time - b.time || a.moveId - b.moveId);
+  const time = input.snapshot.time;
+  return {
+    events,
+    previousEvent: events.filter((event) => event.time < time - TIME_TOLERANCE3).at(-1) ?? null,
+    nextEvent: events.find((event) => event.time > time + TIME_TOLERANCE3) ?? null
+  };
+}
+function replayActionMatchesObject(action, selection) {
+  if (selection.kind === "wafer") return action.materialIds.includes(selection.wafer ?? "");
+  if (selection.kind === "slot") return action.source === selection.name && action.sourceSlot === selection.slot || action.destination === selection.name && action.destinationSlot === selection.slot;
+  return [action.robot, action.source, action.destination].includes(selection.name ?? "");
+}
+function replayObjectGanttUrl(resultUrl, selection, time, moveId) {
+  if (!resultUrl) return "";
+  const parameters = new URLSearchParams({ src: resultUrl, time: String(time) });
+  if (selection.kind === "wafer" && selection.wafer) parameters.set("wafer", selection.wafer);
+  else if (selection.name) parameters.set("resource", selection.name);
+  if (moveId !== void 0) parameters.set("moveId", String(moveId));
+  return `/movelist_gantt_viewer.html?${parameters}`;
+}
+function waferLocation(input, wafer) {
+  for (const module2 of input.snapshot.modules) {
+    if (!module2.wafers.includes(wafer)) continue;
+    const slots = [...module2.loadPortSlots, ...module2.loadLockSlots, ...module2.processSlots ?? []];
+    return { name: module2.name, slot: slots.find((row) => row.wafer === wafer)?.slot ?? 0 };
+  }
+  for (const robot of input.snapshot.robots) {
+    if (robot.wafers.includes(wafer)) return {
+      name: robot.name,
+      slot: Number(Object.entries(robot.slotWafers ?? {}).find(([, material]) => material === wafer)?.[0] ?? 0)
+    };
+  }
+  return null;
+}
+function projectReplayObjectDetails(input, selection) {
+  const snapshot = input.snapshot;
+  const destinations = input.destinations ?? projectReplayWaferDestinations(input);
+  const currentObject = replayObjectIsCurrent(input, selection);
+  const fields = [];
+  const add = (label, value) => {
+    if (value !== void 0 && value !== null && value !== "") fields.push({ label, value: String(value) });
+  };
+  const module2 = snapshot.modules.find((item) => item.name === selection.name);
+  const robot = snapshot.robots.find((item) => item.name === selection.name);
+  let title = selection.name ?? "\u5BF9\u8C61\u4FE1\u606F";
+  let summary = "";
+  let wafers = [];
+  if (selection.kind === "wafer") {
+    const wafer = selection.wafer ?? "";
+    title = snapshot.waferOrigins[wafer] || wafer;
+    const destination = destinations.get(wafer);
+    const sameInstance = currentObject;
+    const location = sameInstance ? waferLocation(input, wafer) : null;
+    add("\u5F53\u524D\u4F4D\u7F6E", location ? `${location.name}${location.slot ? `.${location.slot}` : ""}` : "\u5F53\u524D\u5B9E\u4F8B\u672A\u5728\u673A");
+    add("MatID", wafer);
+    const material = selectedMaterial(input, selection);
+    add("Task / PJob", [material?.taskId, material?.pjobName].filter(Boolean).join(" / "));
+    add("\u5F53\u524D Step", sameInstance ? destination?.stepId : material?.stepId);
+    add("\u4E0B\u4E00\u7AD9", sameInstance ? destination?.label ?? "\u672A\u77E5" : "\u672A\u77E5");
+    if (sameInstance && destination?.candidates.length) add("\u5019\u9009\u7AD9\u70B9", destination.candidates.join(" / "));
+    if (location) wafers = [wafer];
+    summary = location ? `\u6676\u5706 ${title} \xB7 ${location.name}` : `\u6676\u5706 ${title} \xB7 \u5F53\u524D\u5B9E\u4F8B\u672A\u5728\u673A`;
+  } else if (selection.kind === "slot") {
+    title = `${selection.name}.${selection.slot}`;
+    const slot = module2 ? [...module2.loadPortSlots, ...module2.loadLockSlots, ...module2.processSlots ?? []].find((row) => row.slot === selection.slot) : null;
+    const wafer = slot?.wafer || (robot?.slotWafers ?? {})[selection.slot ?? 0] || "";
+    add("\u5360\u4F4D", wafer ? snapshot.waferOrigins[wafer] || wafer : "\u7A7A\u69FD");
+    if (wafer) {
+      wafers = [wafer];
+      add("\u4E0B\u4E00\u7AD9", destinations.get(wafer)?.label ?? "\u672A\u77E5");
+    }
+    const arm = robot?.arms?.find((row) => row.slots.includes(selection.slot ?? 0));
+    if (arm) add("\u7269\u7406\u81C2", `${arm.name} \xB7 ${arm.enabled ? "\u542F\u7528" : "\u7981\u7528"}`);
+    summary = `${title} \xB7 ${wafer ? "\u6709\u7247" : "\u7A7A\u69FD"}`;
+  } else if (module2) {
+    add("\u72B6\u6001", STATUS_LABELS[module2.status] ?? module2.status);
+    add("\u95E8", module2.loadLockDoors ? `\u4E0A\u4FA7 ${STATUS_LABELS[module2.loadLockDoors.top]} / \u4E0B\u4FA7 ${STATUS_LABELS[module2.loadLockDoors.bottom]}` : STATUS_LABELS[module2.door]);
+    add("\u73AF\u5883", module2.environment);
+    add("\u5360\u4F4D", `${module2.wafers.length} / ${module2.slotCapacity}`);
+    wafers = module2.wafers;
+    add("\u6676\u5706", wafers.map((wafer) => snapshot.waferOrigins[wafer] || wafer).join(" / "));
+    summary = `${title} \xB7 ${STATUS_LABELS[module2.status] ?? module2.status}`;
+  } else if (robot) {
+    add("\u72B6\u6001", robot.busy ? "\u6267\u884C\u4E2D" : "\u5F85\u547D");
+    add("\u5F53\u524D\u52A8\u4F5C", robot.activeMoveName);
+    add("\u642C\u8FD0", [robot.source, robot.target].filter(Boolean).join(" \u2192 "));
+    add("\u81C2\u69FD", robot.arms?.map((arm) => `${arm.name}${arm.enabled ? "" : "\uFF08\u7981\u7528\uFF09"}: ${arm.slots.map((slot) => `${slot}=${snapshot.waferOrigins[robot.slotWafers?.[slot] ?? ""] || robot.slotWafers?.[slot] || "\u7A7A"}`).join(", ")}`).join("\uFF1B"));
+    wafers = robot.wafers;
+    summary = `${title} \xB7 ${robot.busy ? "\u6267\u884C\u4E2D" : "\u5F85\u547D"}`;
+  } else {
+    summary = `${title} \xB7 \u5F53\u524D\u65E0\u5BF9\u8C61\u72B6\u6001`;
+  }
+  const active = currentObject ? snapshot.activeMoves.filter((move) => replayMoveMatchesObject(input, move, selection)) : [];
+  if (active.length) add("\u8FDB\u884C\u4E2D", active.map((move) => `${MOVE_NAMES[Number(move.MoveType)] ?? move.MoveType} \xB7 \u5269\u4F59 ${seconds(Number(move.EndTime) - snapshot.time)}`).join("\uFF1B"));
+  for (const wafer of wafers) {
+    const location = waferLocation(input, wafer);
+    const chamber = snapshot.modules.find((item) => item.name === location?.name);
+    if (!chamber) continue;
+    const waiting = replayWaferWaitingSeconds(input, wafer, location.name);
+    if (waiting === null) continue;
+    const picking = active.some((move) => (PICK_TYPES3.has(Number(move.MoveType)) || Number(move.MoveType) === 4) && replayMoveMaterials(move).some((row) => row.wafer === wafer && row.direction !== "send"));
+    if (picking) {
+      add("\u4EA4\u63A5", `${snapshot.waferOrigins[wafer] || wafer} \u6B63\u5728\u53D6\u7247`);
+      continue;
+    }
+    add("\u5F85\u53D6\u7247", `${snapshot.waferOrigins[wafer] || wafer} \xB7 \u5DF2\u7B49\u5F85 ${seconds(waiting)}`);
+  }
+  const relatedActions = currentObject ? (input.decision?.actionDiagnostics ?? []).filter((action) => replayActionMatchesObject(action, selection)) : [];
+  if (!currentObject) add("\u52A8\u4F5C\u8BCA\u65AD", "\u6240\u9009\u5B9E\u4F8B\u672A\u5728\u673A\uFF0C\u5F53\u524D\u52A8\u4F5C\u4E0D\u5C5E\u4E8E\u8BE5\u5B9E\u4F8B");
+  else if (input.decision?.actionDiagnosticsSource === "algorithm") {
+    add("\u5173\u8054\u52A8\u4F5C", `\u4F7F\u80FD ${relatedActions.filter((action) => action.status === "enabled").length} \xB7 \u62E6\u622A ${relatedActions.filter((action) => action.status !== "enabled").length}`);
+    const reasons = [...new Set(relatedActions.filter((action) => action.status !== "enabled" && action.reason).map((action) => action.reason))];
+    if (reasons.length) add("\u5DF2\u77E5\u62E6\u622A", reasons.join("\uFF1B"));
+    add("\u8BCA\u65AD\u65F6\u523B", `${seconds(input.decision.time)}\uFF08\u5B8C\u6210\u8FB9\u754C\uFF09`);
+  } else add("\u52A8\u4F5C\u8BCA\u65AD", input.decision ? "\u5F53\u524D\u7B97\u6CD5\u672A\u63D0\u4F9B\u52A8\u4F5C\u8BCA\u65AD" : "\u67E5\u8BE2\u672A\u5F00\u542F\u6216\u672A\u52A0\u8F7D");
+  const events = replayObjectEvents(input, selection);
+  return {
+    key: replayObjectKey(selection),
+    selection,
+    title,
+    time: snapshot.time,
+    summary,
+    fields,
+    relatedActions,
+    previousEvent: events.previousEvent,
+    nextEvent: events.nextEvent,
+    ganttUrl: replayObjectGanttUrl(
+      input.resultUrl,
+      selection,
+      snapshot.time,
+      active[0]?.MoveID ?? events.previousEvent?.moveId
+    )
+  };
+}
+function renderReplayObjectDetails(details, filtered = false) {
+  const eventButton = (event, direction) => `<button type="button" data-replay-seek="${event?.time ?? ""}"${event ? "" : " disabled"} title="${escape2(event ? `${event.label} \xB7 ${seconds(event.time)}` : "\u6CA1\u6709\u76F8\u5173\u4E8B\u4EF6")}">${direction}</button>`;
+  return `<section class="replay-object-details" aria-label="${escape2(details.title)} \u5BF9\u8C61\u4FE1\u606F"><header class="replay-object-heading"><h3>${escape2(details.title)}</h3><time>${seconds(details.time)}</time><button type="button" data-replay-clear aria-label="\u5173\u95ED\u5BF9\u8C61\u4FE1\u606F">\xD7</button></header>
+    <dl>${details.fields.map((field) => `<div><dt>${escape2(field.label)}</dt><dd>${escape2(field.value)}</dd></div>`).join("")}</dl>
+    <footer>${eventButton(details.previousEvent, "\u4E0A\u4E00\u4E8B\u4EF6")}${eventButton(details.nextEvent, "\u4E0B\u4E00\u4E8B\u4EF6")}<button type="button" data-replay-filter aria-pressed="${filtered}">${filtered ? "\u663E\u793A\u5168\u90E8\u52A8\u4F5C" : "\u4EC5\u770B\u5173\u8054\u52A8\u4F5C"}</button>${details.ganttUrl ? `<a href="${escape2(details.ganttUrl)}" target="_blank" rel="noopener">\u7518\u7279\u56FE\u5B9A\u4F4D</a>` : ""}</footer></section>`;
+}
+function selectionFromElement(element, input) {
+  const kind = element.dataset.replayKind;
+  if (!["module", "robot", "slot", "wafer"].includes(kind)) return null;
+  const selection = {
+    kind,
+    name: element.dataset.replayName,
+    slot: Number(element.dataset.replaySlot ?? 0),
+    wafer: element.dataset.replayWafer
+  };
+  if (kind === "wafer" && selection.wafer) selection.instanceKey = replayMaterialInstanceKey(replayWaferInstance(input, selection.wafer));
+  return selection;
+}
+function applyReplayObjectSelection(root, input, selection) {
+  const location = selection?.kind === "wafer" && selection.wafer ? waferLocation(input, selection.wafer) : null;
+  const sameInstance = selection?.kind === "wafer" && replayObjectIsCurrent(input, selection);
+  const destination = sameInstance && selection?.wafer ? projectReplayWaferDestinations(input).get(selection.wafer) : null;
+  const nextStation = destination?.station;
+  const selectedSlotModule = selection?.kind === "slot" ? input.snapshot.modules.find((module2) => module2.name === selection.name) : null;
+  const selectedSlotRobot = selection?.kind === "slot" ? input.snapshot.robots.find((robot) => robot.name === selection.name) : null;
+  const selectedSlotWafer = selection?.kind === "slot" ? [
+    ...selectedSlotModule?.loadPortSlots ?? [],
+    ...selectedSlotModule?.loadLockSlots ?? [],
+    ...selectedSlotModule?.processSlots ?? []
+  ].find((slot) => slot.slot === selection.slot)?.wafer || selectedSlotRobot?.slotWafers?.[selection.slot ?? 0] || "" : "";
+  for (const element of Array.from(root.querySelectorAll("[data-replay-kind]"))) {
+    const kind = element.dataset.replayKind;
+    const name = element.dataset.replayName;
+    const slot = Number(element.dataset.replaySlot ?? 0);
+    const wafer = element.dataset.replayWafer;
+    let selected = false;
+    if (selection) {
+      if (selection.kind === "wafer") selected = sameInstance && (wafer === selection.wafer || kind === "slot" && name === location?.name && slot === location?.slot);
+      else if (selection.kind === "slot") selected = Boolean(name === selection.name && (slot === selection.slot || kind === "module" || kind === "robot") || selectedSlotWafer && kind === "wafer" && wafer === selectedSlotWafer);
+      else selected = name === selection.name && kind !== "wafer";
+    }
+    element.classList.toggle("is-replay-selected", selected);
+    const stationWrapper = kind === "module" || kind === "slot" && element.classList.contains("reference-module-position");
+    element.classList.toggle("is-replay-current-station", Boolean(sameInstance && stationWrapper && name === location?.name && (kind !== "slot" || !location?.slot || slot === location.slot)));
+    element.classList.toggle("is-replay-next-target", Boolean(nextStation && stationWrapper && name === nextStation && (kind !== "slot" || !destination?.stationSlot || slot === destination.stationSlot)));
+    element.dataset.replaySelected = String(selected);
+    if (element.getAttribute("role") === "button") element.setAttribute("aria-pressed", String(selected));
+  }
+}
+var ReplayObjectInspectorController = class {
+  /** 构造只读观察控制器；回放时间与动作筛选由调用方拥有。 */
+  constructor(options) {
+    this.options = options;
+    options.root.addEventListener("click", (event) => this.handleClick(event));
+    options.root.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        if (this.selected) {
+          this.clear();
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
+      if (!["Enter", " "].includes(event.key) || !this.input) return;
+      const object = event.target.closest("[data-replay-kind]");
+      if (!object) return;
+      event.preventDefault();
+      this.select(selectionFromElement(object, this.input));
+    });
+  }
+  options;
+  input = null;
+  selected = null;
+  filtered = false;
+  /** 返回稳定选择副本，避免调用方修改控制器状态。 */
+  get selection() {
+    return this.selected ? { ...this.selected } : null;
+  }
+  /** 每帧重新投影选中反馈与卡片；对象键和筛选状态保持不变。 */
+  update(input) {
+    this.input = input;
+    this.render();
+  }
+  /** 清除对象与关联筛选，空白点击和 Escape 共用相同语义。 */
+  clear() {
+    const wasFiltered = this.filtered;
+    this.selected = null;
+    this.filtered = false;
+    if (wasFiltered) this.options.onFilter?.(null);
+    this.render();
+  }
+  /** 设置新对象；再次点击同一业务键会清除选择。 */
+  select(selection) {
+    if (selection && this.selected && replayObjectKey(selection) === replayObjectKey(this.selected)) {
+      this.clear();
+      return;
+    }
+    this.selected = selection;
+    if (this.filtered) this.options.onFilter?.(selection);
+    this.render();
+  }
+  /** 委托卡片控制与画布点击；工具栏和观察窗口空白不会取消选择。 */
+  handleClick(event) {
+    if (!this.input) return;
+    const target = event.target;
+    if (target.closest("[data-replay-clear]")) {
+      this.clear();
+      return;
+    }
+    const seek = target.closest("[data-replay-seek]");
+    if (seek && seek.dataset.replaySeek !== "" && !seek.hasAttribute("disabled")) {
+      this.options.onSeek(Number(seek.dataset.replaySeek));
+      return;
+    }
+    if (target.closest("[data-replay-filter]")) {
+      this.filtered = !this.filtered;
+      this.options.onFilter?.(this.filtered ? this.selected : null);
+      this.render();
+      return;
+    }
+    const object = target.closest("[data-replay-kind]");
+    if (object) {
+      this.select(selectionFromElement(object, this.input));
+      return;
+    }
+    if (!this.options.panel.contains(target) && target.closest(".topology-unified-canvas")) this.clear();
+  }
+  /** 只在文本或选中时刻变化时替换卡片，避免无变化帧打断键盘焦点。 */
+  render() {
+    if (!this.input) return;
+    applyReplayObjectSelection(this.options.root, this.input, this.selected);
+    this.options.panel.hidden = !this.selected;
+    const markup = this.selected ? renderReplayObjectDetails(projectReplayObjectDetails(this.input, this.selected), this.filtered) : "";
+    if (this.options.panel.dataset.replayObjectMarkup === markup) return;
+    const focus = this.options.panel.ownerDocument.activeElement;
+    const attribute = focus && this.options.panel.contains(focus) ? ["data-replay-clear", "data-replay-seek", "data-replay-filter"].find((name) => focus.hasAttribute(name)) : null;
+    const focusValue = attribute ? focus.getAttribute(attribute) : null;
+    this.options.panel.innerHTML = markup;
+    this.options.panel.dataset.replayObjectMarkup = markup;
+    if (attribute) {
+      const candidates = Array.from(this.options.panel.querySelectorAll(`[${attribute}]`));
+      (candidates.find((element) => element.getAttribute(attribute) === focusValue) ?? candidates[0])?.focus({ preventScroll: true });
+    }
+  }
+};
+
+// src/topology_scene_annotations.ts
+function annotateReplayTopology(stage, snapshot, destinations, replayInput) {
+  const ownerDocument = stage.ownerDocument;
+  stage.querySelectorAll(".wafer-next-station, .cooler-slot-occupancy, .topology-waiting-indicator").forEach((node) => node.remove());
+  for (const wrapper of Array.from(stage.querySelectorAll(".reference-module-position"))) {
+    const name = wrapper.querySelector(".equipment-external-name");
+    const module2 = snapshot.modules.find((module3) => module3.name === wrapper.dataset.replayName);
+    if (!name || !module2) continue;
+    const body = wrapper.querySelector(".equipment-card, .equipment-utility");
+    if (body) {
+      if (body.dataset.replayWaiting === "true") body.removeAttribute("title");
+      body.dataset.replayWaiting = "false";
+      const displayedSlot = Number(wrapper.dataset.replaySlot ?? 0);
+      const displayedWafers = displayedSlot ? module2.processSlots?.filter((slot) => slot.slot === displayedSlot && slot.wafer).map((slot) => slot.wafer) ?? [] : module2.wafers;
+      const waits = replayInput && module2.status === "occupied" ? displayedWafers.map((wafer) => ({ wafer, seconds: replayWaferWaitingSeconds(replayInput, wafer, module2.name) })).filter((row) => row.seconds !== null) : [];
+      if (waits.length) {
+        body.dataset.replayWaiting = "true";
+        body.title = `${module2.name}\uFF1A${waits.map((row) => `${snapshot.waferOrigins[row.wafer] || row.wafer} \u52A0\u5DE5\u5B8C\u6210\uFF0C\u7B49\u5F85\u53D6\u7247 ${row.seconds.toFixed(1)} s`).join("\uFF1B")}`;
+        const indicator = stage.ownerDocument.createElement("span");
+        indicator.className = "topology-waiting-indicator";
+        indicator.title = body.title;
+        name.appendChild(indicator);
+      }
+    }
+  }
+  for (const wafer of Array.from(stage.querySelectorAll(".wafer-token[data-replay-wafer]"))) {
+    const destination = destinations.get(wafer.dataset.replayWafer ?? "");
+    const surface = wafer.querySelector(".wafer-origin-label")?.parentElement;
+    if (!surface) continue;
+    const next = ownerDocument.createElement("span");
+    next.className = "wafer-next-station";
+    next.textContent = destination?.label ?? "\u672A\u77E5";
+    next.title = destination?.station || (destination?.candidates.length ? `\u5019\u9009\uFF1A${destination.candidates.join("\u3001")}` : "\u4E0B\u4E00\u7AD9\u672A\u77E5");
+    surface.appendChild(next);
+  }
 }
 
 // src/workspace_visualizer.ts
@@ -1072,7 +1730,7 @@ var ACTIVITY_CATEGORY_LABELS = {
   environment: "\u62BD\u5145\u6C14",
   other: "\u5176\u4ED6"
 };
-var MOVE_NAMES = {
+var MOVE_NAMES2 = {
   0: "\u53D6\u7247",
   1: "\u653E\u7247",
   2: "\u591A\u7247\u53D6\u7247",
@@ -1089,7 +1747,7 @@ var MOVE_NAMES = {
   13: "\u5145\u6C14",
   14: "\u6E05\u6D01"
 };
-var STATUS_LABELS = {
+var STATUS_LABELS2 = {
   idle: "\u7A7A\u95F2",
   occupied: "\u5DF2\u8F7D\u7247",
   door: "\u95E8\u52A8\u4F5C",
@@ -1120,7 +1778,7 @@ function listValue(value) {
 function normalizeMovePayload(payload) {
   const records = Array.isArray(payload) ? payload : payload && typeof payload === "object" && Array.isArray(payload.MoveList) ? payload.MoveList : null;
   if (!records) throw new Error("\u6587\u4EF6\u5FC5\u987B\u662F MoveList \u6570\u7EC4\uFF0C\u6216\u5305\u542B MoveList \u5B57\u6BB5\u7684 JSON \u5BF9\u8C61");
-  return records.filter((record) => Boolean(record) && typeof record === "object" && !Array.isArray(record)).map((record) => ({ ...record }));
+  return records.filter((record3) => Boolean(record3) && typeof record3 === "object" && !Array.isArray(record3)).map((record3) => ({ ...record3 }));
 }
 function normalizeReplayLogPayload(payload) {
   const logEntries = Array.isArray(payload) ? payload : null;
@@ -1128,13 +1786,13 @@ function normalizeReplayLogPayload(payload) {
   if (!reconstruction) {
     throw new Error("\u6587\u4EF6\u5FC5\u987B\u662F\u5305\u542B AlgOutput \u7684\u5E73\u53F0\u590D\u73B0\u65E5\u5FD7\uFF0C\u666E\u901A MoveList \u6587\u4EF6\u4E0D\u53D7\u652F\u6301");
   }
-  const moves = reconstruction.records.map((record) => {
-    const actualStart = record.actualStart ?? record.planStart;
-    const actualEnd = record.actualEnd ?? (record.actualStart === null ? record.planEnd : actualStart + Math.max(0, record.planEnd - record.planStart));
+  const moves = reconstruction.records.map((record3) => {
+    const actualStart = record3.actualStart ?? record3.planStart;
+    const actualEnd = record3.actualEnd ?? (record3.actualStart === null ? record3.planEnd : actualStart + Math.max(0, record3.planEnd - record3.planStart));
     return {
-      ...record.raw,
-      PlannedStartTime: record.planStart,
-      PlannedEndTime: record.planEnd,
+      ...record3.raw,
+      PlannedStartTime: record3.planStart,
+      PlannedEndTime: record3.planEnd,
       StartTime: actualStart,
       EndTime: actualEnd
     };
@@ -1149,6 +1807,7 @@ function normalizeReplayLogPayload(payload) {
   return {
     moves,
     device,
+    ...replayLogContext(entries, topologyInfo),
     loadPortReplenishments: normalizeLoadPortReplenishments({
       ReplayContext: { updates: scheduleUpdates }
     })
@@ -1208,10 +1867,10 @@ function normalizeReplayActionDiagnostic(value) {
 }
 function normalizeDecisionTrace(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
-  const record = payload;
-  const rawTrace = record.DecisionTrace;
+  const record3 = payload;
+  const rawTrace = record3.DecisionTrace;
   if (!Array.isArray(rawTrace)) return [];
-  const traceMeta = record.DecisionTraceMeta;
+  const traceMeta = record3.DecisionTraceMeta;
   const meta = traceMeta && typeof traceMeta === "object" && !Array.isArray(traceMeta) ? traceMeta : {};
   return rawTrace.filter((step) => Boolean(step) && typeof step === "object" && !Array.isArray(step)).map((step) => {
     const model = "actions";
@@ -1340,8 +1999,9 @@ function isCleaningMove(move) {
   if (move.MoveType !== PROCESS_MOVE) return false;
   const materialList = move.MatIDList;
   const explicitlyEmpty = Array.isArray(materialList) && materialList.length === 0;
-  const cleanMetadata = [move.CleanRecipe, move.CleanTaskName, move.RecipeName, move.ProcessRecipe].some((value) => /clean|wac|dummy/i.test(String(value ?? "")));
-  return explicitlyEmpty || cleanMetadata;
+  if (String(move.CleanTaskName ?? "").trim()) return true;
+  if (Object.prototype.hasOwnProperty.call(move, "CleanTaskName")) return explicitlyEmpty;
+  return explicitlyEmpty || Boolean(String(move.CleanRecipe ?? "").trim());
 }
 function firstStation(move, field) {
   return String(listValue(move[field])[0] ?? "");
@@ -1956,7 +2616,7 @@ function buildWorkspaceSnapshot(moves, device, requestedTime, replenishments = [
       loadLockSlots: isLoadLockName(name, definition.type) ? stationSlotSnapshots.get(name) ?? [] : [],
       processSlots: definition.type.toLowerCase() === "multiprocesschamber" ? stationSlotSnapshots.get(name) : void 0,
       slotCapacity: stationSlotCapacity(device, name, isCoolerModule(name, definition.type) ? 3 : 1),
-      activeMoveName: primaryMove ? isCleaningMove(primaryMove) ? "\u6E05\u6D01" : MOVE_NAMES[primaryMove.MoveType] ?? `\u52A8\u4F5C ${primaryMove.MoveType}` : "",
+      activeMoveName: primaryMove ? isCleaningMove(primaryMove) ? "\u6E05\u6D01" : MOVE_NAMES2[primaryMove.MoveType] ?? `\u52A8\u4F5C ${primaryMove.MoveType}` : "",
       progress: primaryMove ? moveProgress(primaryMove, time) : 0,
       environment: environments.get(name) ?? "",
       loadLockPhase,
@@ -1964,7 +2624,7 @@ function buildWorkspaceSnapshot(moves, device, requestedTime, replenishments = [
     };
   }).sort((left, right) => naturalCompare(left.name, right.name));
   const robots = robotNames.map((name) => {
-    const move = activeMoves.find((record) => record.ModuleName === name);
+    const move = activeMoves.find((record3) => record3.ModuleName === name);
     const definition = device?.Robots?.[name] ?? {};
     const wafers = wafersByLocation.get(name) ?? [];
     return {
@@ -1980,7 +2640,7 @@ function buildWorkspaceSnapshot(moves, device, requestedTime, replenishments = [
       busy: Boolean(move),
       source: move ? firstStation(move, "SrcStationList") : "",
       target: robotTargets.get(name) ?? lastRobotTargets.get(name) ?? "",
-      activeMoveName: move ? MOVE_NAMES[move.MoveType] ?? `\u52A8\u4F5C ${move.MoveType}` : "",
+      activeMoveName: move ? MOVE_NAMES2[move.MoveType] ?? `\u52A8\u4F5C ${move.MoveType}` : "",
       isPreTrans: move?.MoveType === PRE_TRANS_MOVE2,
       preTransProgress: move?.MoveType === PRE_TRANS_MOVE2 ? moveProgress(move, time) : 1
     };
@@ -2322,7 +2982,7 @@ function renderWaferToken(wafer, origin, progress, processed = false) {
   const originLabel = origin || "\u6765\u6E90\u672A\u77E5";
   const surfaceLabel = waferSurfaceLabel(wafer, origin);
   const dummyClass = isDummyWafer(wafer, origin) ? " wafer-dummy" : "";
-  return `<span class="wafer-token wafer-${state}${dummyClass}" style="--wafer-progress:${normalizedProgress * 360}deg" title="\u6676\u5706 ${escapeHtml(wafer)}\uFF0C\u6765\u6E90 ${escapeHtml(originLabel)}\uFF0C${processed ? "\u5DF2\u52A0\u5DE5" : "\u672A\u52A0\u5DE5"}"><span><b class="wafer-origin-label">${escapeHtml(surfaceLabel)}</b></span></span>`;
+  return `<span class="wafer-token wafer-${state}${dummyClass}" data-replay-kind="wafer" data-replay-wafer="${escapeHtml(wafer)}" role="button" tabindex="0" style="--wafer-progress:${normalizedProgress * 360}deg" title="\u6676\u5706 ${escapeHtml(wafer)}\uFF0C\u6765\u6E90 ${escapeHtml(originLabel)}\uFF0C${processed ? "\u5DF2\u52A0\u5DE5" : "\u672A\u52A0\u5DE5"}"><span><b class="wafer-origin-label">${escapeHtml(surfaceLabel)}</b></span></span>`;
 }
 function moduleDoorSides(module2, role, layout = "single", roleIndex = 0, attachmentId = "") {
   if (module2.door === "doorless") return [];
@@ -2426,7 +3086,7 @@ function renderFrontSlotOverview(modules, waferOrigins = {}, robots = [], layout
     );
     const identity = `${module2.name}.${slot.slot}`;
     const detail = slot.wafer ? `${identity} \xB7 \u6676\u5706 ${waferSurfaceLabel(slot.wafer, waferOrigins[slot.wafer] ?? "")}\uFF0C${slot.processed ? "\u5DF2\u52A0\u5DE5" : "\u672A\u52A0\u5DE5"}` : `${identity} \xB7 \u7A7A\u69FD`;
-    return `<span class="front-slot is-${state}${dummy ? " is-dummy" : ""}" tabindex="0" title="${escapeHtml(detail)}" aria-label="${escapeHtml(detail)}"></span>`;
+    return `<span class="front-slot is-${state}${dummy ? " is-dummy" : ""}" data-replay-kind="slot" data-replay-name="${escapeHtml(module2.name)}" data-replay-slot="${slot.slot}" data-replay-wafer="${escapeHtml(slot.wafer)}" role="button" tabindex="0" title="${escapeHtml(detail)}" aria-label="${escapeHtml(detail)}"></span>`;
   }).join("");
   if (!slotRows.length && !robots.length) return "";
   const renderModule2 = ({ module: module2, kind }) => {
@@ -2480,7 +3140,7 @@ function renderModule(module2, waferOrigins, role, candidate, layout = "single",
     const label = state === "unknown" ? "\u5F00\u95E8\u65B9\u5411\u672A\u77E5" : DOOR_LABELS[state];
     return `<i class="external-module-door external-module-door-${side} door-${state}" title="${escapeHtml(`${direction}${label}`)}"></i>`;
   }).join("");
-  const accessibleStatus = `${module2.name}\uFF0C${STATUS_LABELS[module2.status]}\uFF0C${DOOR_LABELS[module2.door]}`;
+  const accessibleStatus = `${module2.name}\uFF0C${STATUS_LABELS2[module2.status]}\uFF0C${DOOR_LABELS[module2.door]}`;
   const candidateLabel = candidate ? `${candidate.count} \u4E2A\u53EF\u884C\u52A8\u4F5C\uFF0C\u6700\u9AD8\u6A21\u578B\u504F\u597D ${(candidate.preference * 100).toFixed(0)}%` : "";
   if (role === "port") {
     const visibleSlot = visibleModuleSlots(module2, "port").find((slot) => slot.wafer);
@@ -3197,8 +3857,12 @@ function renderEquipmentTopology(snapshot, decision, hiddenFilters, device) {
     const position = modulePositions.get(module2.name);
     if (!position) return "";
     const candidateSource = processSourceNames.get(module2.name) ?? module2.name;
+    const physicalSlot = candidateSource !== module2.name ? Number(module2.name.slice(candidateSource.length + 1)) : 0;
+    const lowerSingleChamber = layout === "single" && role === "process" && /^PM(?:2|4)$/i.test(module2.name);
+    const lowerPairedChamber = physicalSlot === 2 && /@(left|right)$/.test(position.attachmentId ?? "");
+    const nameSide = role === "auxiliary" && isCoolerModule(module2.name, module2.type) ? "right" : role === "port" || lowerSingleChamber || lowerPairedChamber ? "bottom" : "top";
     const fixedLeft = position.fixedLeftOffsetPixels === void 0 ? "" : `;--fixed-left:calc(50% ${position.fixedLeftOffsetPixels < 0 ? "-" : "+"} ${Math.abs(position.fixedLeftOffsetPixels)}px)`;
-    return `<div class="reference-module-position" style="--module-left:${position.leftPercent}%;--module-top:${position.topPixels}px${fixedLeft}">${renderModule(module2, snapshot.waferOrigins, role, destinations.get(candidateSource), layout, roleIndex, position.attachmentId)}</div>`;
+    return `<div class="reference-module-position" data-replay-kind="${physicalSlot ? "slot" : "module"}" data-replay-name="${escapeHtml(candidateSource)}"${physicalSlot ? ` data-replay-slot="${physicalSlot}"` : ""} data-topology-name-side="${nameSide}" role="button" tabindex="0" aria-label="\u67E5\u770B ${escapeHtml(module2.name)} \u4FE1\u606F" style="--module-left:${position.leftPercent}%;--module-top:${position.topPixels}px${fixedLeft}">${renderModule(module2, snapshot.waferOrigins, role, destinations.get(candidateSource), layout, roleIndex, position.attachmentId)}</div>`;
   }).join("");
   const moduleMarkup = [
     renderModuleGroup(processChamberViews.map((item) => item.view), "process"),
@@ -3283,7 +3947,7 @@ function renderEquipmentTopology(snapshot, decision, hiddenFilters, device) {
       layout === "dual" && environment === "vacuum"
     );
     const fixedLeft = position.fixedLeftOffsetPixels === void 0 ? "" : `;--fixed-left:calc(50% ${position.fixedLeftOffsetPixels < 0 ? "-" : "+"} ${Math.abs(position.fixedLeftOffsetPixels)}px)`;
-    return `<div class="reference-robot-position" style="--robot-left:${position.leftPercent}%;--robot-top:${position.topPixels}px${fixedLeft}">${renderRobotHub(robot, snapshot.waferOrigins, environment, angleDegrees, mechanism)}</div>`;
+    return `<div class="reference-robot-position" data-replay-kind="robot" data-replay-name="${escapeHtml(robot.name)}" role="button" tabindex="0" aria-label="\u67E5\u770B ${escapeHtml(robot.name)} \u4FE1\u606F" style="--robot-left:${position.leftPercent}%;--robot-top:${position.topPixels}px${fixedLeft}">${renderRobotHub(robot, snapshot.waferOrigins, environment, angleDegrees, mechanism)}</div>`;
   }).join("");
   const robotMarkup = renderRobotGroup(vacuumRobots, "vacuum") + renderRobotGroup(atmosphereRobots, "atmosphere");
   return `
@@ -3480,10 +4144,10 @@ function renderResidenceMetricChart(samples, kind) {
   const scaleMaximum = maximumSeconds * 1.08;
   const meanHeight = Math.min(meanSeconds / scaleMaximum * plotHeight, plotHeight);
   const bars = samples.map((sample) => {
-    const seconds = metric.value(sample);
-    const height = Math.max(seconds / scaleMaximum * plotHeight, 2);
+    const seconds2 = metric.value(sample);
+    const height = Math.max(seconds2 / scaleMaximum * plotHeight, 2);
     const wafer = escapeHtml(String(sample.wafer));
-    const duration = formatSeconds(seconds);
+    const duration = formatSeconds(seconds2);
     return `
       <li class="residence-metric-bar-item" role="img" aria-label="\u6676\u5706 ${wafer}\uFF0C${metric.label} ${duration} \u79D2">
         <strong>${duration}</strong>
@@ -3762,6 +4426,12 @@ var VisualizationWorkspace = class {
   moves = [];
   loadPortReplenishments = [];
   replayPlan = null;
+  replayUpdates = [];
+  replayGenerations = [];
+  relatedObjectFilter = null;
+  objectInspector;
+  replaySourceRevision = 0;
+  replaySourceLoading = false;
   actionsEnabled = false;
   waferProgressEnabled = false;
   actionStatusFilters = [...ALL_ACTION_DIAGNOSTIC_STATUSES];
@@ -3781,7 +4451,6 @@ var VisualizationWorkspace = class {
   recomputeCount = 0;
   bottleneckSummary = null;
   /** 新结果或清空操作会让之前的文件读取和 HTTP 响应失效。 */
-  resultLoadVersion = 0;
   analysisRequestVersion = 0;
   time = 0;
   playing = false;
@@ -3795,6 +4464,27 @@ var VisualizationWorkspace = class {
   constructor(root) {
     this.root = root;
     this.elements = collectElements(root);
+    const objectPanel = root.getElementById("visualReplayObjectDetails");
+    if (!objectPanel) throw new Error("\u7F3A\u5C11\u56DE\u653E\u5BF9\u8C61\u4FE1\u606F\u5BB9\u5668");
+    this.objectInspector = new ReplayObjectInspectorController({
+      root: this.elements.topologyPlayback,
+      panel: objectPanel,
+      onSeek: (time) => {
+        this.pause();
+        this.seekTo(time);
+      },
+      onFilter: (selection) => {
+        this.relatedObjectFilter = selection;
+        if (selection) {
+          this.actionsEnabled = true;
+          const queryToggle = root.getElementById("visualActionsEnabled");
+          if (queryToggle) queryToggle.checked = true;
+          const dock = root.querySelector(".replay-inspector-dock");
+          if (dock) setReplayInspectorExpanded(dock, true);
+        }
+        this.render();
+      }
+    });
     const selectedFilters = this.elements.actionStatusFilters.filter((item) => item.checked).map((item) => item.value);
     if (selectedFilters.length) this.actionStatusFilters = selectedFilters;
     this.bindEvents();
@@ -3825,59 +4515,77 @@ var VisualizationWorkspace = class {
   }
   /** 加载内部调用或测试夹具提供的 MoveList 文件；页面文件入口不调用此方法。 */
   async loadFile(file) {
-    const loadVersion = ++this.resultLoadVersion;
+    const sourceRevision = ++this.replaySourceRevision;
     this.analysisRequestVersion += 1;
-    const payload = JSON.parse(await file.text());
-    if (loadVersion !== this.resultLoadVersion) return;
-    await this.loadMoves(
-      normalizeMovePayload(payload),
-      normalizeDecisionTrace(payload),
-      normalizeLoadPortReplenishments(payload),
-      file.name,
-      "",
-      "",
-      null,
-      0
-    );
+    this.replaySourceLoading = true;
+    try {
+      const source = await file.text();
+      if (sourceRevision !== this.replaySourceRevision) return;
+      const payload = JSON.parse(source);
+      await this.loadMoves(
+        normalizeMovePayload(payload),
+        normalizeDecisionTrace(payload),
+        normalizeLoadPortReplenishments(payload),
+        file.name,
+        "",
+        "",
+        null,
+        0
+      );
+    } finally {
+      if (sourceRevision === this.replaySourceRevision) this.replaySourceLoading = false;
+    }
   }
   /** 加载用户在回放页选择的平台复现日志。 */
   async loadReplayLogFile(file) {
-    const loadVersion = ++this.resultLoadVersion;
+    const sourceRevision = ++this.replaySourceRevision;
     this.analysisRequestVersion += 1;
+    this.replaySourceLoading = true;
     this.setLoading(true, "\u6B63\u5728\u89E3\u6790\u590D\u73B0\u65E5\u5FD7\u2026");
-    const payload = JSON.parse(await file.text());
-    if (loadVersion !== this.resultLoadVersion) return;
-    const replayLog = normalizeReplayLogPayload(payload);
-    if (replayLog.device) this.device = replayLog.device;
-    this.setReplayPlan(null);
-    this.analysisRoutes = [];
-    this.analysisRounds = [];
-    await this.loadMoves(
-      replayLog.moves,
-      [],
-      replayLog.loadPortReplenishments,
-      file.name,
-      "",
-      "",
-      null,
-      0
-    );
+    try {
+      const source = await file.text();
+      if (sourceRevision !== this.replaySourceRevision) return;
+      const payload = JSON.parse(source);
+      const replayLog = normalizeReplayLogPayload(payload);
+      if (replayLog.device) this.device = replayLog.device;
+      this.setReplayPlan(replayLog.plan);
+      this.replayUpdates = replayLog.updates;
+      this.replayGenerations = replayLog.generations;
+      this.analysisRoutes = [];
+      this.analysisRounds = [];
+      await this.loadMoves(
+        replayLog.moves,
+        [],
+        replayLog.loadPortReplenishments,
+        file.name,
+        "",
+        "",
+        null,
+        0
+      );
+    } catch (error) {
+      if (sourceRevision === this.replaySourceRevision) throw error;
+    } finally {
+      if (sourceRevision === this.replaySourceRevision) this.replaySourceLoading = false;
+    }
   }
   /** 从后端保存的运行结果加载 MoveList。 */
-  async loadResult(resultIdOrUrl, sourceName = "\u5F53\u524D\u8FD0\u884C\u7ED3\u679C") {
-    const loadVersion = ++this.resultLoadVersion;
+  async loadResult(resultIdOrUrl, sourceName = "\u5F53\u524D\u8FD0\u884C\u7ED3\u679C", logUrl = "") {
+    const sourceRevision = ++this.replaySourceRevision;
     this.analysisRequestVersion += 1;
+    this.replaySourceLoading = true;
     const resultUrl = resultIdOrUrl.startsWith("/") ? resultIdOrUrl : `/api/results/${encodeURIComponent(resultIdOrUrl)}`;
     this.setLoading(true, "\u6B63\u5728\u52A0\u8F7D\u8FD0\u884C\u7ED3\u679C\u2026");
     try {
       const response = await fetch(resultUrl, { cache: "no-store" });
       const payload = await response.json();
-      if (loadVersion !== this.resultLoadVersion) return;
+      if (sourceRevision !== this.replaySourceRevision) return;
       if (!response.ok) {
         const message = payload && typeof payload === "object" ? String(payload.error ?? "") : "";
         throw new Error(message || `\u670D\u52A1\u8FD4\u56DE ${response.status}`);
       }
       const resultId = resultUrl.startsWith("/api/results/") ? decodeURIComponent(resultUrl.slice("/api/results/".length)) : "";
+      let hasEmbeddedPlan = false;
       if (payload && typeof payload === "object" && !Array.isArray(payload)) {
         const replayContext = payload.ReplayContext;
         if (replayContext && typeof replayContext === "object" && !Array.isArray(replayContext)) {
@@ -3888,9 +4596,27 @@ var VisualizationWorkspace = class {
             this.analysisRoutes = structuredClone(plan.routes || []);
             this.analysisRounds = structuredClone(plan.rounds || []);
             this.setReplayPlan(plan);
+            hasEmbeddedPlan = true;
+            this.replayUpdates = structuredClone(replayContext.updates ?? []);
+            this.replayGenerations = replayCommittedGenerations(this.replayUpdates, normalizeMovePayload(payload));
           }
         }
       }
+      if (!hasEmbeddedPlan) this.setReplayPlan(null);
+      if (logUrl) {
+        try {
+          const logResponse = await fetch(logUrl, { cache: "no-store" });
+          if (logResponse.ok) {
+            const logPayload = await logResponse.json();
+            if (sourceRevision !== this.replaySourceRevision) return;
+            const entries = Array.isArray(logPayload) ? logPayload : logPayload?.input_data;
+            const exactGenerations = Array.isArray(entries) ? replayLogContext(entries, void 0).generations : [];
+            if (exactGenerations.length) this.replayGenerations = exactGenerations;
+          }
+        } catch {
+        }
+      }
+      if (sourceRevision !== this.replaySourceRevision) return;
       await this.loadMoves(
         normalizeMovePayload(payload),
         normalizeDecisionTrace(payload),
@@ -3902,10 +4628,16 @@ var VisualizationWorkspace = class {
         0
       );
     } catch (error) {
-      if (loadVersion !== this.resultLoadVersion) return;
+      if (sourceRevision !== this.replaySourceRevision) return;
       this.showError(error instanceof Error ? error.message : String(error));
       throw error;
+    } finally {
+      if (sourceRevision === this.replaySourceRevision) this.replaySourceLoading = false;
     }
+  }
+  /** 已载入或正在载入的结果拥有独立上下文，编辑下一次测试不能覆盖其设备与代历史。 */
+  get hasReplaySource() {
+    return this.replaySourceLoading || this.liveSolving || this.moves.length > 0;
   }
   /** 提供后端构建工序容量上下文所需的原始 Route 和轮次配置。 */
   setAnalysisConfiguration(routes, rounds) {
@@ -3913,9 +4645,11 @@ var VisualizationWorkspace = class {
     this.analysisRounds = structuredClone(rounds ?? []);
     if (this.moves.length) void this.renderPerformance();
   }
-  /** 保存 Machine 回放所需的完整计划；任意来源 MoveList 都使用该计划实时评分。 */
+  /** 保存当前结果的计划；替换时重置动作查询与代历史。 */
   setReplayPlan(plan) {
     this.replayPlan = plan ? structuredClone(plan) : null;
+    this.replayUpdates = [];
+    this.replayGenerations = [];
     this.replayDecisionCache.clear();
     this.pendingReplayDecisionKeys.clear();
     this.replayDecisionErrorKey = "";
@@ -3931,12 +4665,13 @@ var VisualizationWorkspace = class {
   }
   /** 在完整 MoveList 返回前显示初始拓扑，并进入增量求解状态。 */
   beginLiveSolve(plan, sourceName = "Search Tree \u5B9E\u65F6\u6C42\u89E3") {
-    this.resultLoadVersion += 1;
+    this.replaySourceRevision += 1;
     this.analysisRequestVersion += 1;
+    this.replaySourceLoading = false;
     this.pause();
     this.liveSolving = true;
+    this.objectInspector.clear();
     this.moves = [];
-    this.loadPortReplenishments = [];
     this.loadPortReplenishments = [];
     this.sourceName = sourceName;
     this.resultUrl = "";
@@ -4024,16 +4759,22 @@ var VisualizationWorkspace = class {
   }
   /** 停止播放并释放动画帧。 */
   destroy() {
-    this.resultLoadVersion += 1;
+    this.replaySourceRevision += 1;
     this.analysisRequestVersion += 1;
+    this.replaySourceLoading = false;
     this.pause();
   }
   /** 清除旧测试结果，避免切换测试后继续误看上一份 MoveList。 */
   clear() {
-    this.resultLoadVersion += 1;
+    this.replaySourceRevision += 1;
+    this.analysisRequestVersion += 1;
+    this.replaySourceLoading = false;
     this.pause();
     this.liveSolving = false;
     this.moves = [];
+    this.objectInspector.clear();
+    this.replayUpdates = [];
+    this.replayGenerations = [];
     this.liveDecision = null;
     this.liveDecisionKey = "";
     this.primitiveDecisionBoundaries = [];
@@ -4092,6 +4833,7 @@ var VisualizationWorkspace = class {
     this.sourceName = sourceName;
     this.resultUrl = resultUrl;
     this.analysisResultId = analysisResultId;
+    this.objectInspector.clear();
     this.analysis = null;
     this.cpuTimeMs = cpuTimeMs;
     this.recomputeCount = recomputeCount;
@@ -4184,6 +4926,7 @@ var VisualizationWorkspace = class {
         resultId: this.analysisResultId || void 0,
         moves: this.analysisResultId ? void 0 : this.moves,
         plan: this.analysisResultId ? void 0 : this.replayPlan,
+        updates: this.analysisResultId ? void 0 : this.replayUpdates,
         time: this.time,
         includeActions: this.actionsEnabled,
         snapshot
@@ -4309,9 +5052,34 @@ var VisualizationWorkspace = class {
       this.device
     );
     this.configureTopologyCanvas();
+    const replayInput = {
+      snapshot: topologySnapshot,
+      moves: this.moves,
+      device: this.device,
+      plan: this.replayPlan,
+      generations: this.replayGenerations,
+      resolveRoute: (job) => routeByPJobName(this.replayPlan, job)
+    };
+    const destinations = projectReplayWaferDestinations(replayInput);
+    annotateReplayTopology(this.elements.stage, topologySnapshot, destinations, replayInput);
+    this.objectInspector.update({
+      ...replayInput,
+      destinations,
+      decision: currentDecision,
+      resultUrl: this.resultUrl
+    });
     const requestState = this.pendingReplayDecisionKeys.has(replayKey) ? "loading" : this.replayDecisionErrorKey === replayKey ? "error" : "idle";
+    const relatedActions = currentDecision?.actionDiagnostics.filter((action) => !this.relatedObjectFilter || replayObjectIsCurrent(replayInput, this.relatedObjectFilter) && replayActionMatchesObject(action, this.relatedObjectFilter)) ?? [];
     this.elements.decisionLens.innerHTML = !this.actionsEnabled ? "" : renderDecisionLens(
-      currentDecision,
+      currentDecision && this.relatedObjectFilter ? {
+        ...currentDecision,
+        actionDiagnostics: relatedActions,
+        actionCounts: {
+          enabled: relatedActions.filter((action) => action.status === "enabled").length,
+          "physical-blocked": relatedActions.filter((action) => action.status === "physical-blocked").length,
+          "deadlock-blocked": relatedActions.filter((action) => action.status === "deadlock-blocked").length
+        }
+      } : currentDecision,
       requestState,
       this.replayDecisionErrorMessage,
       this.actionStatusFilters
@@ -4332,7 +5100,7 @@ var VisualizationWorkspace = class {
     this.elements.activeMoves.innerHTML = snapshot.activeMoves.length ? snapshot.activeMoves.map((move) => `
         <li>
           <span class="active-move-id">#${finiteNumber2(move.MoveID)}</span>
-          <strong>${escapeHtml(MOVE_NAMES[finiteNumber2(move.MoveType, -1)] ?? `\u52A8\u4F5C ${move.MoveType}`)}</strong>
+          <strong>${escapeHtml(MOVE_NAMES2[finiteNumber2(move.MoveType, -1)] ?? `\u52A8\u4F5C ${move.MoveType}`)}</strong>
           <span>${escapeHtml(move.ModuleName || activeTarget(move) || "\u2014")}</span>
           <time>${formatSeconds(finiteNumber2(move.StartTime))}\u2013${formatSeconds(finiteNumber2(move.EndTime))} s</time>
         </li>`).join("") : '<li class="active-move-empty">\u5F53\u524D\u65F6\u523B\u6CA1\u6709\u6267\u884C\u4E2D\u7684\u52A8\u4F5C</li>';
@@ -4368,6 +5136,7 @@ var VisualizationWorkspace = class {
         resultId: this.analysisResultId || void 0,
         moves: this.analysisResultId ? void 0 : this.moves,
         plan: this.replayPlan,
+        updates: this.analysisResultId ? void 0 : this.replayUpdates,
         time: replayTime
       });
       const decision = normalizeDecisionTrace({ DecisionTrace: [rawDecision] })[0] ?? null;
@@ -4583,6 +5352,9 @@ function movelistResultSourceUrl(source, pageUrl) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  ReplayObjectInspectorController,
+  annotateReplayTopology,
+  applyReplayObjectSelection,
   atmosphereRailMotion,
   buildWorkspaceSnapshot,
   completedThroughputCount,
@@ -4604,15 +5376,29 @@ function movelistResultSourceUrl(source, pageUrl) {
   normalizeMovePayload,
   normalizeReplayLogPayload,
   primitiveDecisionBoundaryTimes,
+  projectReplayObjectDetails,
+  projectReplayWaferDestinations,
   projectTopologyTransfers,
   renderDecisionLens,
   renderEquipmentTopology,
   renderFrontSlotOverview,
   renderParallelRobotArms,
+  renderReplayObjectDetails,
   renderSchedulePerformance,
   renderThroughputChart,
   renderWaferDispatchProgress,
   renderWaferResidenceChart,
+  replayActionMatchesObject,
+  replayCommittedGenerations,
+  replayLogContext,
+  replayMaterialInstanceKey,
+  replayMoveMatchesObject,
+  replayMoveMaterials,
+  replayObjectEvents,
+  replayObjectGanttUrl,
+  replayObjectIsCurrent,
+  replayObjectKey,
+  replayWaferWaitingSeconds,
   robotArmAnimation,
   robotArmGeometry,
   robotSlotWafers,

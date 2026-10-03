@@ -1887,7 +1887,7 @@
     .reference-grid-canvas .equipment-auxiliary.status-transfer::after { background: var(--sim-transfer); box-shadow: 0 0 0 1px #254b99, 0 0 0 3px rgba(49,95,194,.13); }
     .reference-grid-canvas .equipment-auxiliary.status-door::after { background: var(--sim-waiting); }
     .reference-grid-canvas .equipment-process .equipment-body { display: grid; min-height: 0; place-items: center; padding: 0; }
-    .equipment-external-name { position: absolute; z-index: 5; top: -18px; left: 50%; color: #17233a; font: 800 12px/1 "Fira Code", Consolas, monospace; letter-spacing: .03em; transform: translateX(-50%); }
+    .equipment-external-name { position: absolute; z-index: 5; top: -18px; left: 50%; color: #17233a; font: 800 12px/1 "Fira Code", Consolas, monospace; letter-spacing: .03em; white-space: nowrap; transform: translateX(-50%); }
     .equipment-external-name-port { top: 108px; }
     .process-wafer-slot { display: grid; width: 62px; height: 62px; place-items: center; border: 1px solid #71859e; border-radius: 50%; background: radial-gradient(circle at 42% 36%, #f8fbff 0, #dce5ee 70%, #bdcad8 100%); box-shadow: inset 0 3px 7px rgba(48,65,87,.18), 0 0 0 3px rgba(255,255,255,.50); }
     .process-wafer-slot.is-empty::after { width: 8px; height: 8px; border: 1px solid #a7b4c4; border-radius: 50%; background: #c9d3df; content: ""; }
@@ -1924,8 +1924,8 @@
     .reference-grid-canvas .wafer-token.wafer-dummy.wafer-processed { --wafer-state-color: var(--sim-dummy-done); color: #1e1b4b; }
     .reference-grid-canvas .wafer-token > span { display: grid; width: 100%; height: 100%; place-content: center; overflow: hidden; border: 2px solid color-mix(in srgb, var(--wafer-state-color) 88%, #1c2a3c); border-radius: 50%; background: color-mix(in srgb, var(--wafer-state-color) 52%, #f8fafc); box-shadow: inset 0 1px 2px rgba(15,23,42,.14); text-align: center; }
     .reference-grid-canvas .wafer-token > span > b, .reference-grid-canvas .wafer-token > span > small { display: block; max-width: 48px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .reference-grid-canvas .wafer-token > span > .wafer-origin-label { max-width: 52px; font-size: 13px; letter-spacing: -.04em; line-height: 1.05; }
-    .reference-grid-canvas .wafer-token.wafer-dummy > span > .wafer-origin-label { font-size: 11px; letter-spacing: -.06em; }
+    .reference-grid-canvas .wafer-token > span > .wafer-origin-label,
+    .reference-grid-canvas .wafer-token > span > .wafer-next-station { display: block; max-width: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 800 11px/1.05 "Fira Code", Consolas, monospace; letter-spacing: -.04em; }
     .reference-grid-canvas .wafer-token > span > small { margin-top: 1px; font: 800 7px/1 "Fira Code", Consolas, monospace; }
     .reference-grid-canvas .wafer-more { position: absolute; right: 2px; bottom: 2px; color: #475569; font: 900 10px/1 "Fira Code", Consolas, monospace; }
     .reference-grid-canvas .equipment-lock .equipment-body { z-index: 1; display: block; padding: 8px; }
@@ -1977,9 +1977,9 @@
     /* 双腔接口带容纳四个紧凑 Lock，横向轨道与底板保持一致。 */
     .reference-grid-canvas .equipment-card.door-open :is(.port-top-gate, .loadlock-top-gate), .reference-grid-canvas .equipment-card.door-opening :is(.port-top-gate, .loadlock-top-gate) { visibility: hidden; opacity: 0; }
     .reference-grid-canvas .equipment-cooler-top-view { position: relative; display: grid; width: 82px; height: 84px; place-items: center; border-radius: 50%; background: transparent; filter: drop-shadow(2px 3px 5px rgba(32,47,81,.10)); }
-    .cooler-top-plate { position: relative; display: grid; width: 66px; height: 76px; place-items: center; border: 2px solid #5c828c; border-radius: 50% / 32%; background: linear-gradient(90deg, #c6dde0, #f8ffff 50%, #c6dde0); box-shadow: inset 0 2px 4px rgba(35,78,85,.16), 0 0 0 3px rgba(255,255,255,.50); }
-    .cooler-top-plate::before { position: absolute; inset: 7px; border: 1px solid rgba(67,112,121,.42); border-radius: 50% / 32%; content: ""; }
-    .cooler-top-plate::after { position: absolute; top: 7px; width: 22px; height: 3px; border-radius: 999px; background: rgba(67,112,121,.52); content: ""; }
+    .cooler-top-plate { position: relative; display: grid; width: 66px; height: 66px; place-items: center; border: 2px solid #5c828c; border-radius: 50%; background: radial-gradient(circle, #f5fcfd 0 49%, #dcecef 50% 68%, #b9d3da 69% 72%, #eaf5f7 73%); box-shadow: inset 0 2px 4px rgba(35,78,85,.16), 0 0 0 3px rgba(255,255,255,.50); }
+    .cooler-top-plate::before { position: absolute; inset: 7px; border: 1px solid rgba(67,112,121,.42); border-radius: 50%; content: ""; }
+    .cooler-top-plate::after { position: absolute; inset: 3px; border: 1px dashed rgba(67,112,121,.28); border-radius: 50%; content: ""; }
     .cooler-top-pocket { position: relative; z-index: 1; display: grid; width: 60px; height: 60px; place-items: center; border-radius: 50%; }
     .cooler-top-pocket.is-empty::after { width: 7px; height: 7px; border: 1px solid #75949b; border-radius: 50%; background: #d5e1e3; content: ""; }
     .cooler-top-pocket .wafer-token { width: var(--topology-wafer-size); min-width: var(--topology-wafer-size); height: var(--topology-wafer-size); padding: 4px; font-size: 10px; }
@@ -2036,7 +2036,7 @@
     .robot-environment-badge { position: absolute; z-index: 6; top: calc(50% - 44px); left: 50%; padding: 2px 4px; border: 1px solid rgba(73,99,130,.42); border-radius: 2px; color: #5b6d83; background: rgba(248,250,252,.90); font: 800 7px/1 "Fira Code", Consolas, monospace; letter-spacing: .06em; white-space: nowrap; transform: translateX(-50%); }
     .robot-mechanism { position: absolute; inset: 8px; }
     /* 单腔与级联共用水平双导轨；平行双臂随时间轴直接定位，拖动时不滞后。 */
-    .topology-atmosphere-rail { position: absolute; z-index: 2; left: 50%; height: 18px; transform: translate(-50%, -50%); border-block: 3px solid #8b9bad; border-inline: 5px solid #667b94; border-radius: 3px; background: repeating-linear-gradient(90deg, transparent 0 30px, #b6c2ce 30px 33px); box-shadow: 0 2px 3px #20304718; pointer-events: none; }
+    .topology-atmosphere-rail { position: absolute; z-index: 2; left: 50%; height: 18px; transform: translate(-50%, -50%); border-block: 3px solid #8b9bad; border-inline: 5px solid #667b94; border-radius: 3px; background: linear-gradient(#edf3f7, #dae4ed), repeating-linear-gradient(90deg, transparent 0 30px, #b6c2ce 30px 31px); background-blend-mode: multiply; box-shadow: inset 0 1px #fff, 0 2px 3px #20304718; pointer-events: none; }
     .parallel-robot-mechanism { position: absolute; left: 50%; top: 50%; transform: rotate(var(--robot-arm-angle)); transform-origin: 0 0; }
     .reference-robot-position:has(.parallel-robot-mechanism) { left: var(--fixed-left, var(--robot-left)); }
     .parallel-robot-arms { position: absolute; width: 1px; height: 1px; overflow: visible; }
@@ -2436,6 +2436,33 @@
   display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
   width: 0; min-width: 0; background: transparent;
 }
+/* 诊断注释仅增加文字与选择反馈，设备原始位置、尺寸和机构保持不变。 */
+.reference-grid-canvas .reference-module-position[data-topology-name-side="top"] > .equipment-external-name { top: -24px; }
+.reference-grid-canvas .reference-module-position[data-topology-name-side="bottom"] > .equipment-external-name { top: calc(100% + 10px); }
+.reference-grid-canvas .reference-module-position[data-topology-name-side="right"] > .equipment-external-name { top: 50%; left: calc(100% + 14px); transform: translateY(-50%); }
+.reference-grid-canvas .wafer-token > span > .wafer-next-station { margin-top: 3px; }
+[data-replay-kind] { cursor: pointer; }
+[data-replay-kind]:focus-visible { outline: 2px solid #3b82f6; outline-offset: 4px; }
+.reference-module-position.is-replay-selected > :is(.equipment-card, .equipment-utility), .reference-robot-position.is-replay-selected .robot-hub { outline: 2px solid #3b82f6; outline-offset: 5px; }
+.reference-module-position.is-replay-selected > .equipment-external-name { color: #185fb6; background: #edf5ff; box-shadow: 0 0 0 3px #edf5ff; border-radius: 2px; }
+.wafer-token.is-replay-selected > span { outline: 2px solid #3b82f6; outline-offset: 2px; }
+.front-slot.is-replay-selected { outline: 2px solid #3b82f6; outline-offset: 1px; }
+.reference-module-position.is-replay-next-target > .equipment-external-name { text-decoration: underline dashed #3b82f6; text-underline-offset: 3px; }
+.reference-module-position.is-replay-current-station > .equipment-external-name { color: #2263ae; }
+.topology-waiting-indicator { position: absolute; left: calc(100% + 4px); top: 50%; width: 6px; height: 6px; border-radius: 50%; background: #d79529; transform: translateY(-50%); }
+.replay-object-panel { flex: 0 1 auto; width: min(320px, calc(100vw - 40px)); min-height: 0; max-height: 52vh; overflow: auto; border: 1px solid #cbd9e8; border-radius: 6px 0 0 6px; background: #fff; box-shadow: -4px 4px 18px #20324a20; }
+.replay-object-panel[hidden] { display: none; }
+.replay-object-details { padding: 11px; color: #253750; font-size: 12px; }
+.replay-object-heading { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid #e7edf4; }
+.replay-object-heading h3 { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 13px; }
+.replay-object-heading time { color: #6b7c90; font: 11px Consolas, monospace; }
+.replay-object-details button, .replay-object-details a { padding: 4px 7px; border: 1px solid #d2deeb; border-radius: 4px; background: #f7faff; color: #315780; font-size: 11px; cursor: pointer; }
+.replay-object-details button:disabled { opacity: .45; cursor: default; }
+.replay-object-details dl { display: grid; gap: 7px; margin: 10px 0; }
+.replay-object-details dl > div { display: grid; grid-template-columns: 65px minmax(0, 1fr); gap: 7px; }
+.replay-object-details dt { color: #77869a; font-weight: 400; }
+.replay-object-details dd { margin: 0; overflow-wrap: anywhere; }
+.replay-object-details footer { display: flex; flex-wrap: wrap; gap: 5px; padding-top: 8px; border-top: 1px solid #e7edf4; }
 .replay-dock-window { flex: 0 1 auto; width: 32px; min-height: 0; overflow: hidden; border: 1px solid #d6dfeb; border-radius: 4px 0 0 4px; background: #fff; }
 .replay-dock-window[data-expanded="true"] { display: flex; flex-direction: column; flex: 1 1 0; box-sizing: border-box; width: min(420px, calc(100vw - 40px)); box-shadow: -6px 4px 20px #20324a22; }
 .replay-dock-window[data-expanded="true"] .analysis-window-titlebar { flex-shrink: 0; }

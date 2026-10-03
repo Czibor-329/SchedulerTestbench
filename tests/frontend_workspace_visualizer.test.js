@@ -318,6 +318,8 @@ class FakeElement {
     this.textContent = "";
     this.classList = new FakeClassList();
     this.attributes = new Map();
+    this.dataset = {};
+    this.ownerDocument = { activeElement: null };
     this.listeners = new Map();
     this.label = null;
     this.style = { setProperty() {} };
@@ -339,6 +341,11 @@ class FakeElement {
     return selector === "span" ? this.label : null;
   }
 
+  /** 业务测试不解析 innerHTML；画布注释和选择允许查询空的节点集合。 */
+  querySelectorAll() {
+    return [];
+  }
+
   focus() {
     this.focused = true;
   }
@@ -358,6 +365,8 @@ function fakeWorkspaceDocument() {
     "visualContent",
     "visualTopologyPlayback",
     "visualDeviceStage",
+    "visualFrontSlotOverview",
+    "visualReplayObjectDetails",
     "visualDecisionLens",
     "visualActionStatusFilter",
     "visualActionKindFilter",
@@ -716,9 +725,10 @@ test("拓扑回放补全设备配置中未被 MoveList 引用的腔室", () => {
   assert.equal(full.modules.find(module => module.name === "LA").door, "closed");
 });
 
+/** 从完整开始标签读取原始设备坐标，允许对象交互增加 data/role 等属性。 */
 function positionsFromTopology(topology) {
   const positions = [];
-  const pattern = /class="reference-(module|robot)-position" style="--(?:module|robot)-left:([\d.]+)%;--(?:module|robot)-top:(\d+)px[^\"]*">([\s\S]*?)(?=<div class="reference-|\s*<svg class="topology-target-arrows)/g;
+  const pattern = /class="reference-(module|robot)-position"[^>]*style="--(?:module|robot)-left:([\d.]+)%;--(?:module|robot)-top:(\d+)px[^\"]*"[^>]*>([\s\S]*?)(?=<div class="reference-|\s*<svg class="topology-target-arrows)/g;
   let match;
   while ((match = pattern.exec(topology)) !== null) {
     const isRobot = match[1] === "robot";
@@ -794,14 +804,14 @@ test("单真空机械手拓扑以方框架固定四个 PM、Heater 与两把 Loa
 
   const modulePosition = name => {
     const match = new RegExp(
-      `class="reference-module-position" style="--module-left:([\\d.]+)%;--module-top:(\\d+)px[^\"]*">(?:(?!class="reference-module-position")[\\s\\S])*?<strong[^>]*>${name}</strong>`,
+      `class="reference-module-position"[^>]*style="--module-left:([\\d.]+)%;--module-top:(\\d+)px[^\"]*"[^>]*>(?:(?!class="reference-module-position")[\\s\\S])*?<strong[^>]*>${name}</strong>`,
     ).exec(topology);
     assert.ok(match, `应找到 ${name} 的坐标`);
     return { x: Number(match[1]), y: Number(match[2]) };
   };
   const robotPosition = name => {
     const match = new RegExp(
-      `class="reference-robot-position" style="--robot-left:([\\d.]+)%;--robot-top:(\\d+)px[^\"]*">(?:(?!class="reference-robot-position")[\\s\\S])*?aria-label="${name}，`,
+      `class="reference-robot-position"[^>]*style="--robot-left:([\\d.]+)%;--robot-top:(\\d+)px[^\"]*"[^>]*>(?:(?!class="reference-robot-position")[\\s\\S])*?aria-label="${name}，`,
     ).exec(topology);
     assert.ok(match, `应找到 ${name} 的坐标`);
     return { x: Number(match[1]), y: Number(match[2]) };
@@ -860,7 +870,7 @@ test("LP2 与 Dummy Port 之间固定预留 LP3 列位", () => {
   );
   const xFor = name => {
     const match = new RegExp(
-      `class="reference-module-position" style="--module-left:([\\d.]+)%;[^>]*>(?:(?!class="reference-module-position")[\\s\\S])*?<strong[^>]*>${name}</strong>`,
+      `class="reference-module-position"[^>]*style="--module-left:([\\d.]+)%;[^>]*>(?:(?!class="reference-module-position")[\\s\\S])*?<strong[^>]*>${name}</strong>`,
     ).exec(topology);
     assert.ok(match, `应找到 ${name} 的列位`);
     return Number(match[1]);
@@ -945,11 +955,11 @@ test("双真空机械手级联拓扑固定显示全部 LP，并完整显示腔�
   assert.match(topology, /data-frame-id="vacuum-vtr-2"/);
   const yOf = name => {
     const module = new RegExp(
-      `class="reference-module-position" style="--module-left:[\\d.]+%;--module-top:(\\d+)px[^\"]*">\\s*<strong class="equipment-external-name[^"]*">${name}</strong>`
+      `class="reference-module-position"[^>]*style="--module-left:[\\d.]+%;--module-top:(\\d+)px[^\"]*"[^>]*>\\s*<strong class="equipment-external-name[^"]*">${name}</strong>`
     ).exec(topology);
     if (module) return Number(module[1]);
     const robot = new RegExp(
-      `class="reference-robot-position" style="--robot-left:[\\d.]+%;--robot-top:(\\d+)px[^\"]*">\\s*<article class="robot-hub[^"]*"[^>]*aria-label="${name}`
+      `class="reference-robot-position"[^>]*style="--robot-left:[\\d.]+%;--robot-top:(\\d+)px[^\"]*"[^>]*>\\s*<article class="robot-hub[^"]*"[^>]*aria-label="${name}`
     ).exec(topology);
     assert.ok(robot, `拓扑应包含 ${name}`);
     return Number(robot[1]);
@@ -998,9 +1008,9 @@ test("级联与非级联拓扑的大气侧布局和区域高度保持一致", ()
   };
   const verticalPosition = (topology, kind, name) => {
     const prefix = kind === "robot"
-      ? 'class="reference-robot-position" style="--robot-left:[\\d.]+%;--robot-top:'
-      : 'class="reference-module-position" style="--module-left:[\\d.]+%;--module-top:';
-    const match = new RegExp(`${prefix}(\\d+)px[^\"]*">(?:(?!class="reference-(?:robot|module)-position")[\\s\\S])*?${name}`).exec(topology);
+      ? 'class="reference-robot-position"[^>]*style="--robot-left:[\\d.]+%;--robot-top:'
+      : 'class="reference-module-position"[^>]*style="--module-left:[\\d.]+%;--module-top:';
+    const match = new RegExp(`${prefix}(\\d+)px[^\"]*"[^>]*>(?:(?!class="reference-(?:robot|module)-position")[\\s\\S])*?${name}`).exec(topology);
     assert.ok(match, `应找到 ${name} 的纵向坐标`);
     return Number(match[1]);
   };
@@ -1076,7 +1086,7 @@ test("三类设备以机器框架和不可见附着点固定真空腔室位置",
     const variable = kind === "robot" ? "robot" : "module";
     const marker = kind === "robot" ? `aria-label="${name}，` : `>${name}</strong>`;
     const match = new RegExp(
-      `class="${className}" style="--${variable}-left:([\\d.]+)%;--${variable}-top:(\\d+)px[^\"]*">(?:(?!class="reference-(?:robot|module)-position")[\\s\\S])*?${marker}`,
+      `class="${className}"[^>]*style="--${variable}-left:([\\d.]+)%;--${variable}-top:(\\d+)px[^\"]*"[^>]*>(?:(?!class="reference-(?:robot|module)-position")[\\s\\S])*?${marker}`,
     ).exec(topology);
     assert.ok(match, `应找到 ${name} 的框架坐标`);
     return { x: Number(match[1]) * 10, y: Number(match[2]) };
@@ -1268,11 +1278,11 @@ test("三级机器手设备按结构使用级联布局，不依赖设备名称",
   assertTopologyComplete(topology, ["LA", "LB", "UBR", "DBR", "PM1", "PM2", "PM3", "PM4", "PM5"]);
   const positionOf = name => {
     const module = new RegExp(
-      `class="reference-module-position" style="--module-left:([\\d.]+)%;--module-top:(\\d+)px[^\"]*">\\s*<strong class="equipment-external-name[^"]*">${name}</strong>`
+      `class="reference-module-position"[^>]*style="--module-left:([\\d.]+)%;--module-top:(\\d+)px[^\"]*"[^>]*>\\s*<strong class="equipment-external-name[^"]*">${name}</strong>`
     ).exec(topology);
     if (module) return { x: Number(module[1]) / 100 * 1000, y: Number(module[2]) };
     const robot = new RegExp(
-      `class="reference-robot-position" style="--robot-left:([\\d.]+)%;--robot-top:(\\d+)px[^\"]*">\\s*<article class="robot-hub[^"]*"[^>]*aria-label="${name}`
+      `class="reference-robot-position"[^>]*style="--robot-left:([\\d.]+)%;--robot-top:(\\d+)px[^\"]*"[^>]*>\\s*<article class="robot-hub[^"]*"[^>]*aria-label="${name}`
     ).exec(topology);
     assert.ok(robot, `拓扑应包含 ${name}`);
     return { x: Number(robot[1]) / 100 * 1000, y: Number(robot[2]) };
@@ -1329,7 +1339,7 @@ test("多个大气机械手在同一排横向分布且不重叠", () => {
   );
   assertTopologyComplete(topology, ["LP1", "LP2", "LA", "LB", "PM1", "PM2"]);
   assert.match(topology, />LP2</);
-  const reAtr = /class="reference-robot-position" style="--robot-left:([\d.]+)%;--robot-top:(\d+)px">\s*<article class="robot-hub[^"]*"[^>]*aria-label="(ATR_\d)[^"]*"/g;
+  const reAtr = /class="reference-robot-position"[^>]*style="--robot-left:([\d.]+)%;--robot-top:(\d+)px[^\"]*"[^>]*>\s*<article class="robot-hub[^"]*"[^>]*aria-label="(ATR_\d)[^"]*"/g;
   let match;
   const found = new Map();
   while ((match = reAtr.exec(topology)) !== null) {

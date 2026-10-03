@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- MoveList 甘特图查看器：绘制已合并的时间线；对象定位规则由 gantt_replay_focus.ts 提供。 -->
 <html lang="en">
 <head>
   <!-- 独立 MoveList 甘特图：负责时间轴、筛选与详情；动作翻译由 gantt_move_semantics 提供。 -->
@@ -1222,6 +1223,7 @@
                 <div class="toolbar-group">
                   <label class="field">Makespan <strong id="makespanValue">–</strong></label>
                   <button id="fitBtn" type="button" disabled>Fit</button>
+                  <button id="replayFocusBtn" class="hidden" type="button" disabled title="Show all moves">Show all moves</button>
                 </div>
                 <div class="toolbar-group">
                   <label class="field">Search by
@@ -1298,6 +1300,7 @@
     const CLEAN_PROCESS_COLOR = "#38BDF8";
     const ZERO_DURATION_EPSILON_SECONDS = 1e-9;
     const ZERO_DURATION_MARKER_WIDTH = 3;
+    const REPLAY_FOCUS_TIME_PADDING_SECONDS = 10;
 
     const S = {
       MOVETYPE_NAMES: {
@@ -1332,6 +1335,7 @@
       tabs: document.getElementById("tabs"),
       makespanValue: document.getElementById("makespanValue"),
       fitBtn: document.getElementById("fitBtn"),
+      replayFocusBtn: document.getElementById("replayFocusBtn"),
       searchTypeSelect: document.getElementById("searchTypeSelect"),
       moveSearchInput: document.getElementById("moveSearchInput"),
       prevSearchBtn: document.getElementById("prevSearchBtn"),
@@ -1775,6 +1779,8 @@
         showRemovedMoves: true,
         showTimeline: false,
         laneFilter: "",
+        replayFocus: null,
+        replayFocusApplied: false,
         selected: null,
         searchType: "moveId",
         searchQuery: "",
@@ -1805,11 +1811,12 @@
       };
     }
 
-    function loadFileList(fileList, preferMovelist) {
+    function loadFileList(fileList, preferMovelist, replayFocus = null) {
       const files = Array.from(fileList || []).filter((file) => /\.json$/i.test(file.name));
       const movelists = files.filter((file) => /_movelist\.json$/i.test(file.name));
       const selected = preferMovelist && movelists.length ? movelists : files;
       const records = selected.map(makeFileRecord).sort((a, b) => naturalCompare(a.path, b.path));
+      for (const dataset of records) dataset.view.replayFocus = replayFocus;
 
       state.files = records;
       state.fileById = new Map(records.map((item) => [item.id, item]));
@@ -1997,6 +2004,7 @@
       }
       setControlsEnabled(true);
       syncControls(dataset);
+      if (applyReplayFocus(dataset)) return;
       const invalidBar = buildModel(dataset).bars.find((bar) => bar.rec.invalid);
       if (invalidBar) {
         selectAndRevealBar(dataset, invalidBar, { zoom: true });
@@ -2035,6 +2043,7 @@
     function setControlsEnabled(enabled) {
       for (const el of [
         dom.fitBtn,
+        dom.replayFocusBtn,
         dom.searchTypeSelect,
         dom.moveSearchInput,
         dom.prevSearchBtn,
@@ -2118,8 +2127,13 @@
 
     function visibleLaneOrder(dataset, model) {
       const query = dataset.view.laneFilter.trim().toLowerCase();
-      if (!query) return model.laneOrder;
+      const focus = dataset.view.replayFocus;
+      const focusedLanes = focus && (focus.resource || focus.wafer)
+        ? new Set(model.bars.filter((bar) => matchesReplayFocus(dataset, bar)).map((bar) => bar.lane))
+        : null;
       return model.laneOrder.filter((lane) => {
+        if (focusedLanes && !focusedLanes.has(lane)) return false;
+        if (!query) return true;
         const label = ytickLabelForLane(lane);
         const base = stripSublaneSuffix(lane);
         return label.toLowerCase().includes(query) || base.toLowerCase().includes(query);
@@ -2130,8 +2144,44 @@
       const laneSet = new Set(lanes);
       const view = dataset.view;
       return model.bars.filter((bar) => {
-        return laneSet.has(bar.lane) && bar.end >= view.t0 && bar.start <= view.t1;
+        return laneSet.has(bar.lane) && matchesReplayFocus(dataset, bar)
+          && bar.end >= view.t0 && bar.start <= view.t1;
       });
+    }
+
+    /** 按对象链接筛选甘特条；未传入对象参数时不改变既有浏览行为。 */
+    function matchesReplayFocus(dataset, bar) {
+      const focus = dataset.view.replayFocus;
+      return !focus || window.GanttExecutionCompare.matchesReplayGanttFocus(bar.rec.raw, focus);
+    }
+
+    /** 首次激活标签页时恢复对象、精确动作和回放时刻；跨代同号动作按时刻选择。 */
+    function applyReplayFocus(dataset) {
+      const focus = dataset.view.replayFocus;
+      if (!focus || dataset.view.replayFocusApplied) return false;
+      dataset.view.replayFocusApplied = true;
+      const model = buildModel(dataset);
+      if (focus.moveId || focus.wafer) {
+        dataset.view.searchType = focus.moveId ? "moveId" : "materialId";
+        dataset.view.searchQuery = focus.moveId || focus.wafer;
+      }
+      if (focus.time !== null) {
+        state.probe.time = Math.max(model.domainMin, Math.min(model.domainMax, focus.time));
+        dataset.view.showTimeline = true;
+      }
+      const target = window.GanttExecutionCompare.findReplayGanttTarget(
+        model.records, focus,
+      );
+      const bar = target && model.bars.find((item) => item.rec.rawIndex === target.rawIndex);
+      if (bar) selectAndRevealBar(dataset, bar, { zoom: true });
+      // 时间游标和目标动作同时保留在视窗内，便于辨认空闲期间最近的动作。
+      if (focus.time !== null) {
+        dataset.view.t0 = Math.min(dataset.view.t0, state.probe.time - REPLAY_FOCUS_TIME_PADDING_SECONDS);
+        dataset.view.t1 = Math.max(dataset.view.t1, state.probe.time + REPLAY_FOCUS_TIME_PADDING_SECONDS);
+        clampView(dataset, model);
+      }
+      renderCurrent();
+      return true;
     }
 
     function syncSearchControls(dataset) {
@@ -2145,7 +2195,8 @@
     function searchValues(bar, searchType) {
       const raw = bar.rec.raw;
       const values = searchType === "materialId"
-        ? [raw.MatIDList, raw.MaterialID, raw.MaterialId, raw.MatID, raw.MatId]
+        ? [raw.MatIDList, raw.MaterialID, raw.MaterialId, raw.MatID, raw.MatId,
+          raw.RecvMatList, raw.SendMatList, raw.RecvMatIDList, raw.SendMatIDList]
         : [raw.MoveID, raw.MoveId, raw.Move_id];
       return values
         .flatMap((value) => Array.isArray(value) ? value : [value])
@@ -2160,7 +2211,7 @@
       if (!query) return [];
       const laneSet = new Set(lanes);
       return model.bars
-        .filter((bar) => laneSet.has(bar.lane))
+        .filter((bar) => laneSet.has(bar.lane) && matchesReplayFocus(dataset, bar))
         .filter((bar) => {
           return searchValues(bar, dataset.view.searchType).includes(query);
         })
@@ -2377,7 +2428,8 @@
     function jumpDiff(delta) {
       const dataset = activeDataset();
       if (!dataset) return;
-      const diffs = findDiffBars(buildModel(dataset), dataset.view.durationOnly);
+      const diffs = findDiffBars(buildModel(dataset), dataset.view.durationOnly)
+        .filter((bar) => matchesReplayFocus(dataset, bar));
       if (!diffs.length) {
         updateDiffStatus(dataset, diffs);
         return;
@@ -2473,7 +2525,8 @@
       if (dataset.view.searchCursor >= searchMatches.length) dataset.view.searchCursor = searchMatches.length - 1;
       const searchHitRawIndexes = new Set(searchMatches.map((bar) => bar.rec.rawIndex));
       updateSearchStatus(dataset, searchMatches);
-      updateDiffStatus(dataset, findDiffBars(model, dataset.view.durationOnly));
+      updateDiffStatus(dataset, findDiffBars(model, dataset.view.durationOnly)
+        .filter((bar) => matchesReplayFocus(dataset, bar)));
       renderStatsPanel(dataset, lanes, bars);
 
       const tickStep = niceTickInterval(span, Math.max(5, Math.floor(plotW / 110)));
@@ -2623,6 +2676,12 @@
       dom.showRemovedMovesToggle.checked = dataset.view.showRemovedMoves;
       dom.durationOnlyToggle.checked = dataset.view.durationOnly;
       dom.showTimelineToggle.checked = dataset.view.showTimeline;
+      const focus = dataset.view.replayFocus;
+      const filtered = !!focus && !!(focus.resource || focus.wafer);
+      dom.replayFocusBtn.classList.toggle("hidden", !filtered);
+      dom.replayFocusBtn.title = filtered
+        ? `Showing ${[focus.resource, focus.wafer && `Wafer ${focus.wafer}`].filter(Boolean).join(" · ")}; show all moves`
+        : "Show all moves";
     }
 
     function hashCode(value) {
@@ -3097,6 +3156,8 @@
       const params = new URLSearchParams(window.location.search);
       const sources = params.getAll("src"), names = params.getAll("name");
       if (!sources.length) return;
+      const replayFocus = window.GanttExecutionCompare.parseReplayGanttFocus(window.location.search);
+      const hasReplayFocus = replayFocus.resource || replayFocus.wafer || replayFocus.moveId || replayFocus.time !== null;
       const loaded = await Promise.allSettled(sources.map(async (source, index) => {
         const resultSource = window.ResultArtifactUrls.movelistResultSourceUrl(source, window.location.href);
         const response = await fetch(resultSource, { cache: "no-store" });
@@ -3110,7 +3171,7 @@
         });
       }));
       const files = loaded.filter(item => item.status === "fulfilled").map(item => item.value);
-      if (files.length) loadFileList(files, false);
+      if (files.length) loadFileList(files, false, hasReplayFocus ? replayFocus : null);
       const failures = loaded.filter(item => item.status === "rejected");
       if (!files.length && failures.length) {
         renderEmpty(`Failed to load scheduler results: ${failures.map(item => item.reason?.message || item.reason).join("; ")}`);
@@ -3169,6 +3230,13 @@
     dom.fitBtn.addEventListener("click", () => {
       const dataset = activeDataset();
       if (dataset) setFullRange(dataset);
+    });
+    dom.replayFocusBtn.addEventListener("click", () => {
+      const dataset = activeDataset();
+      if (!dataset) return;
+      dataset.view.replayFocus = null;
+      dataset.view.diffCursor = -1;
+      renderCurrent();
     });
     dom.hideDoorToggle.addEventListener("change", () => {
       const dataset = activeDataset();

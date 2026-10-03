@@ -4,7 +4,10 @@
  * 本模块把平台复现日志中的多代 AlgOutput 拼接为一条时间线，并用
  * AlgUpdateMove 的 Running/Done 通知覆盖计划时间。纯渲染和交互仍由
  * movelist_gantt_viewer.html 负责。
+ * 浏览器构建入口同时导出 gantt_replay_focus 的对象定位契约，供查看器与源码测试使用。
  */
+
+export { parseReplayGanttFocus, matchesReplayGanttFocus, findReplayGanttTarget } from "./gantt_replay_focus";
 
 export const MOVE_STATE_RUNNING = 0;
 export const MOVE_STATE_DONE = 1;
