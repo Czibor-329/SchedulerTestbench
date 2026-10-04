@@ -1487,6 +1487,10 @@ function stationCandidates(route, stepId, device) {
   }
   return [...stations];
 }
+function isReplayInventoryPort(module, device) {
+  const stationType = String(device?.Stations?.[module.name]?.Type || module.type || "").trim().toLowerCase();
+  return ["loadport", "dummyport"].includes(stationType) || Boolean(module.loadPortSlots.length) || !stationType && /^(LP\d*|P\d+|.*PORT)$/i.test(module.name);
+}
 function projectReplayWaferDestinations(input) {
   const result = /* @__PURE__ */ new Map();
   const time = input.snapshot.time;
@@ -1508,7 +1512,7 @@ function projectReplayWaferDestinations(input) {
   for (const [wafer, location] of locations) {
     const material = replayWaferInstance(input, wafer);
     const completed = materialTimeline(input.moves, wafer).ends.filter((row) => Number(row.move.EndTime ?? 0) <= time + TIME_TOLERANCE2 && sameReplayMaterialInstance(material, row.material));
-    const last = completed[0];
+    const last = completed.find((row) => PICK_TYPES2.has(Number(row.move.MoveType)) || PLACE_TYPES.has(Number(row.move.MoveType)) || Number(row.move.MoveType) === SWAP_TYPE2);
     const confirmedStep = completed.find((row) => row.material.stepId)?.material.stepId ?? publishedStep(input, material);
     const base = {
       wafer,
@@ -1526,9 +1530,9 @@ function projectReplayWaferDestinations(input) {
       result.set(wafer, { ...base, label: station2, station: station2, stationSlot, status: "confirmed" });
       continue;
     }
-    const stationType = String(input.device?.Stations?.[location]?.Type ?? "").toLowerCase();
-    if (["loadport", "dummyport"].includes(stationType) && last && (PLACE_TYPES.has(Number(last.move.MoveType)) || last.material.direction === "send") && last.material.station === location) {
-      result.set(wafer, { ...base, label: "\u5DF2\u56DE\u6E2F", status: "complete" });
+    const module = input.snapshot.modules.find((item) => item.name === location);
+    if (module && isReplayInventoryPort(module, input.device) && (module.processedWafers.includes(wafer) || last && (PLACE_TYPES.has(Number(last.move.MoveType)) || last.material.direction === "send") && last.material.station === location)) {
+      result.set(wafer, { ...base, label: "", status: "complete" });
       continue;
     }
     const route = embeddedRoute(generation?.plan ?? input.plan, material) ?? input.resolveRoute?.(material.pjobName, time) ?? null;
@@ -1943,6 +1947,11 @@ function annotateReplayTopology(stage, snapshot, destinations, replayInput) {
   }
   for (const wafer of Array.from(stage.querySelectorAll(".wafer-token[data-replay-wafer]"))) {
     const destination = destinations.get(wafer.dataset.replayWafer ?? "");
+    if (destination?.status === "complete") continue;
+    let wrapper = wafer.parentElement;
+    while (wrapper && !wrapper.classList.contains("reference-module-position")) wrapper = wrapper.parentElement;
+    const module = snapshot.modules.find((item) => item.name === wrapper?.dataset.replayName);
+    if (module && isReplayInventoryPort(module, replayInput?.device ?? null) && wafer.classList.contains("wafer-processed")) continue;
     const surface = wafer.querySelector(".wafer-origin-label")?.parentElement;
     if (!surface) continue;
     const next = ownerDocument.createElement("span");

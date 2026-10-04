@@ -4,7 +4,7 @@
  * 保留 TaskID/PJob 实例，跳过 RobotStep，不把后续重算代的选择泄漏到过去。
  */
 import type { DeviceDefinition, MoveRecord, UnknownRecord } from "./analysis_contracts";
-import type { WorkspaceSnapshot } from "./workspace_visualizer";
+import type { ModuleSnapshot, WorkspaceSnapshot } from "./workspace_visualizer";
 
 const PICK_TYPES = new Set([0, 2]);
 const PLACE_TYPES = new Set([1, 3]);
@@ -203,6 +203,14 @@ function stationCandidates(route: UnknownRecord | null, stepId: string, device: 
   return [...stations];
 }
 
+/** 识别回放库存端口，设备类型缺失时使用快照类型、端口槽位或既有端口命名约定。 */
+export function isReplayInventoryPort(module: ModuleSnapshot, device: DeviceDefinition | null): boolean {
+  const stationType = String(device?.Stations?.[module.name]?.Type || module.type || "").trim().toLowerCase();
+  return ["loadport", "dummyport"].includes(stationType)
+    || Boolean(module.loadPortSlots.length)
+    || !stationType && /^(LP\d*|P\d+|.*PORT)$/i.test(module.name);
+}
+
 /**
  * 投影当前在机晶圆的下一落站。显式 Place/Swap 优先，Route 候选只显示“待定”；
  * 返回 Map 以便拓扑与对象卡共享同一语义，输入快照和 MoveList 不会被修改。
@@ -232,7 +240,9 @@ export function projectReplayWaferDestinations(input: ReplayDestinationInput): M
     const material = replayWaferInstance(input, wafer);
     const completed = materialTimeline(input.moves, wafer).ends.filter(row => Number(row.move.EndTime ?? 0) <= time + TIME_TOLERANCE
       && sameReplayMaterialInstance(material, row.material));
-    const last = completed[0];
+    // 转位等辅助动作不能覆盖最后一次取放的归库证据。
+    const last = completed.find(row => PICK_TYPES.has(Number(row.move.MoveType))
+      || PLACE_TYPES.has(Number(row.move.MoveType)) || Number(row.move.MoveType) === SWAP_TYPE);
     const confirmedStep = completed.find(row => row.material.stepId)?.material.stepId ?? (publishedStep(input, material));
     const base = { wafer, taskId: material.taskId, pjobName: material.pjobName, stepId: confirmedStep,
       instanceKey: replayMaterialInstanceKey(material), station: "", candidates: [] as string[] };
@@ -243,11 +253,12 @@ export function projectReplayWaferDestinations(input: ReplayDestinationInput): M
       result.set(wafer, { ...base, label: station, station, stationSlot, status: "confirmed" });
       continue;
     }
-    const stationType = String(input.device?.Stations?.[location]?.Type ?? "").toLowerCase();
-    if (["loadport", "dummyport"].includes(stationType)
-      && last && (PLACE_TYPES.has(Number(last.move.MoveType)) || last.material.direction === "send")
-      && last.material.station === location) {
-      result.set(wafer, { ...base, label: "已回港", status: "complete" });
+    const module = input.snapshot.modules.find(item => item.name === location);
+    if (module && isReplayInventoryPort(module, input.device)
+      && (module.processedWafers.includes(wafer)
+        || last && (PLACE_TYPES.has(Number(last.move.MoveType)) || last.material.direction === "send")
+          && last.material.station === location)) {
+      result.set(wafer, { ...base, label: "", status: "complete" });
       continue;
     }
     const route = embeddedRoute(generation?.plan ?? input.plan, material)

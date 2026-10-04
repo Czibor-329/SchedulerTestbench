@@ -3,7 +3,7 @@
  * 给现有图形增加对象身份、晶圆下一站和等待状态；不修改设备布局与机构。
  */
 import type { WorkspaceSnapshot } from "./workspace_visualizer";
-import { replayWaferWaitingSeconds, type ReplayWaferDestination, type ReplayDestinationInput } from "./replay_wafer_destinations";
+import { isReplayInventoryPort, replayWaferWaitingSeconds, type ReplayWaferDestination, type ReplayDestinationInput } from "./replay_wafer_destinations";
 
 /** 为已渲染设备添加信息；只操作文字注释、可访问身份和选中状态所需属性。 */
 export function annotateReplayTopology(stage: HTMLElement, snapshot: WorkspaceSnapshot,
@@ -36,6 +36,13 @@ export function annotateReplayTopology(stage: HTMLElement, snapshot: WorkspaceSn
   }
   for (const wafer of Array.from(stage.querySelectorAll<HTMLElement>(".wafer-token[data-replay-wafer]"))) {
     const destination = destinations.get(wafer.dataset.replayWafer ?? "");
+    if (destination?.status === "complete") continue;
+    // 画布在放片动画中段已经交接，诊断快照则在 Move 完成时才更新；以可见的端口成品隐藏去向。
+    let wrapper = wafer.parentElement;
+    while (wrapper && !wrapper.classList.contains("reference-module-position")) wrapper = wrapper.parentElement;
+    const module = snapshot.modules.find(item => item.name === wrapper?.dataset.replayName);
+    if (module && isReplayInventoryPort(module, replayInput?.device ?? null)
+      && wafer.classList.contains("wafer-processed")) continue;
     const surface = wafer.querySelector<HTMLElement>(".wafer-origin-label")?.parentElement;
     if (!surface) continue;
     const next = ownerDocument.createElement("span");

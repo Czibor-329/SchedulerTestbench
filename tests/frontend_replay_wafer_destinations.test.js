@@ -81,8 +81,38 @@ test("补片复用MatID不借用后续Task目标，回港状态不当未知", ()
     {MoveType:1,StartTime:10,EndTime:11,MatIDList:[1],DestStationList:["PM2"],TaskID:["second"],PJobName:["P"]},
   ];
   const destination = projectReplayWaferDestinations(input(moves,5,"LP1")).get("1");
-  assert.equal(destination.label,"已回港");
+  assert.equal(destination.label,"");
+  assert.equal(destination.status,"complete");
   assert.equal(destination.taskId,"first");
+});
+
+test("缺少设备定义时从回放端口识别归库，首发前仍显示计划目标", () => {
+  const moves = [{MoveType:1,StartTime:3,EndTime:4,MatIDList:[1],DestStationList:["LP1"]}];
+  for (const identity of [{type:"LoadPort"},{loadPortSlots:[{slot:1,wafer:"1"}]},{}]) {
+    const data = input(moves,5,"LP1",["1"],{device:null});
+    Object.assign(data.snapshot.modules[0],identity);
+    const destination = projectReplayWaferDestinations(data).get("1");
+    assert.equal(destination.status,"complete");
+    assert.equal(destination.label,"");
+    assert.deepEqual(destination.candidates,[]);
+  }
+  const beforeDispatch = input([{MoveType:1,StartTime:6,EndTime:7,MatIDList:[1],DestStationList:["PM1"]}],0,"LP1");
+  assert.equal(projectReplayWaferDestinations(beforeDispatch).get("1").label,"PM1");
+  const incomplete = input([],5,"LP1");
+  assert.equal(projectReplayWaferDestinations(incomplete).get("1").status,"unknown");
+});
+
+test("回港后的辅助转位不会覆盖归库证据，快照成品也可确认归库", () => {
+  const moves = [
+    {MoveType:1,StartTime:3,EndTime:4,MatIDList:[1],DestStationList:["LP1"]},
+    {MoveType:5,StartTime:4,EndTime:5,MatIDList:[1],ModuleName:"ATR"},
+  ];
+  const data = input(moves,6,"LP1");
+  assert.equal(projectReplayWaferDestinations(data).get("1").status,"complete");
+  const snapshotOnly = input([],6,"LP1");
+  snapshotOnly.snapshot.modules[0].processedWafers = ["1"];
+  assert.equal(projectReplayWaferDestinations(snapshotOnly).get("1").label,"");
+  assert.equal(projectReplayWaferDestinations(snapshotOnly).get("1").status,"complete");
 });
 
 test("多片Place按下标对应不同站点", () => {

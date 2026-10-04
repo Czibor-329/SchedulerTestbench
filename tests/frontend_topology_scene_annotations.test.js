@@ -28,6 +28,39 @@ test("第二行只有下一station名称，反复刷新不重复、源标签保�
   assert.deepEqual(fixture.body.style.values,{});
 });
 
+test("回港后移除去向标签，倒放恢复下一站且保留来源编号",()=>{
+  const fixture=buildReplayAnnotationStage("LP1");
+  const input=replayInput(5,"LP1");
+  const destinations=new Map([["1",{label:"LP1",station:"LP1",candidates:[],status:"confirmed"}]]);
+  annotateReplayTopology(fixture.stage,input.snapshot,destinations,input);
+  assert.equal(fixture.stage.querySelectorAll(".wafer-next-station").length,1);
+  destinations.set("1",{label:"",station:"",candidates:[],status:"complete"});
+  annotateReplayTopology(fixture.stage,input.snapshot,destinations,input);
+  annotateReplayTopology(fixture.stage,input.snapshot,destinations,input);
+  assert.equal(fixture.stage.querySelectorAll(".wafer-next-station").length,0);
+  assert.equal(fixture.origin.textContent,"LP1.1");
+  destinations.set("1",{label:"LP1",station:"LP1",candidates:[],status:"confirmed"});
+  annotateReplayTopology(fixture.stage,input.snapshot,destinations,input);
+  assert.equal(fixture.stage.querySelectorAll(".wafer-next-station")[0].textContent,"LP1");
+});
+
+test("LoadPort画布已收到成品但业务快照仍持片时不显示去向",()=>{
+  const fixture=buildReplayAnnotationStage("LP1");
+  const input=replayInput(5,"LP1");
+  input.snapshot.modules[0].type="LoadPort";
+  input.snapshot.modules[0].wafers=[];
+  fixture.wafer.classList.toggle("wafer-processed",true);
+  for (const destination of [null,{label:"未知",station:"",candidates:[],status:"unknown"},
+    {label:"LP1",station:"LP1",candidates:[],status:"confirmed"}]) {
+    annotateReplayTopology(fixture.stage,input.snapshot,new Map(destination ? [["1",destination]] : []),input);
+    assert.equal(fixture.stage.querySelectorAll(".wafer-next-station").length,0);
+    assert.equal(fixture.origin.textContent,"LP1.1");
+  }
+  fixture.wafer.classList.toggle("wafer-processed",false);
+  annotateReplayTopology(fixture.stage,input.snapshot,new Map([["1",{label:"PM1",station:"PM1",candidates:[],status:"confirmed"}]]),input);
+  assert.equal(fixture.stage.querySelectorAll(".wafer-next-station")[0].textContent,"PM1");
+});
+
 test("倒放到工艺结束前清除等待标记，取片中和缺证据不装作已完成",()=>{
   const fixture=buildReplayAnnotationStage();
   const input=replayInput();

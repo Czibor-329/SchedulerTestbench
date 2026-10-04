@@ -16,6 +16,16 @@ function input(time = 5) {
       loadPortSlots:[],loadLockSlots:[],processSlots:[{slot:1,wafer:"1",processed:true}],slotCapacity:1}],robots:[],waferOrigins:{1:"LP1.1"}}};
 }
 
+test("晶圆归库后对象卡和槽位卡不显示下一站", () => {
+  const data = input();
+  data.moves = [{MoveType:1,StartTime:3,EndTime:4,MatIDList:[1],DestStationList:["LP1"],TaskID:["T"],PJobName:["P"]}];
+  Object.assign(data.snapshot.modules[0],{name:"LP1",type:"LoadPort",loadPortSlots:[{slot:1,wafer:"1"}]});
+  for (const selection of [{kind:"wafer",wafer:"1"},{kind:"slot",name:"LP1",slot:1}]) {
+    const details = projectReplayObjectDetails(data,selection);
+    assert.equal(details.fields.some(field=>field.label === "下一站"),false);
+  }
+});
+
 test("物料key与当前位置无关，槽位key区分真实模块和槽号", () => {
   assert.equal(replayObjectKey({kind:"wafer",wafer:"1",instanceKey:"T",name:"PM1"}),replayObjectKey({kind:"wafer",wafer:"1",instanceKey:"T",name:"VTR"}));
   assert.notEqual(replayObjectKey({kind:"wafer",wafer:"1",instanceKey:"T"}),replayObjectKey({kind:"wafer",wafer:"1",instanceKey:"U"}));
