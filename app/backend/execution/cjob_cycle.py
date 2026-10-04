@@ -197,11 +197,10 @@ def _cjob_cycle_completion_time(
     runtime: Any,
     cycle_state: CJobCycleRuntime,
 ) -> Optional[float]:
-    """求整盒回片且本代可复用 Dummy 回库后的最晚补片时刻。
+    """根据当前计划和现场快照，返回该盒产品全部完成后的补片时刻。
 
-    产品完成后，下一段 Dummy 清洁可能已经与产品尾片并行启动。若此时立即
-    重算并再次追加同一物理 Dummy 的 Route，会把在途清洁片重复并入新任务。
-    因而 CJobCycle 还需等待当前代实际参与动作的 Dummy 完成本代路线。
+    无法确定全部产品完成时间时返回 None；不修改运行状态。Dummy 的在途清洁
+    由重算快照接续，不能用其回库时间推迟各 LoadPort 独立的产品完工事件。
     """
     material_ids = _cjob_cycle_product_material_ids(
         runtime.current_update,
@@ -242,30 +241,10 @@ def _cjob_cycle_completion_time(
                 )
     if material_ids - set(latest_by_material):
         return None
-    reusable_dummy_ids = {
-        material.get("ID", material.get("Name"))
-        for material in (runtime.current_update.get("Materials") or [])
-        if (
-            isinstance(material, Mapping)
-            and str(material.get("SrcPortName") or "") == "DummyPort"
-            and material.get("ID", material.get("Name")) is not None
-        )
-    }
-    dummy_return_time = max(
-        (
-            _finite_number(
-                move.get("EndTime"),
-                _finite_number(move.get("StartTime"), runtime.state_time),
-            )
-            for move in runtime.current_plan
-            if _move_material_ids(move) & reusable_dummy_ids
-        ),
-        default=runtime.state_time,
-    )
     # 普通定时重算会取消恰好在 cutoff 启动的动作；补片事件则必须先消费同刻的
     # 零时长回片/完成动作。仅跨过状态机容差边界，不引入业务上的装卸时间。
     return (
-        max(max(latest_by_material.values()), dummy_return_time)
+        max(latest_by_material.values())
         + TIME_TOLERANCE * CJOB_CYCLE_EVENT_EPSILON_MULTIPLIER
     )
 

@@ -225,6 +225,41 @@ class CJobCycleUnitTests(unittest.TestCase):
         self.assertEqual(0, build_state.next_slot_by_port["LP1"])
         self.assertEqual(25, build_state.next_slot_by_port["LP2"])
 
+    def test_cycle_completion_does_not_wait_for_inflight_dummy(self) -> None:
+        """同归属或其它归属的在途 Dummy 均不能合并不同 LP 的补片时刻。"""
+        from types import SimpleNamespace
+
+        for dummy_task in ("1", "2"):
+            with self.subTest(dummy_task=dummy_task):
+                runtime = SimpleNamespace(
+                    state_time=0.0,
+                    current_update={
+                        "Materials": [
+                            {"ID": 1, "TaskID": "1", "SrcPortName": "LP1"},
+                            {"ID": 2, "TaskID": "2", "SrcPortName": "LP2"},
+                            {"ID": 100001, "TaskID": dummy_task, "SrcPortName": "DummyPort"},
+                        ],
+                        "ProcessJobs": [
+                            {"TaskID": "1", "MatList": [1]},
+                            {"TaskID": "2", "MatList": [2]},
+                        ],
+                    },
+                    current_plan=[
+                        {"MatIDList": [1], "EndTime": 10.0},
+                        {"MatIDList": [2], "EndTime": 20.0},
+                        {"MatIDList": [100001], "EndTime": 30.0},
+                    ],
+                )
+                for task_id, port, completion in (("1", "LP1", 10.0), ("2", "LP2", 20.0)):
+                    state = config_server.CJobCycleRuntime(
+                        template={}, load_port=port, total_cycles=4, current_cycle=1,
+                        current_task_id=task_id, configured_round=1,
+                    )
+                    self.assertAlmostEqual(
+                        completion + config_server.TIME_TOLERANCE * config_server.CJOB_CYCLE_EVENT_EPSILON_MULTIPLIER,
+                        config_server._cjob_cycle_completion_time(runtime, state),
+                    )
+
     def test_cycle_count_rejects_fractional_and_out_of_range_values(self) -> None:
         """循环数必须是 1~1000 的整数。"""
         for value in (0, 1001, 1.5):
