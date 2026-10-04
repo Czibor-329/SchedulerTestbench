@@ -4,6 +4,7 @@ from app.backend.execution.runtime_snapshot import (
     compact_robot_snapshots,
     compact_station_snapshots,
     expand_runtime_snapshots_for_validation,
+    validation_sources_view,
 )
 
 
@@ -20,6 +21,19 @@ def _station(station_type: str, **fields: object) -> dict:
         "PrePrepareTime": [{"PrePrepareType": "PumpTime", "Time": 2.0}],
         **fields,
     }
+
+
+def test_validation_view_preserves_projection_and_machine_owns_mutable_state() -> None:
+    """只读视图与深拷贝展开等价，构造后的物理状态隔离调用方可变配置。"""
+    from app.backend.validation.move_validation import MachineState
+
+    topology = {"Stations": {"PM1": _station("ProcessChamber", StateVariables={"Count": {"Value": {"Value": 1}}})}}
+    update = {"Stations": {"PM1": {"StateVariables": {"Count": {"Value": {"Value": 2}}}}}, "Robots": []}
+    view = validation_sources_view(topology, update)
+    assert view == expand_runtime_snapshots_for_validation(topology, update)
+    state = MachineState.from_sources(None, view)
+    update["Stations"]["PM1"]["StateVariables"]["Count"]["Value"]["Value"] = 3
+    assert state.stations["PM1"].state_variables["Count"] == 2
 
 
 def _robot(**fields: object) -> dict:

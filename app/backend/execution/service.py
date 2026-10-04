@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.backend.payload_snapshot import copy_payload
+
 from app.backend.bootstrap import *
 from app.backend.execution.run_state import *
 from app.backend.execution.algorithm_runtime import *
@@ -76,10 +78,11 @@ def _execute_standard_algorithm(
                 parsed = dict(parsed["Info"])
             return dict(parsed)
 
-        prepared_first_update = deepcopy(dict(first_update))
+        # first_update 属于当前执行计划；算法只收到 JSON，不能修改嵌套输入。
+        prepared_first_update = dict(first_update)
         options = plan.get("options")
         if isinstance(options, Mapping):
-            prepared_first_update["AlgorithmOptions"] = deepcopy(dict(options))
+            prepared_first_update["AlgorithmOptions"] = copy_payload(dict(options))
     else:
         strategy = f"other_alg:{algorithm_id}"
         backend = f"other_alg/{algorithm_id}"
@@ -99,10 +102,10 @@ def _execute_standard_algorithm(
         session_context = algorithm_session(str(algorithm_id))
         initialize = algorithm_init
         run_update = algorithm_update
-        prepared_first_update = deepcopy(dict(first_update))
+        prepared_first_update = dict(first_update)
 
     summaries: List[Dict[str, Any]] = []
-    update_snapshots: List[Dict[str, Any]] = [deepcopy(prepared_first_update)]
+    update_snapshots: List[Dict[str, Any]] = [prepared_first_update]
     logs = [
         f"设备：{plan.get('deviceName') or 'selected init'}",
         f"策略：{strategy}；调用：{entry_name}；总轮数：{round_count}",
@@ -301,10 +304,9 @@ def _execute_standard_algorithm(
                 projected_state=projected_state,
                 previous_output=output,
             )
-            update_snapshots.append(deepcopy(update))
-            reproduction.add(
-                "AlgSchedule",
-                _schedule_log_info(plan["device"], update),
+            update_snapshots.append(copy_payload(update))
+            reproduction.add_schedule(
+                plan["device"], update,
                 requested_time,
             )
             round_started = time.perf_counter()
@@ -536,7 +538,7 @@ def _execute_standard_algorithm(
             builtin_algorithm_api.get_search_telemetry()
         )
         search_telemetry.pop("committedMoves", None)
-        combined_output["SearchTelemetry"] = deepcopy(search_telemetry)
+        combined_output["SearchTelemetry"] = copy_payload(search_telemetry)
 
     # 决策轨迹只进入可回放结果文件；运行摘要保留计数，避免 API 响应重复携带大数组。
     decision_trace: List[Dict[str, Any]] = []
@@ -555,7 +557,7 @@ def _execute_standard_algorithm(
                 if not isinstance(raw_decision, Mapping):
                     continue
                 decision_trace.append({
-                    **deepcopy(dict(raw_decision)),
+                    **copy_payload(dict(raw_decision)),
                     "roundIndex": int(summary.get("index") or 0),
                     "roundKind": str(summary.get("kind") or ""),
                 })
@@ -619,7 +621,7 @@ def _ensure_algorithm_output(
 def _execute_plan(raw_plan: Mapping[str, Any], reproduction: ReproductionLog) -> Dict[str, Any]:
     """执行控制台提交的计划，并同步写入结构化复现事件。"""
     started = time.perf_counter()
-    plan = deepcopy(dict(raw_plan))
+    plan = copy_payload(dict(raw_plan))
     plan["device"] = extract_init_data(plan.get("device"))
     raw_execution_timing = plan["device"].pop("ExecutionTiming", None)
     plan["executionTiming"] = normalize_execution_timing(
@@ -708,7 +710,7 @@ def _execute_plan(raw_plan: Mapping[str, Any], reproduction: ReproductionLog) ->
     build_state = BuildState()
 
     first_update = build_round_update(plan, rounds[0], 0.0, build_state)
-    reproduction.add("AlgSchedule", _schedule_log_info(plan["device"], first_update))
+    reproduction.add_schedule(plan["device"], first_update)
     if other_algorithm_id is not None:
         return _execute_standard_algorithm(
             plan,
@@ -798,7 +800,7 @@ def execute_plan(
     _raise_if_single_run_cancelled()
     use_hongye_validation = bool(raw_plan.get("hongYeCheck", True))
     reproduction = ReproductionLog()
-    reproduction.add("Input", [deepcopy(dict(raw_plan))])
+    reproduction.add("Input", [dict(raw_plan)])
     cpu_started = time.thread_time() if hasattr(time, "thread_time") else time.process_time()
     hongye_validation: Optional[Dict[str, Any]] = None
     try:
@@ -863,8 +865,8 @@ def execute_plan(
     cpu_finished = time.thread_time() if hasattr(time, "thread_time") else time.process_time()
     result["cpuTimeMs"] = max(0.0, (cpu_finished - cpu_started) * 1000.0)
     if hongye_validation is not None:
-        result["validationDetails"] = deepcopy(hongye_validation)
-    result["reproductionLog"] = deepcopy(reproduction.entries)
+        result["validationDetails"] = copy_payload(hongye_validation)
+    result["reproductionLog"] = copy_payload(reproduction.entries)
     return result
 
 

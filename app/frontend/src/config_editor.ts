@@ -22,6 +22,7 @@ import { createVisualizationWorkspace, detectDeviceTopologyLayout, updateThrough
 import { renderTestGroupAnalysis, testGroupSummaryCsv } from "./group_analysis_view";
 import { createResultCardRunQueue } from "./result_card_run_queue";
 import { createTestCreationCoordinator } from "./test_creation_coordinator";
+import { createBatchAnalysisContext } from "./batch_analysis_context";
 import {
   CJOB_TYPES,
   TASK_MODES,
@@ -4578,23 +4579,25 @@ async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
       batchResultItemHistory.clear();
       resultTestFilterIds = new Set(tests.map(test => String(test.id || "")));
     }
-    updateBatchResultFilterButton();
-    runPreparationActive = true; renderWorkspaceControls();
-    // 只读取本次勾选测试，冻结批量分析上下文，不依赖之后的目录选择或测试编辑。
-    const savedTests = [];
-    const readConcurrency = 4;
-    for (let offset = 0; offset < tests.length; offset += readConcurrency) {
-      const selected = tests.slice(offset, offset + readConcurrency);
-      const responses = await Promise.all(selected.map(test => requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${test.id}`)));
-      savedTests.push(...responses.map(response => response.test));
-    }
+    runPreparationActive = true;
+    const knownTests = fromResultCardQueue ? (activeBatchContext?.tests || []) : [];
+    const deviceId = state.workspaceDeviceId;
+    const analysisContext = createBatchAnalysisContext({
+      device: state.device, routes: state.routes, selectedTests: tests, previousTests: knownTests,
+      readTest: async testId => (await requestJson(`/api/workspaces/${deviceId}/tests/${testId}`)).test,
+    });
+    state.batchRunning = true; state.activeBatchId = ""; state.batchCancelRequested = false; state.batchCancelSent = false; state.batchResult = null;
+    // 先提交冻结的运行选择，再绘制卡片和状态；绘制整组不能阻塞配置下发。
+    const runResponse = fetch("/api/run-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId, group: state.activeTestGroup, testIds: tests.map(test => test.id), strategy: state.strategy, options: schedulingRequestOptions(), hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: fromResultCardQueue ? 1 : batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() }),
+    });
     if (!fromResultCardQueue) resetRunResult();
     activeRunContext = null;
-    const knownTests = fromResultCardQueue ? (activeBatchContext?.tests || []) : [];
-    const testsById = new Map([...knownTests, ...savedTests].map(test => [String(test.id || ""), test]));
-    activeBatchContext = { device: structuredClone(state.device), routes: structuredClone(state.routes), tests: structuredClone([...testsById.values()]) };
+    activeBatchContext = analysisContext;
     runPreparationActive = false;
-    state.batchRunning = true; state.activeBatchId = ""; state.batchCancelRequested = false; state.batchCancelSent = false; state.batchResult = null;
+    updateBatchResultFilterButton();
     renderWorkspaceControls();
     startRunStatus(`批量测试 · ${state.activeTestGroup || "未分组"}`, `等待 ${tests.length} 个测试`);
     batchCardAnalyses.clear();
@@ -4616,13 +4619,17 @@ async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
       ? ` · HongYe 校验并行 ${validationParallelism()} 路`
       : "";
     writeTerminal(`$ 运行所选测试\n  组别: ${state.activeTestGroup || "未分组"}\n  策略: ${displayStrategyName(state.strategy)}\n  测试数: ${tests.length}\n  算法并行 ${batchParallelism()} 项${validationSummary}…`);
-    const response = await fetch("/api/run-batch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deviceId: state.workspaceDeviceId, group: state.activeTestGroup, testIds: tests.map(test => test.id), strategy: state.strategy, options: schedulingRequestOptions(), hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: fromResultCardQueue ? 1 : batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() }),
-    });
+    const response = await runResponse;
     let result = await response.json();
     if (!response.ok || !result.batchId || !Array.isArray(result.items)) throw new Error(result.error || `服务返回 ${response.status}`);
+    /** 分析读取在首次状态轮询后启动，避免与服务端首轮配置展开争抢 CPU。 */
+    function loadAnalysisContext() {
+      return analysisContext.load().catch(error => {
+        writeTerminal(`$ 分析上下文读取失败：${error.message || "未知错误"}`, true);
+      });
+    }
+    let analysisContextReady = ["completed", "failed", "cancelled"].includes(result.status)
+      ? loadAnalysisContext() : null;
     state.activeBatchId = result.batchId;
     showBatchProgress(result);
     renderBatchRunStatus(result);
@@ -4632,6 +4639,7 @@ async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
       const statusResponse = await fetch(`/api/run-batches/${encodeURIComponent(result.batchId)}`, { cache: "no-store" });
       result = await statusResponse.json();
       if (!statusResponse.ok) throw new Error(result.error || `服务返回 ${statusResponse.status}`);
+      analysisContextReady ||= loadAnalysisContext();
       showBatchProgress(result);
       renderBatchRunStatus(result);
     }
@@ -4656,6 +4664,7 @@ async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
       result.failed = result.items.filter(item => item.status === "failed").length;
       result.cancelled = result.items.filter(item => item.status === "cancelled").length;
     }
+    await (analysisContextReady || loadAnalysisContext());
     showBatchResult(result);
     if (!fromResultCardQueue || resultCardRunQueue.size <= 1) {
       finishRunStatus(Number(result.failed || 0) ? "failed" : "completed", Number(result.failed || 0) ? "批量测试完成（有失败）" : "批量测试运行完成");
@@ -4691,8 +4700,11 @@ function markResultCardTestQueued(testId) {
     status: "queued",
   });
   resultTestFilterIds = new Set(tests.map(item => String(item.id || "")));
-  renderBatchItems([]);
-  updateBatchResultFilterButton();
+  // 队列在 microtask 中提交运行；下一帧刷新等待卡片，避免先绘制整组。
+  window.requestAnimationFrame(() => {
+    renderBatchItems([]);
+    updateBatchResultFilterButton();
+  });
 }
 
 const resultCardRunQueue = createResultCardRunQueue({
@@ -4972,7 +4984,9 @@ async function loadBatchCardAnalysis(item) {
   if (batchCardAnalyses.has(resultUrl)) return batchCardAnalyses.get(resultUrl);
   if (batchCardAnalysisRequests.has(resultUrl)) return batchCardAnalysisRequests.get(resultUrl);
   const request = (async () => {
-    const testCase = (activeBatchContext?.tests || []).find(
+    const analysisContext = activeBatchContext;
+    try { await analysisContext?.ready; } catch { return null; }
+    const testCase = (analysisContext?.tests || []).find(
       test => String(test.id) === String(item.testId),
     );
     const resultId = resultUrl.startsWith("/api/results/")
@@ -4982,9 +4996,9 @@ async function loadBatchCardAnalysis(item) {
     try {
       const response = await requestScheduleAnalysis({
         resultId,
-        device: activeBatchContext?.device,
+        device: analysisContext?.device,
         windowMode: "steady",
-        routes: activeBatchContext?.routes || [],
+        routes: analysisContext?.routes || [],
         rounds: testCase?.rounds || [],
         metricGroups: ["basic", "throughput"],
       });

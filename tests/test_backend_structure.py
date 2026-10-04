@@ -122,7 +122,7 @@ def test_validation_and_recompute_do_not_call_algorithm_repository_state() -> No
         BACKEND_ROOT / "execution" / "algorithm_runtime.py",
         BACKEND_ROOT / "execution" / "run_state.py",
         BACKEND_ROOT / "execution" / "service.py",
-        BACKEND_ROOT / "validation" / "move_validation_core.py",
+        *(BACKEND_ROOT / "validation").glob("move_*.py"),
     )
     forbidden = (
         "compile_problem",

@@ -6,6 +6,9 @@ Heuristic Baseline。最终结果项由 ``batch_results`` 组装，HongYe 并发
 """
 
 from __future__ import annotations
+from collections.abc import Mapping, Sequence
+
+from app.backend.payload_snapshot import copy_payload
 
 import hashlib
 import json
@@ -20,10 +23,9 @@ from concurrent.futures import (
     ThreadPoolExecutor,
     wait,
 )
-from copy import deepcopy
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.backend.execution.batch_results import BatchResultAssembler, build_failure_result_artifact
 from app.backend.execution.plan_builder import (
@@ -297,7 +299,7 @@ def _logged_failure_result_fields(
     moves = list(artifact.get("MoveList") or [])
     result = {
         "validation": "failed",
-        "validationIssues": deepcopy(error.validation_issues),
+        "validationIssues": copy_payload(error.validation_issues),
         "moveCount": len(moves),
         "makespan": _segment_end(moves),
     }
@@ -323,7 +325,7 @@ def _logged_failure_result_fields(
     )
     legacy_deadlock = next(
         (
-            deepcopy(dict(feedback))
+            copy_payload(dict(feedback))
             for feedback in (artifact.get("Feedback") or [])
             if isinstance(feedback, Mapping)
             and (
@@ -372,7 +374,7 @@ def _batch_test_routes(
         if isinstance(pjob, Mapping)
     }
     return [
-        deepcopy(dict(route))
+        copy_payload(dict(route))
         for route in routes
         if str(route.get("name") or "").strip() in referenced
     ]
@@ -403,7 +405,7 @@ def _apply_device_route_aliases(
         )
         if str(old_name) and str(new_name) and str(old_name) != str(new_name)
     }
-    resolved = deepcopy(dict(test_case))
+    resolved = copy_payload(dict(test_case))
     if not aliases:
         return resolved
     for round_row in resolved.get("rounds") or []:
@@ -435,7 +437,7 @@ def _batch_apply_route_configs(
     configs = raw_configs if isinstance(raw_configs, Mapping) else {}
     merged_routes: List[Dict[str, Any]] = []
     for raw_route in routes:
-        route = deepcopy(dict(raw_route))
+        route = copy_payload(dict(raw_route))
         route_name = str(route.get("name") or "").strip()
         config = configs.get(route_name)
         if not isinstance(config, Mapping):
@@ -467,8 +469,8 @@ def _batch_apply_route_configs(
                     "afterCleanRefs": _string_list(stage_config.get("afterCleanRefs")),
                     "processRecipe": str(stage_config.get("processRecipe") or ""),
                     "processType": str(stage_config.get("processType") or ""),
-                    "weight": deepcopy(stage_config.get("weight") or {}),
-                    "moveTimeOffset": deepcopy(stage_config.get("moveTimeOffset") or {}),
+                    "weight": copy_payload(stage_config.get("weight") or {}),
+                    "moveTimeOffset": copy_payload(stage_config.get("moveTimeOffset") or {}),
                     "slotIds": str(stage_config.get("slotIds") or "1"),
                 })
         merged_routes.append(route)
@@ -546,7 +548,7 @@ def _batch_test_cleans(
                     visit.get("afterCleanRefs") or visit.get("AfterOutPM")
                 ))
     return [
-        deepcopy(dict(clean))
+        copy_payload(dict(clean))
         for clean in cleans
         if str(clean.get("name") or "").strip() in referenced
     ]
@@ -578,7 +580,7 @@ def _batch_test_recipes(
                 "time": _finite_number(duration, 0.0),
                 "modules": module_names,
                 "processType": str(process_type or ""),
-                "weight": deepcopy(weight if weight is not None else {}),
+                "weight": copy_payload(weight if weight is not None else {}),
             }
             return
         existing["modules"] = list(dict.fromkeys([*existing["modules"], *module_names]))
@@ -633,7 +635,7 @@ def build_workspace_batch_plan(
         test_case, device.get("routeAliases"),
     )
     rounds = [
-        deepcopy(dict(row))
+        copy_payload(dict(row))
         for row in (test_case.get("rounds") or [])
         if isinstance(row, Mapping)
     ]
@@ -661,9 +663,9 @@ def build_workspace_batch_plan(
             routes,
         )
     ]
-    merged_options = deepcopy(dict(test_case.get("options") or {}))
-    merged_options.update(deepcopy(dict(options)))
-    runtime_device = deepcopy(device.get("device"))
+    merged_options = copy_payload(dict(test_case.get("options") or {}))
+    merged_options.update(copy_payload(dict(options)))
+    runtime_device = copy_payload(device.get("device"))
     if isinstance(runtime_device, dict):
         _services().apply_robot_slot_selection(
             runtime_device,
@@ -759,7 +761,7 @@ def _baseline_comparison(
     baseline: Mapping[str, Any],
 ) -> Dict[str, Any]:
     """为前端生成当前值、Baseline 和改善比例。"""
-    fields = {"baseline": deepcopy(dict(baseline))}
+    fields = {"baseline": copy_payload(dict(baseline))}
     if baseline.get("status") != "succeeded":
         return fields
     current_makespan = float(result["makespan"])
@@ -831,7 +833,9 @@ def _execute_workspace_test_with_baseline(
         isinstance(selected_plan, Mapping)
         and selected_plan.get("executionTimingEnabled")
     )
-    fingerprint = _workspace_baseline_fingerprint(
+    # 跳过 Baseline 时摘要仅供结果记录，延后到所选算法执行后，避免重复构造
+    # Heuristic 计划阻塞首轮 init/update。正常基线复用仍先核对摘要。
+    fingerprint = "" if skip_baseline else _workspace_baseline_fingerprint(
         device,
         test_case,
         options,
@@ -849,7 +853,7 @@ def _execute_workspace_test_with_baseline(
         baseline = None
     else:
         baseline = (
-            deepcopy(dict(existing))
+            copy_payload(dict(existing))
             if isinstance(existing, Mapping)
             and existing.get("status") == "succeeded"
             and str(existing.get("fingerprint") or "") == fingerprint
@@ -857,6 +861,13 @@ def _execute_workspace_test_with_baseline(
         )
     device_id = str(device.get("id") or "")
     test_id = str(test_case.get("id") or "")
+
+    def skipped_baseline() -> Dict[str, Any]:
+        """执行后计算相同输入摘要，保留 skipped 结果的稳定协议字段。"""
+        return _skipped_baseline(_workspace_baseline_fingerprint(
+            device, test_case, options,
+            execution_timing_enabled=selected_execution_timing_enabled,
+        ))
 
     log_run_event(
         test_id,
@@ -868,9 +879,9 @@ def _execute_workspace_test_with_baseline(
 
     def record(value: Mapping[str, Any]) -> Dict[str, Any]:
         """同步更新内存测试项与工作区中的基线记录。"""
-        stored = deepcopy(dict(value))
+        stored = copy_payload(dict(value))
         if isinstance(test_case, dict):
-            test_case["baseline"] = deepcopy(stored)
+            test_case["baseline"] = copy_payload(stored)
         _persist_workspace_baseline(device_id, test_id, stored)
         return stored
 
@@ -896,14 +907,14 @@ def _execute_workspace_test_with_baseline(
         except Exception as error:  # noqa: BLE001
             log_run_event(test_id, "selected", "算法执行", "failed", error)
             baseline = (
-                _skipped_baseline(fingerprint)
+                skipped_baseline()
                 if skip_baseline
                 else record(_failed_baseline(fingerprint, error))
             )
             return None, baseline, error
         if skip_baseline:
             report_success(result)
-            return result, _skipped_baseline(fingerprint), None
+            return result, skipped_baseline(), None
         baseline = record(_successful_baseline(fingerprint, result))
         report_success(result)
         return result, baseline, None
@@ -925,9 +936,6 @@ def _execute_workspace_test_with_baseline(
         except Exception as error:  # noqa: BLE001
             log_run_event(test_id, "baseline", "算法执行", "failed", error)
             baseline = record(_failed_baseline(fingerprint, error))
-    if baseline is None:
-        baseline = _skipped_baseline(fingerprint)
-
     plan = dict(selected_plan) if selected_plan is not None else build_workspace_batch_plan(
         device, test_case, strategy, options,
         hongye_check=hongye_check,
@@ -938,10 +946,10 @@ def _execute_workspace_test_with_baseline(
         log_run_event(test_id, "selected", "算法执行", "running")
         result = _execute_plan_with_validation_limiter(plan, validation_limiter)
         report_success(result)
-        return result, baseline, None
+        return result, baseline if baseline is not None else skipped_baseline(), None
     except Exception as error:  # noqa: BLE001
         log_run_event(test_id, "selected", "算法执行", "failed", error)
-        return None, baseline, error
+        return None, baseline if baseline is not None else skipped_baseline(), error
 
 
 def _execute_workspace_test_in_process(
@@ -987,9 +995,9 @@ def _execute_workspace_test_in_process(
             "error": {
                 "kind": "logged",
                 "message": str(error),
-                "reproductionLog": deepcopy(error.reproduction_log),
-                "failureOutput": deepcopy(error.failure_output),
-                "validationIssues": deepcopy(error.validation_issues),
+                "reproductionLog": copy_payload(error.reproduction_log),
+                "failureOutput": copy_payload(error.failure_output),
+                "validationIssues": copy_payload(error.validation_issues),
             },
         }
     return {
@@ -1342,7 +1350,7 @@ def read_workspace_batch_run(batch_id: str) -> Optional[Dict[str, Any]]:
     """读取后台批量任务的当前快照。"""
     with _BATCH_RUNS_LOCK:
         batch = _BATCH_RUNS.get(batch_id)
-        return deepcopy(batch) if batch is not None else None
+        return copy_payload(batch) if batch is not None else None
 
 
 def cancel_workspace_batch_run(batch_id: str) -> Optional[Dict[str, Any]]:
@@ -1352,7 +1360,7 @@ def cancel_workspace_batch_run(batch_id: str) -> Optional[Dict[str, Any]]:
         if batch is None:
             return None
         if batch.get("status") in {"completed", "failed", "cancelled"}:
-            return deepcopy(batch)
+            return copy_payload(batch)
         cancel_event = _BATCH_CANCEL_EVENTS.get(batch_id)
         if cancel_event is not None:
             cancel_event.set()
@@ -1370,7 +1378,7 @@ def cancel_workspace_batch_run(batch_id: str) -> Optional[Dict[str, Any]]:
         batch["failed"] = sum(item.get("status") == "failed" for item in batch.get("items") or [])
         batch["cancelled"] = sum(item.get("status") == "cancelled" for item in batch.get("items") or [])
         batch["finishedAt"] = _workspace_timestamp()
-        return deepcopy(batch)
+        return copy_payload(batch)
 
 
 def start_workspace_test_batch(
@@ -1447,7 +1455,7 @@ def start_workspace_test_batch(
                 })
                 return
             batch["status"] = "running"
-            batch["items"][index].update(deepcopy(dict(values)))
+            batch["items"][index].update(copy_payload(dict(values)))
             batch["completed"] = sum(
                 item.get("status") in {"succeeded", "failed"}
                 for item in batch["items"]
@@ -1495,4 +1503,4 @@ def start_workspace_test_batch(
         name=f"batch-run-{batch_id[:8]}",
         daemon=True,
     ).start()
-    return deepcopy(initial)
+    return copy_payload(initial)

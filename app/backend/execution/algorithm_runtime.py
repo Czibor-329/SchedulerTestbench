@@ -6,13 +6,17 @@
 """
 
 from __future__ import annotations
+from collections.abc import Mapping, Sequence
+
+from app.backend.payload_snapshot import copy_payload
 
 from app.backend.bootstrap import *
 from app.backend.execution.run_state import *
 from app.backend.execution.move_timing import execution_duration, sample_init_execution_timing
 from app.backend.execution.runtime_snapshot import (
-    expand_runtime_snapshots_for_validation,
+    validation_sources_view,
 )
+from app.backend.validation.move_replay import validate_move_plan
 
 
 class PlatformMoveListRuntime:
@@ -38,10 +42,10 @@ class PlatformMoveListRuntime:
         execution_timing_seed: int = 0,
     ) -> None:
         """以标准 update 建立首轮物理快照，并校验算法输出。"""
-        self.current_update = deepcopy(dict(update_params))
+        self.current_update = copy_payload(dict(update_params))
         self.skipped_clean_validation_types = tuple(skipped_clean_validation_types or ())
-        self.device = deepcopy(dict(device or {}))
-        self.execution_timing = deepcopy(dict(execution_timing or {}))
+        self.device = copy_payload(dict(device or {}))
+        self.execution_timing = copy_payload(dict(execution_timing or {}))
         self.execution_timing_seed = int(execution_timing_seed)
         self.execution_timing = sample_init_execution_timing(
             self.device, self.execution_timing, self.execution_timing_seed,
@@ -49,13 +53,14 @@ class PlatformMoveListRuntime:
         self.module_parallel = bool(self.execution_timing)
         initial_state = MachineState.from_sources(
             None,
-            expand_runtime_snapshots_for_validation(self.device, self.current_update),
+            validation_sources_view(self.device, self.current_update),
         )
         initial_state.skipped_clean_validation_types = set(self.skipped_clean_validation_types)
         initial_moves = _copy_move_list(output.get("MoveList") or [])
         if self.module_parallel:
             initial_moves = self._materialize_moves(initial_moves, float(self.current_update.get("CurrentTime") or 0.0))
-        validation_issues = validate_move_list(None, initial_moves, initial_state, skipped_clean_validation_types=self.skipped_clean_validation_types)
+        validation = validate_move_plan(None, initial_moves, initial_state, skipped_clean_validation_types=self.skipped_clean_validation_types)
+        validation_issues = validation.issues
         if validation_issues:
             raise MoveListValidationError(
                 _state_advance_error_message(validation_issues[0]),
@@ -63,12 +68,13 @@ class PlatformMoveListRuntime:
                 _build_validation_gantt_output(output, validation_issues),
                 float(self.current_update.get("CurrentTime") or 0.0),
             )
-        self._tracker = MoveStateReplay(None, initial_moves, initial_state)
-        self._generation_initial_state = initial_state.clone()
+        self._tracker = MoveStateReplay.from_validation(validation, take_ownership=True)
+        # 初态已由本运行时构造且校验只读取它，本代直接保留其所有权。
+        self._generation_initial_state = initial_state
         self._tracker.current_time = float(self.current_update.get("CurrentTime") or 0.0)
         self._history: List[dict] = []
         self._recompute_points: List[Dict[str, Any]] = []
-        self._latest_output = _alg_output_info(output)
+        self._latest_output = _alg_output_info({key: value for key, value in output.items() if key != "MoveList"})
 
     @property
     def current_plan(self) -> List[dict]:
@@ -83,7 +89,7 @@ class PlatformMoveListRuntime:
                 move, self.device, self.execution_timing, self.execution_timing_seed,
             )
         # 在实际时间覆盖前保存算法原计划；状态回放和跨代历史复制会保留该展示元数据。
-        planned_moves = deepcopy(list(moves))
+        planned_moves = copy_payload(list(moves))
         for move in planned_moves:
             move.setdefault("PlannedStartTime", move.get("StartTime"))
             move.setdefault("PlannedEndTime", move.get("EndTime"))
@@ -106,6 +112,10 @@ class PlatformMoveListRuntime:
     def advance_to(self, cutoff: float) -> None:
         """在时间线上推进当前快照时刻。"""
         self._tracker.current_time = max(self._tracker.current_time, float(cutoff))
+
+    def finish_validated_plan(self, cutoff: float) -> bool:
+        """复用本代完整校验终态；中间重算仍由状态记录器逐动作推进。"""
+        return self._tracker.finish_validated_plan(float(cutoff))
 
     def update_move_state(self, notification: Mapping[str, Any], *, snapshot: bool = True, track_reservations: bool = True) -> Optional[MachineState]:
         """把算法时间线通知交给平台物理状态记录器。"""
@@ -148,7 +158,7 @@ class PlatformMoveListRuntime:
     def committed_moves(self, cutoff: float) -> List[dict]:
         """返回重算时刻前已经启动、不能从历史中删除的动作。"""
         return [
-            deepcopy(move)
+            copy_payload(move)
             for move in self.current_plan
             if float(move.get("StartTime") or 0.0) < float(cutoff) - TIME_TOLERANCE
         ]
@@ -196,11 +206,12 @@ class PlatformMoveListRuntime:
         if self.module_parallel:
             next_moves = self._materialize_moves(next_moves, float(requested_time))
         committed = _copy_move_list(committed_moves)
-        validation_issues = validate_move_list(
+        validation = validate_move_plan(
             None, next_moves, next_state,
             external_predecessors=_committed_move_index([*self._history, *committed]),
             skipped_clean_validation_types=self.skipped_clean_validation_types,
         )
+        validation_issues = validation.issues
         if validation_issues:
             recompute_point = {
                 "Time": float(requested_time), "EffectiveTime": float(requested_time),
@@ -213,11 +224,11 @@ class PlatformMoveListRuntime:
                 float(requested_time),
             )
         self._history.extend(committed)
-        self.current_update = deepcopy(dict(update_params))
-        self._tracker = MoveStateReplay(None, next_moves, next_state)
+        self.current_update = copy_payload(dict(update_params))
+        self._tracker = MoveStateReplay.from_validation(validation, take_ownership=True)
         self._generation_initial_state = next_state.clone()
         self._tracker.current_time = float(requested_time)
-        self._latest_output = _alg_output_info(output)
+        self._latest_output = _alg_output_info({key: value for key, value in output.items() if key != "MoveList"})
         self._recompute_points.append({
             "Time": float(requested_time), "EffectiveTime": float(requested_time),
             "ScheduleStartTime": float(requested_time), "RecoveryEndTime": float(requested_time),
@@ -230,7 +241,7 @@ class PlatformMoveListRuntime:
         moves.sort(key=lambda move: (float(move.get("StartTime") or 0.0), int(move.get("MoveID") or 0)))
         output = _alg_output_info({key: value for key, value in self._latest_output.items() if key != "MoveList"})
         output["MoveList"] = moves
-        output["RecomputePoints"] = deepcopy(self._recompute_points)
+        output["RecomputePoints"] = copy_payload(self._recompute_points)
         return output
 
     def combined_failure_output(
@@ -257,9 +268,9 @@ class PlatformMoveListRuntime:
         """
         failure_output = _alg_output_info(output)
         moves = [
-            *deepcopy(self._history),
-            *deepcopy(list(committed_moves)),
-            *deepcopy(list(failure_output.get("MoveList") or [])),
+            *copy_payload(self._history),
+            *copy_payload(list(committed_moves)),
+            *copy_payload(list(failure_output.get("MoveList") or [])),
         ]
         moves.sort(key=lambda move: (
             float(move.get("StartTime") or 0.0),
@@ -267,7 +278,7 @@ class PlatformMoveListRuntime:
         ))
         failure_output["MoveList"] = moves
         failure_output["RecomputePoints"] = [
-            *deepcopy(self._recompute_points),
+            *copy_payload(self._recompute_points),
             {
                 "Time": float(requested_time),
                 "EffectiveTime": float(requested_time),

@@ -1554,16 +1554,18 @@ def _fast_workspace_device_overview_unlocked(
     if readable_layout:
         if not all(isinstance(value, Mapping) for value in (init_data, routes_payload, groups_payload)):
             return None
+        # json.loads 已为本次读取创建独立对象；将字段所有权交给返回值，无需
+        # 再复制共享模板。后续读取仍重新解析，主数据与其他请求不会共享对象。
         init_options = device.pop("initOptions", {})
         if isinstance(init_options, Mapping):
-            init_data.update(deepcopy(dict(init_options)))
+            init_data.update(init_options)
         device["device"] = init_data
-        device["routes"] = deepcopy(routes_payload.get("routes") or [])
-        device["cleans"] = deepcopy(routes_payload.get("cleans") or [])
-        device["routeAliases"] = deepcopy(routes_payload.get("routeAliases") or {})
-        device["testGroups"] = deepcopy(groups_payload.get("testGroups") or [])
+        device["routes"] = routes_payload.get("routes") or []
+        device["cleans"] = routes_payload.get("cleans") or []
+        device["routeAliases"] = routes_payload.get("routeAliases") or {}
+        device["testGroups"] = groups_payload.get("testGroups") or []
         if "robotSlots" in groups_payload:
-            device["robotSlots"] = deepcopy(groups_payload["robotSlots"])
+            device["robotSlots"] = groups_payload["robotSlots"]
     device["tests"] = [
         _workspace_test_summary(summary) for summary in summaries
     ]

@@ -156,6 +156,28 @@ class WorkspaceStorageComplexityTests(unittest.TestCase):
         self.assertEqual(12, len(overview["tests"]))
         self.assertFalse(any(path.name == "test.json" for path in reads))
 
+    def test_device_overview_transfers_independent_payload_ownership(self) -> None:
+        """概览直接接管解析对象后，修改嵌套字段不能污染其他读取或磁盘数据。"""
+        original_hashes = {
+            path: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in self.store_dir.rglob("*.json")
+        }
+        first = server.get_workspace_device_overview(self.device_id, self.store_dir)
+        second = server.get_workspace_device_overview(self.device_id, self.store_dir)
+        expected = json.dumps(second, sort_keys=True)
+        for field in ("routes", "cleans", "testGroups"):
+            first[field].append("修改本次快照")
+        first["device"]["Robots"]["R1"]["ArmInfo"]["ArmA"]["SlotIDs"].append(2)
+
+        self.assertEqual(expected, json.dumps(second, sort_keys=True))
+        self.assertEqual(expected, json.dumps(
+            server.get_workspace_device_overview(self.device_id, self.store_dir), sort_keys=True,
+        ))
+        self.assertEqual(original_hashes, {
+            path: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in self.store_dir.rglob("*.json")
+        })
+
     def test_single_test_read_opens_only_target_test(self) -> None:
         """读取单个测试时不得解析同设备的其他完整测试。"""
         context, reads = self._record_json_reads()
