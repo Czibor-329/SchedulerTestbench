@@ -6253,6 +6253,32 @@ function createTestCreationCoordinator(onPendingChange = () => {
   };
 }
 
+// src/batch_analysis_context.ts
+var ANALYSIS_READ_CONCURRENCY = 4;
+function createBatchAnalysisContext(options) {
+  const selectedIds = options.selectedTests.map((test) => String(test.id));
+  const context = {
+    device: structuredClone(options.device),
+    routes: structuredClone(options.routes),
+    tests: structuredClone(options.previousTests),
+    ready: null,
+    load
+  };
+  function load() {
+    if (context.ready) return context.ready;
+    context.ready = (async () => {
+      const testsById = new Map(context.tests.map((test) => [String(test.id), test]));
+      for (let offset = 0; offset < selectedIds.length; offset += ANALYSIS_READ_CONCURRENCY) {
+        const tests = await Promise.all(selectedIds.slice(offset, offset + ANALYSIS_READ_CONCURRENCY).map(options.readTest));
+        for (const test of tests) testsById.set(String(test.id), structuredClone(test));
+      }
+      context.tests = [...testsById.values()];
+    })();
+    return context.ready;
+  }
+  return context;
+}
+
 // src/editor_models.ts
 var CJOB_TYPES = ["NormalLot", "HighestLot", "HigherLot"];
 var TASK_MODES = ["Smart", "Pipeline", "Sequential", "Concurrent"];
@@ -10230,6 +10256,11 @@ async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
     return runCurrentTestGroup(selectedIds, runOptions);
   }
   try {
+    let loadAnalysisContext = function() {
+      return analysisContext.load().catch((error) => {
+        writeTerminal(`$ \u5206\u6790\u4E0A\u4E0B\u6587\u8BFB\u53D6\u5931\u8D25\uFF1A${error.message || "\u672A\u77E5\u9519\u8BEF"}`, true);
+      });
+    };
     if (!state.workspaceDeviceId) throw new Error("\u8BF7\u5148\u9009\u62E9\u8BBE\u5907\u548C\u6D4B\u8BD5\u7EC4");
     if (!await settleTestDraft()) return;
     const selectedIdSet = new Set(selectedTestIds.map(String));
@@ -10241,27 +10272,31 @@ async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
       batchResultItemHistory.clear();
       resultTestFilterIds = new Set(tests.map((test) => String(test.id || "")));
     }
-    updateBatchResultFilterButton();
     runPreparationActive = true;
-    renderWorkspaceControls();
-    const savedTests = [];
-    const readConcurrency = 4;
-    for (let offset = 0; offset < tests.length; offset += readConcurrency) {
-      const selected = tests.slice(offset, offset + readConcurrency);
-      const responses = await Promise.all(selected.map((test) => requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${test.id}`)));
-      savedTests.push(...responses.map((response2) => response2.test));
-    }
-    if (!fromResultCardQueue) resetRunResult();
-    activeRunContext = null;
     const knownTests = fromResultCardQueue ? activeBatchContext?.tests || [] : [];
-    const testsById = new Map([...knownTests, ...savedTests].map((test) => [String(test.id || ""), test]));
-    activeBatchContext = { device: structuredClone(state.device), routes: structuredClone(state.routes), tests: structuredClone([...testsById.values()]) };
-    runPreparationActive = false;
+    const deviceId = state.workspaceDeviceId;
+    const analysisContext = createBatchAnalysisContext({
+      device: state.device,
+      routes: state.routes,
+      selectedTests: tests,
+      previousTests: knownTests,
+      readTest: async (testId) => (await requestJson(`/api/workspaces/${deviceId}/tests/${testId}`)).test
+    });
     state.batchRunning = true;
     state.activeBatchId = "";
     state.batchCancelRequested = false;
     state.batchCancelSent = false;
     state.batchResult = null;
+    const runResponse = fetch("/api/run-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId, group: state.activeTestGroup, testIds: tests.map((test) => test.id), strategy: state.strategy, options: schedulingRequestOptions(), hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: fromResultCardQueue ? 1 : batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() })
+    });
+    if (!fromResultCardQueue) resetRunResult();
+    activeRunContext = null;
+    activeBatchContext = analysisContext;
+    runPreparationActive = false;
+    updateBatchResultFilterButton();
     renderWorkspaceControls();
     startRunStatus(`\u6279\u91CF\u6D4B\u8BD5 \xB7 ${state.activeTestGroup || "\u672A\u5206\u7EC4"}`, `\u7B49\u5F85 ${tests.length} \u4E2A\u6D4B\u8BD5`);
     batchCardAnalyses.clear();
@@ -10287,13 +10322,10 @@ async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
   \u7B56\u7565: ${displayStrategyName(state.strategy)}
   \u6D4B\u8BD5\u6570: ${tests.length}
   \u7B97\u6CD5\u5E76\u884C ${batchParallelism()} \u9879${validationSummary}\u2026`);
-    const response = await fetch("/api/run-batch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deviceId: state.workspaceDeviceId, group: state.activeTestGroup, testIds: tests.map((test) => test.id), strategy: state.strategy, options: schedulingRequestOptions(), hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: fromResultCardQueue ? 1 : batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() })
-    });
+    const response = await runResponse;
     let result = await response.json();
     if (!response.ok || !result.batchId || !Array.isArray(result.items)) throw new Error(result.error || `\u670D\u52A1\u8FD4\u56DE ${response.status}`);
+    let analysisContextReady = ["completed", "failed", "cancelled"].includes(result.status) ? loadAnalysisContext() : null;
     state.activeBatchId = result.batchId;
     showBatchProgress(result);
     renderBatchRunStatus(result);
@@ -10303,6 +10335,7 @@ async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
       const statusResponse = await fetch(`/api/run-batches/${encodeURIComponent(result.batchId)}`, { cache: "no-store" });
       result = await statusResponse.json();
       if (!statusResponse.ok) throw new Error(result.error || `\u670D\u52A1\u8FD4\u56DE ${statusResponse.status}`);
+      analysisContextReady ||= loadAnalysisContext();
       showBatchProgress(result);
       renderBatchRunStatus(result);
     }
@@ -10326,6 +10359,7 @@ async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
       result.failed = result.items.filter((item) => item.status === "failed").length;
       result.cancelled = result.items.filter((item) => item.status === "cancelled").length;
     }
+    await (analysisContextReady || loadAnalysisContext());
     showBatchResult(result);
     if (!fromResultCardQueue || resultCardRunQueue.size <= 1) {
       finishRunStatus(Number(result.failed || 0) ? "failed" : "completed", Number(result.failed || 0) ? "\u6279\u91CF\u6D4B\u8BD5\u5B8C\u6210\uFF08\u6709\u5931\u8D25\uFF09" : "\u6279\u91CF\u6D4B\u8BD5\u8FD0\u884C\u5B8C\u6210");
@@ -10364,8 +10398,10 @@ function markResultCardTestQueued(testId) {
     status: "queued"
   });
   resultTestFilterIds = new Set(tests.map((item) => String(item.id || "")));
-  renderBatchItems([]);
-  updateBatchResultFilterButton();
+  window.requestAnimationFrame(() => {
+    renderBatchItems([]);
+    updateBatchResultFilterButton();
+  });
 }
 var resultCardRunQueue = createResultCardRunQueue({
   runTest: (testId) => runCurrentTestGroup([testId], { fromResultCardQueue: true }),
@@ -10612,7 +10648,13 @@ async function loadBatchCardAnalysis(item) {
   if (batchCardAnalyses.has(resultUrl)) return batchCardAnalyses.get(resultUrl);
   if (batchCardAnalysisRequests.has(resultUrl)) return batchCardAnalysisRequests.get(resultUrl);
   const request = (async () => {
-    const testCase = (activeBatchContext?.tests || []).find(
+    const analysisContext = activeBatchContext;
+    try {
+      await analysisContext?.ready;
+    } catch {
+      return null;
+    }
+    const testCase = (analysisContext?.tests || []).find(
       (test) => String(test.id) === String(item.testId)
     );
     const resultId = resultUrl.startsWith("/api/results/") ? decodeURIComponent(resultUrl.slice("/api/results/".length)) : "";
@@ -10620,9 +10662,9 @@ async function loadBatchCardAnalysis(item) {
     try {
       const response = await requestScheduleAnalysis({
         resultId,
-        device: activeBatchContext?.device,
+        device: analysisContext?.device,
         windowMode: "steady",
-        routes: activeBatchContext?.routes || [],
+        routes: analysisContext?.routes || [],
         rounds: testCase?.rounds || [],
         metricGroups: ["basic", "throughput"]
       });

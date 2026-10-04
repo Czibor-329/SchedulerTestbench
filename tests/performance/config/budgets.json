@@ -14,6 +14,8 @@
     "singleTestDeleteMaximum": 300,
     "testGroupDeleteMaximum": 300,
     "singleRunPreparationP95": 300,
+    "runConfigurationDispatchMaximum": 100,
+    "validation75WafersMaximum": 100,
     "stateTransition1000MovesP95": 500,
     "batch130Maximum": 260000,
     "batchStatusPollIntervalMinimum": 1000,

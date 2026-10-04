@@ -7,9 +7,11 @@
 """
 
 from __future__ import annotations
+from collections.abc import Mapping, Sequence
 
-from copy import deepcopy
-from typing import Any, Dict, Mapping
+from app.backend.payload_snapshot import copy_payload
+
+from typing import Any, Dict
 
 
 _BASE_ROBOT_FIELDS = ("Type", "State", "TimeToAvailable", "ArmInfo")
@@ -33,7 +35,7 @@ def _copy_present_fields(
     """按指定顺序深拷贝源对象中实际存在的字段。"""
     for field_name in fields:
         if field_name in source:
-            target[field_name] = deepcopy(source[field_name])
+            target[field_name] = copy_payload(source[field_name])
 
 
 def compact_robot_snapshots(
@@ -73,7 +75,7 @@ def compact_station_snapshots(
         station: Dict[str, Any] = {}
         _copy_present_fields(raw_config, station, _BASE_STATION_FIELDS)
         if "DoorStatus" in raw_config:
-            station["DoorStatus"] = deepcopy(raw_config["DoorStatus"])
+            station["DoorStatus"] = copy_payload(raw_config["DoorStatus"])
 
         station_type = _station_type(raw_config)
         if station_type in _LOAD_LOCK_STATION_TYPES:
@@ -121,11 +123,11 @@ def _merge_topology_section(
     if isinstance(topology_items, Mapping):
         for item_name, raw_config in topology_items.items():
             if isinstance(raw_config, Mapping):
-                merged[str(item_name)] = deepcopy(dict(raw_config))
+                merged[str(item_name)] = copy_payload(dict(raw_config))
     if isinstance(snapshot_items, Mapping):
         for item_name, raw_config in snapshot_items.items():
             if isinstance(raw_config, Mapping):
-                merged.setdefault(str(item_name), {}).update(deepcopy(dict(raw_config)))
+                merged.setdefault(str(item_name), {}).update(copy_payload(dict(raw_config)))
     return merged
 
 
@@ -138,7 +140,7 @@ def expand_runtime_snapshots_for_validation(
     返回的副本只供平台 MoveList 校验使用，不会回写或扩大实际发给算法、记录在
     复现日志中的 ``AlgSchedule``。实时字段覆盖初始化字段，保证重算现场优先。
     """
-    expanded = deepcopy(dict(update_params))
+    expanded = copy_payload(dict(update_params))
     for field_name in ("Robots", "Stations"):
         expanded[field_name] = _merge_topology_section(
             tool_topology,
@@ -146,3 +148,29 @@ def expand_runtime_snapshots_for_validation(
             field_name,
         )
     return expanded
+
+
+def validation_sources_view(
+    tool_topology: Mapping[str, Any],
+    update_params: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """为只读 MachineState 构造提供合并视图，避免复制逐片内嵌 Route。
+
+    顶层及 Robot/Station 对象独立，嵌套字段引用输入；调用方仅可读取。
+    MachineState.from_sources 会把协议数据转换为自身拥有的状态和索引。
+    需要可修改副本的调用方继续使用 expand_runtime_snapshots_for_validation。
+    """
+    sources = dict(update_params)
+    for field_name in ("Robots", "Stations"):
+        topology_items = tool_topology.get(field_name) or {}
+        snapshot_items = update_params.get(field_name) or {}
+        merged = {
+            str(name): dict(config)
+            for name, config in (topology_items.items() if isinstance(topology_items, Mapping) else ())
+            if isinstance(config, Mapping)
+        }
+        for name, config in (snapshot_items.items() if isinstance(snapshot_items, Mapping) else ()):
+            if isinstance(config, Mapping):
+                merged.setdefault(str(name), {}).update(config)
+        sources[field_name] = merged
+    return sources

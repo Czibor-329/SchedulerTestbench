@@ -6,15 +6,17 @@ CJob/PJob 请求展开。它不执行调度算法，也不处理 HTTP
 """
 
 from __future__ import annotations
+from collections.abc import Mapping, Sequence
+
+from app.backend.payload_snapshot import copy_payload
 
 import json
 import math
-from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional
 
 from app.backend.execution.runtime_snapshot import (
-    compact_runtime_snapshots,
+    compact_robot_snapshots, compact_station_snapshots,
 )
 
 
@@ -76,7 +78,7 @@ def extract_init_data(raw: Any) -> Dict[str, Any]:
     if not isinstance(value.get("Stations"), Mapping) or not isinstance(value.get("Robots"), Mapping):
         raise ValueError("设备文件必须包含 Stations 和 Robots")
     return {
-        str(key): deepcopy(item)
+        str(key): copy_payload(item)
         for key, item in value.items()
         if str(key).casefold() not in {"route", "routes"}
     }
@@ -145,7 +147,7 @@ def _filtered_arm_station_map(raw_map: Any, station_names: set[str]) -> Dict[str
             if not isinstance(raw_candidates, list):
                 continue
             candidates = [
-                deepcopy(dict(candidate))
+                copy_payload(dict(candidate))
                 for candidate in raw_candidates
                 if isinstance(candidate, Mapping)
                 and str(candidate.get("Key") or "") in station_names
@@ -197,12 +199,12 @@ def build_task_alg_init(
     used_stations = requested_names & {str(name) for name in stations}
     used_robots = requested_names & {str(name) for name in robots}
     result["Stations"] = {
-        str(name): deepcopy(station)
+        str(name): station
         for name, station in stations.items()
         if str(name) in used_stations
     }
     result["Robots"] = {
-        str(name): deepcopy(robot)
+        str(name): robot
         for name, robot in robots.items()
         if str(name) in used_robots
     }
@@ -217,7 +219,7 @@ def build_task_alg_init(
             timing = station.get(field_name)
             if isinstance(timing, Mapping):
                 station[field_name] = {
-                    str(name): deepcopy(value)
+                    str(name): copy_payload(value)
                     for name, value in timing.items()
                     if str(name) in used_robots
                 }
@@ -229,14 +231,14 @@ def build_task_alg_init(
             timing = robot.get(field_name)
             if isinstance(timing, Mapping):
                 robot[field_name] = {
-                    str(name): deepcopy(value)
+                    str(name): copy_payload(value)
                     for name, value in timing.items()
                     if str(name) in used_stations
                 }
         transfers = robot.get("PrepTransTime")
         if isinstance(transfers, list):
             robot["PrepTransTime"] = [
-                deepcopy(dict(row))
+                copy_payload(dict(row))
                 for row in transfers
                 if isinstance(row, Mapping)
                 and str(row.get("SrcStation") or "") in used_stations
@@ -265,7 +267,7 @@ def build_task_alg_init(
         pointer_names = used_stations | retained_groups
         if isinstance(robot.get("ArmPointerPair"), list):
             robot["ArmPointerPair"] = [
-                deepcopy(pair)
+                copy_payload(pair)
                 for pair in robot["ArmPointerPair"]
                 if isinstance(pair, list)
                 and all(str(name) in pointer_names for name in pair)
@@ -282,7 +284,7 @@ def _name_index(rows: Sequence[Mapping[str, Any]], label: str) -> Dict[str, Dict
             raise ValueError(f"{label} 第 {index} 项缺少名称")
         if name in result:
             raise ValueError(f"{label} 名称重复：{name}")
-        result[name] = deepcopy(dict(row))
+        result[name] = copy_payload(dict(row))
     return result
 
 
@@ -297,7 +299,7 @@ def _recipe_index(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Dict[str, Any]
         module_list = _string_list(row.get("modules"))
         modules = set(module_list)
         if name not in result:
-            result[name] = deepcopy(dict(row))
+            result[name] = copy_payload(dict(row))
             result[name]["modules"] = module_list
             modules_by_name[name] = modules
             continue
@@ -425,7 +427,7 @@ def _clean_type(clean: Mapping[str, Any]) -> str:
 
 def _runtime_clean(clean: Mapping[str, Any]) -> Dict[str, Any]:
     """把精简编辑字段展开为标准 Clean 模板，同时保留显式适用腔室。"""
-    value = deepcopy(dict(clean))
+    value = copy_payload(dict(clean))
     name = str(value.get("name") or "").strip()
     clean_type = _clean_type(value)
     recipe_name = str(
@@ -681,7 +683,7 @@ def _stage_visit_rows(stage: Mapping[str, Any]) -> List[Dict[str, Any]]:
     """读取新 IVisit 编辑结构，并兼容旧版 Step 聚合字段。"""
     raw_visits = stage.get("visits")
     if isinstance(raw_visits, Sequence) and not isinstance(raw_visits, (str, bytes)):
-        return [deepcopy(dict(visit)) for visit in raw_visits if isinstance(visit, Mapping)]
+        return [copy_payload(dict(visit)) for visit in raw_visits if isinstance(visit, Mapping)]
     return [{
         "stationName": station,
         "slotIds": stage.get("slots"),
@@ -733,7 +735,7 @@ def _route_clean_dict(
         )
     conditions = _clean_conditions(clean_names, clean_by_name)
     return {
-        module: deepcopy(conditions)
+        module: copy_payload(conditions)
         for module in _clean_target_modules(clean_names, clean_by_name, recipe_by_name)
     }
 
@@ -857,7 +859,7 @@ def build_route(
                 "SlotID": slot_id,
                 "StationName": station,
                 "ProcessRecipe": recipe_name,
-                "MoveTimeOffset": deepcopy(dict(move_offsets)),
+                "MoveTimeOffset": copy_payload(dict(move_offsets)),
                 "QTimeLimit": _finite_number(visit.get("qTimeLimit", visit.get("QTimeLimit")), -1.0),
                 "ResidencyConstraint": _finite_number(
                     visit.get("residencyConstraint", visit.get("ResidencyConstraint")), -1.0,
@@ -1002,7 +1004,7 @@ def build_process_recipes(
         if not isinstance(weight, Mapping):
             raise ValueError(f"Recipe {name} 的 Weight 必须是对象")
         for module in modules:
-            module_weight = deepcopy(dict(weight))
+            module_weight = copy_payload(dict(weight))
             for variable_name in sorted(required_weights.get((name, module), set())):
                 module_weight.setdefault(variable_name, 1)
             result.append({
@@ -1043,13 +1045,13 @@ def _round_cjob_rows(round_config: Mapping[str, Any]) -> List[Dict[str, Any]]:
     """读取新 CJob/PJob 层级，并把旧版扁平 Job 兼容为一 Job 一 CJob。"""
     raw_cjobs = round_config.get("cjobs")
     if isinstance(raw_cjobs, Sequence) and not isinstance(raw_cjobs, (str, bytes)):
-        return [deepcopy(dict(row)) for row in raw_cjobs if isinstance(row, Mapping)]
+        return [copy_payload(dict(row)) for row in raw_cjobs if isinstance(row, Mapping)]
     rows: List[Dict[str, Any]] = []
     for index, job in enumerate(round_config.get("jobs") or [], start=1):
         if not isinstance(job, Mapping):
             continue
         name = str(job.get("name") or f"Job{index}").strip()
-        pjob = deepcopy(dict(job))
+        pjob = copy_payload(dict(job))
         pjob["jobName"] = "P1"
         rows.append({
             "taskId": name,
@@ -1207,7 +1209,7 @@ def build_round_update(
                 raise ValueError(f"PJob {display_name} 晶圆数必须为 1~{MAX_WAFERS_PER_JOB}")
             priority = max(1, int(_finite_number(pjob.get("priority"), 1)))
             runtime_route_name = f"{route_name}__{legacy_name or pjob_name}"
-            runtime_route = deepcopy(route)
+            runtime_route = copy_payload(route)
             round_uses_dummy_material = (
                 round_uses_dummy_material
                 or bool(_dummy_accessible_pms(runtime_route))
@@ -1232,7 +1234,7 @@ def build_round_update(
                 material_id = build_state.next_material_id
                 build_state.next_material_id += 1
                 material_ids.append(material_id)
-                material_route = deepcopy(runtime_route)
+                material_route = copy_payload(runtime_route)
                 # Material 内嵌 Route 是实例化 Route：首/末 LoadPort 步骤的
                 # Visit 槽位必须指向该晶圆所在槽位，而不是模板展开的全部槽位。
                 _instantiate_load_port_slots(material_route, next_slot)
@@ -1247,7 +1249,7 @@ def build_round_update(
             build_state.next_slot_by_port[load_port] = next_slot
             process_jobs.append({
                 "JobName": pjob_name, "TaskID": task_id, "Priority": priority,
-                "State": 0, "OriginRoute": deepcopy(runtime_route), "MatList": material_ids,
+                "State": 0, "OriginRoute": copy_payload(runtime_route), "MatList": material_ids,
             })
             cjob_material_count += wafer_count
 
@@ -1293,9 +1295,8 @@ def build_round_update(
         "RemoveList": [], "MoveStates": [], "CurrentTime": float(current_time),
         # 标准 update 是当前设备快照而不只是新增 Job。首排时动态状态与 init 相同；
         # 重算调用方必须在发送前以真实执行现场覆盖这些字段。
-        "Robots": deepcopy(dict(tool_topo.get("Robots") or {})),
-        "Stations": deepcopy(dict(tool_topo.get("Stations") or {})),
+        "Robots": compact_robot_snapshots(tool_topo.get("Robots") or {}),
+        "Stations": compact_station_snapshots(tool_topo.get("Stations") or {}),
         "InitialMoveID": int(tool_topo.get("InitialMoveID") or 0),
     }
-    compact_runtime_snapshots(update)
     return update

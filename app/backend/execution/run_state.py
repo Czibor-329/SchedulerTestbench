@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from app.backend.payload_snapshot import copy_payload
+
 from app.backend.bootstrap import *
+from collections.abc import Mapping, Sequence
 from app.backend.execution.runtime_snapshot import (
     compact_runtime_snapshots,
 )
@@ -22,6 +25,20 @@ class ReproductionLog:
 
     entries: List[Dict[str, Any]] = field(default_factory=list)
 
+    def add_schedule(
+        self, device: Mapping[str, Any], update: Mapping[str, Any], sim_time: float = 0.0,
+    ) -> None:
+        """合并缺省设备快照并记录独立 AlgSchedule；嵌套 payload 只复制一次。
+
+        参数 device 提供缺省拓扑，update 中的运行时字段优先；返回 None，
+        唯一副作用是向本日志追加不可被调用方后续修改的事件。
+        """
+        info = dict(update)
+        for section in ("Robots", "Stations"):
+            if section not in info:
+                info[section] = device.get(section) or {}
+        self.add("AlgSchedule", info, sim_time)
+
     def add(
         self,
         describe: str,
@@ -35,10 +52,10 @@ class ReproductionLog:
             and isinstance(info.get("MoveList"), list)
             and all(isinstance(move, Mapping) for move in info["MoveList"])
         ):
-            snapshot = deepcopy({key: value for key, value in info.items() if key != "MoveList"})
+            snapshot = copy_payload({key: value for key, value in info.items() if key != "MoveList"})
             snapshot["MoveList"] = _copy_move_list(info["MoveList"])
         else:
-            snapshot = deepcopy(info)
+            snapshot = copy_payload(info)
         entry = {
             "Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
             "Describe": describe,
@@ -85,7 +102,7 @@ def _remove_released_materials_from_update(
     for raw_job in update_params.get("ProcessJobs") or []:
         if not isinstance(raw_job, Mapping):
             continue
-        job = deepcopy(dict(raw_job))
+        job = copy_payload(dict(raw_job))
         job["MatList"] = [
             material_id
             for material_id in job.get("MatList") or []
@@ -101,7 +118,7 @@ def _remove_released_materials_from_update(
     for raw_job in update_params.get("ControlJobs") or []:
         if not isinstance(raw_job, Mapping):
             continue
-        job = deepcopy(dict(raw_job))
+        job = copy_payload(dict(raw_job))
         pjob_names = [
             str(name)
             for name in job.get("PJobNameList") or []
@@ -137,9 +154,9 @@ class MoveListValidationError(RuntimeError):
     ) -> None:
         """保存失败现场，使接口仍能导出并展示问题 Move。"""
         super().__init__(message)
-        self.algorithm_output = deepcopy(dict(algorithm_output))
+        self.algorithm_output = copy_payload(dict(algorithm_output))
         self.validation_issues = [str(issue) for issue in validation_issues]
-        self.gantt_output = deepcopy(dict(gantt_output))
+        self.gantt_output = copy_payload(dict(gantt_output))
         self.sim_time = float(sim_time)
 
 
@@ -153,7 +170,7 @@ def _single_run_snapshot(run_id: str) -> Optional[Dict[str, Any]]:
         run = _SINGLE_RUNS.get(run_id)
         if run is None:
             return None
-        snapshot = deepcopy(run)
+        snapshot = copy_payload(run)
         started_perf = float(snapshot.pop("_startedPerf", time.perf_counter()))
         if snapshot.get("status") in {"queued", "running", "cancelling"}:
             snapshot["elapsedMs"] = max(0.0, (time.perf_counter() - started_perf) * 1000.0)
@@ -315,9 +332,9 @@ class LoggedPlanError(RuntimeError):
     ) -> None:
         """保存错误日志，并可选携带供甘特图查看的失败 MoveList。"""
         super().__init__(message)
-        self.reproduction_log = deepcopy(list(reproduction_log))
+        self.reproduction_log = copy_payload(list(reproduction_log))
         self.failure_output = (
-            deepcopy(dict(failure_output))
+            copy_payload(dict(failure_output))
             if failure_output is not None
             else None
         )
@@ -352,7 +369,7 @@ def _copy_move_list(moves: Sequence[Mapping[str, Any]]) -> List[dict]:
             elif type(value) is list and all(type(item) in scalar_types for item in value):
                 row[key] = value.copy()
             else:
-                row[key] = deepcopy(value)
+                row[key] = copy_payload(value)
         copied.append(row)
     return copied
 
@@ -365,14 +382,14 @@ def _alg_output_info(
     source = output or {}
     normalized = {
         "MoveList": _copy_move_list(source.get("MoveList") or []),
-        "Feedback": deepcopy(list(feedback if feedback is not None else source.get("Feedback") or [])),
-        "JobList": deepcopy(list(source.get("JobList") or [])),
-        "DummyReturnInfo": deepcopy(dict(source.get("DummyReturnInfo") or {})),
-        "MatIntoPM": deepcopy(dict(source.get("MatIntoPM") or {})),
+        "Feedback": copy_payload(list(feedback if feedback is not None else source.get("Feedback") or [])),
+        "JobList": copy_payload(list(source.get("JobList") or [])),
+        "DummyReturnInfo": copy_payload(dict(source.get("DummyReturnInfo") or {})),
+        "MatIntoPM": copy_payload(dict(source.get("MatIntoPM") or {})),
     }
     diagnostic = source.get("DeadlockDiagnostic")
     if isinstance(diagnostic, Mapping) and diagnostic:
-        normalized["DeadlockDiagnostic"] = deepcopy(dict(diagnostic))
+        normalized["DeadlockDiagnostic"] = copy_payload(dict(diagnostic))
     return normalized
 
 
@@ -407,7 +424,7 @@ def _deadlock_feedback(
             or category.startswith("deadlock")
             or "deadlock" in feedback_type
         ):
-            return deepcopy(dict(raw_feedback))
+            return copy_payload(dict(raw_feedback))
     return None
 
 
@@ -482,7 +499,7 @@ def _raise_deadlock_feedback(
     if feedback is None:
         return
     failure_output = _alg_output_info(output)
-    diagnostic = deepcopy(dict(output.get("DeadlockDiagnostic") or {}))
+    diagnostic = copy_payload(dict(output.get("DeadlockDiagnostic") or {}))
     classification = _classify_deadlock_diagnostic(diagnostic) or {
         "Code": "DEADLOCK.UNCLASSIFIED",
         "Category": "unclassified",
@@ -550,7 +567,7 @@ def _build_validation_gantt_output(
                 str(issue["Message"])
             )
 
-    invalid_moves = deepcopy(list(algorithm_output.get("MoveList") or []))
+    invalid_moves = copy_payload(list(algorithm_output.get("MoveList") or []))
     for move in invalid_moves:
         if not isinstance(move, dict):
             continue
@@ -558,10 +575,10 @@ def _build_validation_gantt_output(
         if not isinstance(move_id, int) or move_id not in issues_by_move_id:
             continue
         move["ValidationFailed"] = True
-        move["ValidationIssues"] = deepcopy(issues_by_move_id[move_id])
+        move["ValidationIssues"] = copy_payload(issues_by_move_id[move_id])
 
     combined_moves = [
-        deepcopy(dict(move))
+        copy_payload(dict(move))
         for move in (prefix_moves or ())
         if isinstance(move, Mapping)
     ]
@@ -572,22 +589,13 @@ def _build_validation_gantt_output(
     ))
     output = _alg_output_info(algorithm_output)
     output["MoveList"] = combined_moves
-    output["RecomputePoints"] = deepcopy(list(recompute_points or ()))
+    output["RecomputePoints"] = copy_payload(list(recompute_points or ()))
     output["Validation"] = {
         "Status": "failed",
         "Issues": issue_records,
         "InvalidMoveIDs": sorted(issues_by_move_id),
     }
     return output
-
-
-def _schedule_log_info(device: Mapping[str, Any], update: Mapping[str, Any]) -> Dict[str, Any]:
-    """把设备拓扑与一轮更新合成可单独回放的 AlgSchedule 输入。"""
-    info = deepcopy(dict(update))
-    for section in ("Robots", "Stations"):
-        if section not in info:
-            info[section] = deepcopy(dict(device.get(section) or {}))
-    return info
 
 
 def _build_platform_recompute_update(
@@ -609,7 +617,7 @@ def _build_platform_recompute_update(
         requested_time,
     )
     update["MoveStates"] = [
-        deepcopy(dict(notification))
+        copy_payload(dict(notification))
         for notification in move_states
     ]
     _apply_running_resource_times(
@@ -782,6 +790,35 @@ def _planned_start_events(
             yield "finish", event_time, notification
 
 
+def _serial_planned_events(moves: Sequence[Mapping[str, Any]]) -> Iterator[Tuple[str, float, Dict[str, Any]]]:
+    """用紧凑事件元组保留同刻顺序，避免为每个时间点构造三组字典和数组。
+
+    排序依次使用时间桶、先前完成/本桶开始、原始时刻、MoveID 和开始/完成。
+    零时长动作的完成紧跟自己的开始，容差与旧事件组的归并方式一致。
+    通知是本次生成的新标量字典，调用方可以直接保存。
+    """
+    events = []
+    for move in moves:
+        start = float(move.get("StartTime") or 0.0)
+        end = float(move.get("EndTime") or start)
+        move_id = int(move["MoveID"])
+        start_bucket = int(round(start / TIME_TOLERANCE))
+        end_bucket = int(round(end / TIME_TOLERANCE))
+        events.append((start_bucket, 1, start, move_id, 0, start, start, end))
+        if start_bucket == end_bucket:
+            events.append((end_bucket, 1, start, move_id, 1, end, start, end))
+        else:
+            events.append((end_bucket, 0, end, move_id, 1, end, start, end))
+    events.sort()
+    for _bucket, _priority, _sort_time, move_id, phase, event_time, start, end in events:
+        yield ("finish" if phase else "start"), event_time, {
+            "MoveID": move_id,
+            "MoveState": MoveStateReplay.DONE if phase else MoveStateReplay.RUNNING,
+            "StartTime": start,
+            "EndTime": end if phase else -1,
+        }
+
+
 def _planned_events(
     moves: Sequence[Mapping[str, Any]],
     *,
@@ -793,13 +830,10 @@ def _planned_events(
     对齐 HongYe 的同刻顺序：先结束此前已运行的 Move，再按 ModuleName 启动各
     模块当前队首；零时长 Move 随后结束，解锁的同模块后继进入下一波。
     """
-    groups = _planned_event_groups(moves)
     if not module_parallel:
-        for group in groups:
-            for event_time, notification in group["priorFinishes"]:
-                yield "finish", event_time, notification
-            yield from _planned_start_events(group)
+        yield from _serial_planned_events(moves)
         return
+    groups = _planned_event_groups(moves)
 
     planned_by_id = {
         int(move["MoveID"]): dict(move)
@@ -925,7 +959,7 @@ def advance_platform_move_list_to_update(
             and event_time < cutoff - TIME_TOLERANCE
             and move_id not in started
         ):
-            notifications.append(deepcopy(notification))
+            notifications.append(notification)
             started.add(move_id)
         elif (
             event_kind == "finish"
@@ -933,14 +967,17 @@ def advance_platform_move_list_to_update(
             and move_id in started
             and move_id not in finished
         ):
-            notifications.append(deepcopy(notification))
+            notifications.append(notification)
             finished.add(move_id)
-    for notification in notifications:
-        runtime.update_move_state(
-            notification,
-            snapshot=False,
-            track_reservations=False,
-        )
+    # 完整结束时复用已经逐动作严格校验得到的终态，避免再次执行同一物理时间线。
+    # 中间重算、通知改时及转位源站变更仍走逐事件路径。
+    if not runtime.finish_validated_plan(cutoff):
+        for notification in notifications:
+            runtime.update_move_state(
+                notification,
+                snapshot=False,
+                track_reservations=False,
+            )
     runtime.advance_to(cutoff)
     return notifications
 
@@ -958,7 +995,7 @@ def _running_move_states(
         )
     }
     return [
-        deepcopy(dict(notification))
+        copy_payload(dict(notification))
         for notification in notifications
         if (
             isinstance(notification.get("MoveID"), int)
@@ -1305,7 +1342,7 @@ def advance_to_platform_update(
         else:
             finished.add(move_id)
         if recorded_events is not None:
-            recorded_events.append(deepcopy(applied))
+            recorded_events.append(copy_payload(applied))
 
     for event_kind, event_time, notification in _planned_events(
         runtime.current_plan,
@@ -1380,7 +1417,7 @@ def advance_to_recompute(
                     end_time,
                 )
         if recorded_events is not None:
-            recorded_events.append(deepcopy(applied))
+            recorded_events.append(copy_payload(applied))
 
     # 还原 t1：只启动严格早于请求时刻的 Move，同刻开始的动作由新调度取消。
     for group in groups:
@@ -1498,7 +1535,7 @@ def _build_recompute_failure_output(
     for raw_move in output.get("MoveList") or []:
         if not isinstance(raw_move, Mapping):
             continue
-        move = deepcopy(dict(raw_move))
+        move = copy_payload(dict(raw_move))
         move_id = move.get("MoveID")
         if (
             isinstance(move_id, int)
@@ -1512,7 +1549,7 @@ def _build_recompute_failure_output(
         preserved_moves.append(move)
     output["MoveList"] = preserved_moves
     output["RecomputePoints"] = [
-        *deepcopy(list(output.get("RecomputePoints") or [])),
+        *copy_payload(list(output.get("RecomputePoints") or [])),
         {
             "Time": float(requested_time),
             "EffectiveTime": float(requested_time),
@@ -1524,7 +1561,7 @@ def _build_recompute_failure_output(
         },
     ]
     output["Feedback"] = [
-        *deepcopy(list(output.get("Feedback") or [])),
+        *copy_payload(list(output.get("Feedback") or [])),
         {
             "Level": "Error",
             "Type": type(error).__name__,
@@ -1601,7 +1638,7 @@ def _build_prior_plan_failure_output(
                 < next_schedule_time - TIME_TOLERANCE
             ]
         combined_moves.extend(
-            deepcopy(dict(move))
+            copy_payload(dict(move))
             for move in moves
             if isinstance(move, Mapping)
         )
@@ -1610,11 +1647,11 @@ def _build_prior_plan_failure_output(
         int(move.get("MoveID") or 0),
     ))
 
-    output = deepcopy(dict(latest_output))
+    output = copy_payload(dict(latest_output))
     output["MoveList"] = combined_moves
     output["RecomputePoints"] = recompute_points
     output["Feedback"] = [
-        *deepcopy(list(latest_output.get("Feedback") or [])),
+        *copy_payload(list(latest_output.get("Feedback") or [])),
         {
             "Level": "Error",
             "Type": type(error).__name__,
@@ -1688,7 +1725,7 @@ def _reproduction_history_before_current_output(
             else math.inf
         )
         history.extend(
-            deepcopy(dict(move))
+            copy_payload(dict(move))
             for move in (output.get("MoveList") or [])
             if isinstance(move, Mapping)
             and float(move.get("StartTime") or 0.0)

@@ -10,9 +10,39 @@ import unittest
 from unittest.mock import patch
 
 import app.backend.application as config_server
+from app.backend.execution import batch_service
 from app.backend.application import LoggedPlanError, extract_init_data
 from tests.support.plan_fixtures import device_recording, job as _job, route as _route
 from tests.support.run_artifact_fixtures import saved_run_fields
+
+
+def test_skipped_baseline_digest_is_computed_after_selected_algorithm() -> None:
+    """跳过基线时保持摘要字段，但摘要不能阻塞首轮算法下发。"""
+    calls = []
+    plan = {"strategy": "cycle", "rounds": []}
+
+    def fingerprint(*args, **kwargs):
+        """以调用顺序验证关键路径，不绑定墙钟速度。"""
+        calls.append("digest")
+        return "stable-digest"
+
+    def execute(*args, **kwargs):
+        """模拟算法边界；摘要不能在此之前构造第二份计划。"""
+        assert calls == []
+        calls.append("algorithm")
+        return {"makespan": 1, "moveCount": 0}
+
+    with (
+        patch.object(batch_service, "_workspace_baseline_fingerprint", side_effect=fingerprint),
+        patch.object(config_server, "execute_plan", side_effect=execute),
+    ):
+        result, baseline, error = config_server._execute_workspace_test_with_baseline(
+            {}, {}, "cycle", {}, selected_plan=plan, skip_baseline=True,
+        )
+    assert result is not None and error is None
+    assert calls == ["algorithm", "digest"]
+    assert baseline["status"] == "skipped"
+    assert baseline["fingerprint"] == "stable-digest"
 
 
 class BatchBaselineTests(unittest.TestCase):

@@ -2,9 +2,24 @@
 
 import math
 from bisect import bisect_left, bisect_right
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+from collections.abc import Mapping, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-from .move_validation_core import (
+from .move_state import (
+    ATMOSPHERE,
+    DEFAULT_SLOT_ID,
+    DOORLESS_STATION_NAMES,
+    LOAD_LOCK_TYPE,
+    LOAD_PORT_TYPE,
+    MOVE_STATE_ABORTED,
+    MOVE_STATE_DONE,
+    MOVE_STATE_RUNNING,
+    MULTI_PICK_MOVE,
+    PICK_MOVE,
+    PLACE_MOVE,
+    SWAP_MOVE,
+    TIME_TOLERANCE,
+    VACUUM,
     DoorState,
     LoadLockState,
     MachineState,
@@ -16,9 +31,6 @@ from .move_validation_core import (
     ValidationErrorCode,
     _ScheduledCompletion,
 )
-# 配置常量（例如 DEFAULT_SLOT_ID、站点类型）与状态模型同属核心契约；使用显式
-# 模块导入补齐辅助函数需要的常量，不复制第二份协议定义。
-from .move_validation_core import *  # noqa: F401,F403,E402
 
 
 def _issue(
@@ -1003,6 +1015,8 @@ def _initial_materials(task: Any, payload: Mapping[str, Any]) -> Iterable[Tuple[
 def _values(move: Mapping[str, Any], key: str) -> List[Any]:
     """读取标准并行数组，并兼容物料单值字段。"""
     value = move.get(key)
+    if isinstance(value, list):
+        return value
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         return list(value)
     if key == "MatIDList":
@@ -1023,6 +1037,8 @@ def _integer_values(move: Mapping[str, Any], key: str) -> List[int]:
 
 def _positive_integer(value: Any) -> Optional[int]:
     """把正整数协议值规范为 int，非法值返回 None。"""
+    if type(value) is int:
+        return value if value >= DEFAULT_SLOT_ID else None
     if isinstance(value, bool):
         return None
     try:
@@ -1053,16 +1069,16 @@ def _sort_key(move: Mapping[str, Any]) -> Tuple[float, int, float]:
 def _notification_state(notification: Mapping[str, Any]) -> int:
     """把数字或字符串 MoveState 统一成协议枚举。"""
     raw = notification.get("MoveState", notification.get("State"))
-    if isinstance(raw, int) and raw in {MoveStateReplay.RUNNING, MoveStateReplay.DONE, MoveStateReplay.ABORTED}:
+    if isinstance(raw, int) and raw in {MOVE_STATE_RUNNING, MOVE_STATE_DONE, MOVE_STATE_ABORTED}:
         return raw
     names = {
-        "running": MoveStateReplay.RUNNING,
-        "start": MoveStateReplay.RUNNING,
-        "done": MoveStateReplay.DONE,
-        "finished": MoveStateReplay.DONE,
-        "end": MoveStateReplay.DONE,
-        "aborted": MoveStateReplay.ABORTED,
-        "abort": MoveStateReplay.ABORTED,
+        "running": MOVE_STATE_RUNNING,
+        "start": MOVE_STATE_RUNNING,
+        "done": MOVE_STATE_DONE,
+        "finished": MOVE_STATE_DONE,
+        "end": MOVE_STATE_DONE,
+        "aborted": MOVE_STATE_ABORTED,
+        "abort": MOVE_STATE_ABORTED,
     }
     normalized = str(raw or "").strip().lower()
     if normalized not in names:
@@ -1157,6 +1173,14 @@ def _schedule(scheduled: List[_ScheduledCompletion], move: Mapping[str, Any], en
 
 def _finish_until(scheduled: List[_ScheduledCompletion], timestamp: float) -> None:
     """按结束时间落地指定时刻之前完成的动作。"""
+    if not scheduled:
+        return
+    if len(scheduled) == 1:
+        completion = scheduled[0]
+        if completion.end_time <= timestamp + TIME_TOLERANCE:
+            completion.complete()
+            scheduled.clear()
+        return
     ready = sorted(
         (item for item in scheduled if item.end_time <= timestamp + TIME_TOLERANCE),
         key=lambda item: (item.end_time, item.move_id),

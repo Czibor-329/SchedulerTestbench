@@ -64,6 +64,18 @@ def test_dependency_rejects_cycle() -> None:
 
     assert "依赖环" in issues[0]
 
+def test_dependency_duplicate_edges_do_not_inflate_indegree() -> None:
+    """重复前驱引用只构成一条拓扑边，分叉汇合不能重复入队或误报环。"""
+    moves = [
+        _move(1, 6, 0, 1, ModuleName="PM1"),
+        _move(2, 6, 1, 2, ModuleName="PM1", PreMoveID=[1, 1]),
+        _move(3, 6, 2, 3, ModuleName="PM1", PreMoveID=[1, 1]),
+        _move(4, 6, 3, 4, ModuleName="PM1", PreMoveID=[2, 3, 2, 3]),
+    ]
+
+    assert validate_move_list(None, moves, _single_pm_update()) == []
+
+
 def test_dependency_rejects_predecessor_finishing_after_child_starts() -> None:
     """即使拓扑无环，前驱未完成时也不能启动后继 Move。"""
     moves = [

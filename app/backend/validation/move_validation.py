@@ -1,10 +1,10 @@
 """平台 MoveList 物理校验的稳定入口。
 
-状态模型和动作处理位于 ``move_validation_core``，运输、配置与输入解析辅助函数
-位于 ``move_validation_helpers``。本入口集中导出旧 API，避免调用方感知内部拆分。
+状态模型、动作处理与时间线分别由 ``move_state``、``move_actions`` 和
+``move_replay`` 拥有；本模块维护调用方使用的稳定公共校验契约。
 """
 
-from .move_validation_core import (
+from .move_state import (
     ALIGN_MOVE,
     ATMOSPHERE,
     COMPLETE_MOVE,
@@ -13,7 +13,6 @@ from .move_validation_core import (
     MachineState,
     MaterialState,
     MULTI_PICK_MOVE,
-    MoveStateReplay,
     PICK_MOVE,
     PLACE_MOVE,
     PREPARE_MOVE,
@@ -26,10 +25,14 @@ from .move_validation_core import (
     SlotState,
     ValidationErrorCode,
     VACUUM,
+)
+from .move_replay import (
+    MoveStateReplay,
     materialize_module_parallel_moves,
     release_completed_load_port_materials,
     validate_move_list,
 )
+
 
 __all__ = [
     "ALIGN_MOVE", "ATMOSPHERE", "COMPLETE_MOVE", "DoorState", "LoadLockState",
