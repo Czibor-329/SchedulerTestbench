@@ -3,6 +3,7 @@
 本模块只依赖平台的标准 ``update``、MoveList 和本地状态机。算法仓库仅在
 ``execution.service`` 的 ``init/update`` 调用边界参与调度决策；算法输出一旦
 返回，校验、现场投影、重算快照和 CJob 卸载均不再调用或构造 alg 仓库对象。
+真实通知回放与完成投影分别保存；跨代在途动作必须等 Done 才落地计数。
 """
 
 from __future__ import annotations
@@ -80,6 +81,31 @@ class PlatformMoveListRuntime:
     def current_plan(self) -> List[dict]:
         """返回当前算法代次的 MoveList 副本。"""
         return self._tracker.materialized_plan
+
+    @property
+    def execution_plan(self) -> List[dict]:
+        """返回新代计划及旧代尚未完成的动作，用于真实通知推进。"""
+        moves = self.current_plan
+        current_ids = {int(move["MoveID"]) for move in moves}
+        return [
+            *[move for move in self._tracker.running_moves if int(move["MoveID"]) not in current_ids],
+            *moves,
+        ]
+
+    @property
+    def running_move_states(self) -> List[dict]:
+        """返回包含跨代在途动作的标准 Running 集合，不重复发送开始通知。"""
+        return [{
+            "MoveID": int(move["MoveID"]),
+            "MoveState": MoveStateReplay.RUNNING,
+            "StartTime": float(move["StartTime"]),
+            "EndTime": -1,
+        } for move in self._tracker.running_moves]
+
+    @property
+    def executed_move_ids(self) -> frozenset[int]:
+        """返回本代已完成动作的协议编号，避免重复推进同一结束回调。"""
+        return frozenset(int(move["MoveID"]) for move in self._tracker.executed_moves)
 
     def _materialize_moves(self, moves: Sequence[Mapping[str, Any]], clock_floor: float) -> List[dict]:
         """按模块和前驱依赖物化实际时间，并保留甘特图所需的原始时间。"""
@@ -198,13 +224,16 @@ class PlatformMoveListRuntime:
         return projected_state, projection.executed_moves
 
     def replace_plan(self, update_params: Mapping[str, Any], output: Mapping[str, Any], requested_time: float, reason: str, committed_moves: Sequence[Mapping[str, Any]], *, initial_state: Optional[MachineState] = None) -> None:
-        """提交旧代历史，并以平台校验器装载新的计划代次。"""
+        """用完成投影校验新代，真实回放保留旧代 Running 直到结束。"""
         next_state = initial_state.clone() if initial_state is not None else self._tracker.state.clone()
         add_new_materials_to_machine_state(next_state, update_params)
         next_state.refresh_validation_metadata(update_params)
         next_moves = _copy_move_list(output.get("MoveList") or [])
         if self.module_parallel:
             next_moves = self._materialize_moves(next_moves, float(requested_time))
+        conflicts = {int(move["MoveID"]) for move in next_moves}.intersection(self._tracker.running_move_ids)
+        if conflicts:
+            raise ValueError(f"新计划不能复用正在运行的 MoveID：{sorted(conflicts)}")
         committed = _copy_move_list(committed_moves)
         validation = validate_move_plan(
             None, next_moves, next_state,
@@ -225,7 +254,25 @@ class PlatformMoveListRuntime:
             )
         self._history.extend(committed)
         self.current_update = copy_payload(dict(update_params))
-        self._tracker = MoveStateReplay.from_validation(validation, take_ownership=True)
+        # 校验初态已经包含旧代在途动作的结束效果；真实现场不能提前应用它。
+        # 新批次复用来源槽位时才卸载旧片，其余在途物料和回调继续由同一记录器拥有。
+        known_material_ids = {
+            slot.material.material_id
+            for station in self._tracker.state.stations.values()
+            for slot in station.slots.values() if slot.material is not None
+        } | {
+            material.material_id
+            for robot in self._tracker.state.robots.values()
+            for material in robot.hands.values() if material is not None
+        }
+        new_materials = [
+            material for material in update_params.get("Materials") or []
+            if isinstance(material, Mapping) and material.get("ID") not in known_material_ids
+        ]
+        release_reused_source_slots(self._tracker.state, {"Materials": new_materials})
+        add_new_materials_to_machine_state(self._tracker.state, update_params)
+        self._tracker.state.refresh_validation_metadata(update_params)
+        self._tracker.replace_validated_plan(validation)
         self._generation_initial_state = next_state.clone()
         self._tracker.current_time = float(requested_time)
         self._latest_output = _alg_output_info({key: value for key, value in output.items() if key != "MoveList"})

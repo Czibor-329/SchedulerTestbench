@@ -1,4 +1,4 @@
-"""单次运行状态、输出诊断与实时重算时间线投影。"""
+"""单次运行状态、输出诊断与重算时间线；真实加工计数与完成投影分别导出。"""
 
 from __future__ import annotations
 
@@ -605,8 +605,14 @@ def _build_platform_recompute_update(
     move_states: Sequence[Mapping[str, Any]],
     projected_state: Optional[MachineState] = None,
     previous_output: Optional[Mapping[str, Any]] = None,
+    completed_process_state: Optional[MachineState] = None,
 ) -> Dict[str, Any]:
-    """用平台物理快照为下一轮算法调用构造标准 update。"""
+    """构造下一轮 update，可为标准算法包独立指定真实完成计数现场。
+
+    projected_state 保留规划位置与占用，completed_process_state 只决定加工计数。
+    内置策略缺省沿用其完成投影契约，标准算法包由调用方提供真实完成现场。
+    返回隔离后的协议快照，不修改输入状态。
+    """
     update = merge_algorithm_update(
         runtime.current_update,
         new_round_update,
@@ -615,6 +621,7 @@ def _build_platform_recompute_update(
         update,
         projected_state if projected_state is not None else runtime.state,
         requested_time,
+        completed_process_state=completed_process_state,
     )
     update["MoveStates"] = [
         copy_payload(dict(notification))
@@ -622,7 +629,7 @@ def _build_platform_recompute_update(
     ]
     _apply_running_resource_times(
         update,
-        runtime.current_plan,
+        runtime.execution_plan,
         requested_time,
         move_states,
     )
@@ -947,10 +954,10 @@ def advance_platform_move_list_to_update(
     """
     cutoff = max(float(cutoff), runtime.state_time)
     notifications: List[Dict[str, Any]] = []
-    started: set[int] = set()
-    finished: set[int] = set()
+    finished = set(runtime.executed_move_ids)
+    started = {int(item["MoveID"]) for item in runtime.running_move_states} | finished
     for event_kind, event_time, notification in _planned_events(
-        runtime.current_plan,
+        runtime.execution_plan,
         module_parallel=runtime.module_parallel,
     ):
         move_id = int(notification["MoveID"])

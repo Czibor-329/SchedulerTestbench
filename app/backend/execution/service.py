@@ -299,10 +299,11 @@ def _execute_standard_algorithm(
                 (
                     notifications
                     if builtin_strategy is not None
-                    else _running_move_states(notifications)
+                    else runtime.running_move_states
                 ),
                 projected_state=projected_state,
                 previous_output=output,
+                completed_process_state=runtime.state if builtin_strategy is None else None,
             )
             update_snapshots.append(copy_payload(update))
             reproduction.add_schedule(

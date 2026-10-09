@@ -1,4 +1,4 @@
-"""平台 Move 时间线回放、依赖与时间约束校验；使用独立状态和动作模块。"""
+"""平台 Move 时间线回放、依赖与时间约束校验；跨代保留真实 Running 及完成回调。"""
 
 from __future__ import annotations
 
@@ -135,10 +135,42 @@ class MoveStateReplay:
         self.current_time = max(self.current_time, cutoff)
         return True
 
+    def replace_validated_plan(self, validation: MovePlanValidation) -> None:
+        """接续已通过校验的新计划，保留真实现场和旧代仍在运行的动作。
+
+        参数 validation 的初态是用于规划校验的完成投影，不能覆盖当前现场。
+        本方法接管新代 Move 索引和校验终态，清除旧代已完成索引，但保留
+        Running、资源占用及其结束回调；计数和物料仍在真实 Done 时更新。
+        返回 None；校验失败或新代复用了在途 MoveID 时拒绝接续。
+        """
+        if validation.issues or validation.moves is None or validation.completed_state is None:
+            raise ValueError("只有完整校验通过的计划才能接续回放")
+        next_by_id = {int(move["MoveID"]): move for move in validation.moves}
+        conflicts = set(next_by_id).intersection(self._running)
+        if conflicts:
+            raise ValueError(f"新计划不能复用正在运行的 MoveID：{sorted(conflicts)}")
+        self.moves = validation.moves
+        self._moves_by_id = {**self._running, **next_by_id}
+        self._executed = {}
+        self._validated_completed_state = validation.completed_state
+        self._last_start = max((float(move["StartTime"]) for move in self.moves), default=-math.inf)
+        self._last_end = max(
+            (float(move["EndTime"]) for move in [*self.moves, *self._running.values()]),
+            default=-math.inf,
+        )
+        validation.moves = None
+        validation.initial_state = None
+        validation.completed_state = None
+
     @property
     def running_move_ids(self) -> frozenset[int]:
         """返回已经开始但尚未完成的 MoveID。"""
         return frozenset(self._running)
+
+    @property
+    def running_moves(self) -> List[dict]:
+        """返回在途动作副本，供跨代时间线继续产生真实结束通知。"""
+        return [dict(move) for move in sorted(self._running.values(), key=_sort_key)]
 
     @property
     def executed_moves(self) -> List[dict]:

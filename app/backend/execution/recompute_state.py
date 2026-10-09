@@ -4,6 +4,7 @@
 ``MachineState``、释放被新批次复用的 LoadPort 槽位、合并全量算法 update，
 并将投影后的站点、机器人和物料状态写回企业标准接口。HTTP 服务只负责流程编排，
 不在边界层解释 LoadLock 压力态或物料位置。
+加工状态变量和逐槽 MaterialCount 可单独取真实完成现场，禁止使用在途完成投影。
 """
 
 from __future__ import annotations
@@ -428,8 +429,15 @@ def apply_machine_state_to_update(
     update_params: Dict[str, Any],
     state: MachineState,
     current_time: float,
+    *,
+    completed_process_state: Optional[MachineState] = None,
 ) -> None:
-    """将 ``MachineState`` 的物料、机器人、站点和压力态写回标准 update。"""
+    """将物料、资源和压力态写回 update，并按真实完成现场导出加工计数。
+
+    参数 state 提供规划所需的位置和占用；completed_process_state 可提供
+    当前时刻真实 MaterialCount/StateVariables，缺省时沿用 state。
+    返回 None，原地更新 update_params，不修改任一 MachineState。
+    """
     update_params["CurrentTime"] = float(current_time)
     materials = {
         material.get("ID"): material
@@ -468,11 +476,15 @@ def apply_machine_state_to_update(
                 raw_material["PJobName"] = material.pjob_name
             located_material_ids.add(material.material_id)
         # 企业接口中的 MaterialCount 是逐槽累计加工次数，不是站内当前物料数。
+        completed_station = (
+            completed_process_state.stations.get(station_name, station_state)
+            if completed_process_state is not None else station_state
+        )
         station["MaterialCount"] = {
             str(slot_id): slot_state.material_process_count
-            for slot_id, slot_state in sorted(station_state.slots.items())
+            for slot_id, slot_state in sorted(completed_station.slots.items())
         }
-        for variable_name, value in station_state.state_variables.items():
+        for variable_name, value in completed_station.state_variables.items():
             variable = station.setdefault("StateVariables", {}).setdefault(
                 variable_name,
                 {"Name": variable_name, "ComputeRule": "", "Type": 1},
