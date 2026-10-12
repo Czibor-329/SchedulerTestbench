@@ -4463,11 +4463,8 @@ export class VisualizationWorkspace {
     this.elements.empty.hidden = false;
     this.elements.playbackEmpty.hidden = false;
     this.setTopologyVisible(false);
+    // 分析报告空状态连同“生成分析报告”按钮由页面骨架持有，这里只恢复可见性，避免重建控件。
     this.elements.empty.classList.remove("is-loading", "is-error");
-    this.elements.empty.innerHTML = `
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg>
-      <strong>等待分析数据</strong>
-      <span>批量运行测试组后，在结果预览中选择“测试组结果分析”。单次测试请使用回放诊断。</span>`;
     this.elements.playbackEmpty.classList.remove("is-loading", "is-error");
     this.elements.playbackEmpty.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg>

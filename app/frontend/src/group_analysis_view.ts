@@ -119,7 +119,8 @@ export function testGroupSummaryCsv(summary: TestGroupPerformanceSummary): strin
   return [headers.map(csvEscape).join(","), ...rows.map(row => row.join(","))].join("\r\n");
 }
 
-function resultTable(summary: TestGroupPerformanceSummary, selected: Set<string>, compact = false): string {
+/** 按勾选指标生成逐测试数据行；每个指标固定占一列，缺失结果保留占位。 */
+function resultTable(summary: TestGroupPerformanceSummary, selected: Set<string>): string {
   return summary.cases.map((item, index) => {
     const cells = [`<th scope="row">${escapeHtml(caseLabel(item, index))}</th>`];
     if (selected.has("throughput")) cells.push(`<td>${finiteText(item.throughputPerHour, 1, " 片/h")}</td>`);
@@ -147,11 +148,7 @@ function resultTable(summary: TestGroupPerformanceSummary, selected: Set<string>
     const rowClasses = [
       item.analysisStatus && item.analysisStatus !== "completed" ? "is-incomplete" : "",
     ].filter(Boolean).join(" ");
-    const compactValues = cells.slice(1)
-      .map(cell => cell.replace(/^<td(?:\s[^>]*)?>|<\/td>$/g, ""))
-      .join('<span aria-hidden="true"> · </span>');
-    const rowCells = compact ? [cells[0], `<td><div class="group-analysis-compact-values">${compactValues}</div></td>`] : cells;
-    return `<tr${rowClasses ? ` class="${rowClasses}"` : ""}>${rowCells.join("")}</tr>`;
+    return `<tr${rowClasses ? ` class="${rowClasses}"` : ""}>${cells.join("")}</tr>`;
   }).join("");
 }
 
@@ -171,17 +168,16 @@ export function renderTestGroupAnalysis(
     system_residence_cv: "系统停留 CV", loadlock_wafers_per_cycle: "LoadLock 每周期晶圆",
     loadlock_full_cycle_ratio: "LoadLock 满载周期率", loadlock_empty_cycle_ratio: "LoadLock 空载周期率",
   };
-  const compactTable = selected.size <= 2;
-  const tableHeaders = compactTable ? ["<th>测试</th>", "<th>指标结果</th>"] : ["<th>测试</th>"];
-  if (!compactTable && selected.has("throughput")) tableHeaders.push("<th>产能</th>");
-  if (!compactTable && selected.has("average_recompute_time")) tableHeaders.push("<th>平均重算时间</th>");
-  if (!compactTable && selected.has("company_capacity_baseline")) tableHeaders.push("<th>产能基线</th>");
-  if (!compactTable && selected.has("company_capacity_ratio")) tableHeaders.push("<th>产能比</th>");
-  if (!compactTable && selected.has("bottleneck_candidates")) tableHeaders.push("<th>瓶颈</th>");
-  if (!compactTable && selected.has("makespan")) tableHeaders.push("<th>Makespan</th>");
-  if (!compactTable && selected.has("validation")) tableHeaders.push("<th>校验结果</th>");
-  if (!compactTable && selected.has("cpu_time")) tableHeaders.push("<th>算法总耗时</th>");
-  if (!compactTable && selected.has("resource_utilization")) tableHeaders.push("<th>利用率</th>");
+  const tableHeaders = ["<th>测试</th>"];
+  if (selected.has("throughput")) tableHeaders.push("<th>产能</th>");
+  if (selected.has("average_recompute_time")) tableHeaders.push("<th>平均重算时间</th>");
+  if (selected.has("company_capacity_baseline")) tableHeaders.push("<th>产能基线</th>");
+  if (selected.has("company_capacity_ratio")) tableHeaders.push("<th>产能比</th>");
+  if (selected.has("bottleneck_candidates")) tableHeaders.push("<th>瓶颈</th>");
+  if (selected.has("makespan")) tableHeaders.push("<th>Makespan</th>");
+  if (selected.has("validation")) tableHeaders.push("<th>校验结果</th>");
+  if (selected.has("cpu_time")) tableHeaders.push("<th>算法总耗时</th>");
+  if (selected.has("resource_utilization")) tableHeaders.push("<th>利用率</th>");
   if (selected.has("departure_interval_cv")) tableHeaders.push("<th>出站 CV</th>");
   if (selected.has("process_chamber_dwell")) tableHeaders.push("<th>加工腔驻留均值</th>");
   if (selected.has("robot_wafer_dwell")) tableHeaders.push("<th>机器手驻留均值</th>");
@@ -191,22 +187,21 @@ export function renderTestGroupAnalysis(
   if (selected.has("loadlock_full_cycle_ratio")) tableHeaders.push("<th>LoadLock 满载周期率</th>");
   if (selected.has("loadlock_empty_cycle_ratio")) tableHeaders.push("<th>LoadLock 空载周期率</th>");
   return `
-    <div class="group-analysis-head">
-      <div class="group-analysis-selection">${[...selected].map(metric => `<span>${escapeHtml(selectedLabels[metric] || metric)}</span>`).join("")}</div>
+    <header class="group-analysis-head table-header-control">
+      <div class="group-analysis-heading"><h2>${escapeHtml(groupName || "当前测试组")}</h2><p>${summary.cases.length} 项测试 · ${selected.size} 项指标</p></div>
       <div class="group-analysis-actions">
         <button class="btn small group-analysis-back" type="button" data-return-run-results><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7-5 5 5 5M5 12h14"/></svg><span>返回运行结果</span></button>
         <button class="btn small" type="button" data-reconfigure-analysis>重新选择指标与测试</button>
         <button type="button" class="btn small group-analysis-export" data-group-export-csv>导出 CSV</button>
       </div>
-    </div>
+    </header>
+    <div class="group-analysis-selection" aria-label="本次分析指标">${[...selected].map(metric => `<span>${escapeHtml(selectedLabels[metric] || metric)}</span>`).join("")}</div>
     ${summary.timedOut ? '<div class="group-analysis-warning">已达到时间预算，以下报告保留完成部分；可减少指标或提高时间预算后继续。</div>' : ""}
-    <section class="group-analysis-table-wrap">
-      <div class="group-analysis-table-scroll">
-        <table class="group-analysis-table">
+    <div class="table-responsive group-analysis-table-scroll" tabindex="0" role="region" aria-label="逐测试分析报告，可横向滚动">
+        <table class="table-custom group-analysis-table">
           <caption class="sr-only">${escapeHtml(groupName || "当前测试组")}逐测试指标</caption>
-          <thead><tr>${tableHeaders.join("")}</tr></thead>
-          <tbody>${resultTable(summary, selected, compactTable)}</tbody>
+          <thead><tr>${tableHeaders.map(header => header.replace("<th>", '<th scope="col">')).join("")}</tr></thead>
+          <tbody>${resultTable(summary, selected)}</tbody>
         </table>
-      </div>
-    </section>`;
+    </div>`;
 }

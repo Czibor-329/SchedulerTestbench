@@ -1,0 +1,216 @@
+/**
+ * Spark 风格的调度工作台外壳：语义色、导航、通用控件与响应式版面。
+ * 在历史领域样式之后加载；console_components.css 负责卡片与编辑组件。
+ * 回放画布保留既有局部变量和绘制样式，仅按导航占位调整视口边界。
+ */
+:root {
+  --bg: #f4f6f5; --surface: #fff; --soft: #f5f7f6;
+  --ink: #0b130f; --muted: #6c7e75; --line: #e9efeb;
+  --brand: #072f1f; --brand-dark: #051c12; --brand-soft: #edf4e9; --accent: #b4f105;
+  --green: #15845d; --green-soft: #eaf7ef; --red: #bd2837; --red-soft: #fff0f1;
+  --shadow: 0 10px 30px rgb(11 19 15 / 4%); --radius: 24px;
+  --console-sidebar-width: 280px; --console-header-height: 76px; --console-page-padding: 28px;
+  --tblr-primary: #072f1f; --tblr-body-color: #0b130f; --tblr-body-bg: #f4f6f5;
+}
+body { color: var(--ink); background: var(--bg); font: 16px/1.55 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+:is(button, a, input, select, textarea):focus-visible { outline: 2px solid #628b40; outline-offset: 3px; }
+.shell { grid-template-columns: var(--console-sidebar-width) minmax(0, 1fr); padding: 0; gap: 0; }
+.shell.sidebar-collapsed { --console-sidebar-width: 84px; }
+.app-content { width: 100%; max-width: none; margin: 0; padding: 0; }
+
+/* 固定高度的顶部工具栏承载面包屑与全局状态，页面内不再重复页面标题。 */
+.console-topbar {
+  position: sticky; z-index: 75; top: 0; display: flex; min-height: var(--console-header-height);
+  align-items: center; justify-content: space-between; gap: 20px; padding: 14px var(--console-page-padding);
+  border-bottom: 1px solid var(--line); background: rgb(244 246 245 / 96%);
+}
+.console-topbar-start, .console-topbar-actions { display: flex; min-width: 0; align-items: center; gap: 20px; }
+/* 顶栏按钮沿用 Spark 模板的导航操作按钮：42×42、14px 圆角、白底细描边、悬停转为森林绿。 */
+.console-menu-toggle, .console-help-link {
+  display: grid; flex: none; width: 42px; height: 42px; place-items: center;
+  padding: 0; border: 1px solid #e9efef; border-radius: 14px; color: var(--ink); background: #fff;
+  box-shadow: 0 2px 8px rgb(11 19 15 / 2%);
+}
+.console-menu-toggle:hover, .console-help-link:hover { color: var(--brand); background: #e9efef; }
+.console-menu-toggle svg { width: 18px; height: 18px; fill: currentColor; }
+.console-help-link svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.sidebar-collapsed .console-menu-toggle svg { transform: rotate(180deg); }
+.console-breadcrumb { display: flex; min-width: 0; align-items: center; gap: 13px; font-size: 14px; color: var(--muted); }
+.console-breadcrumb strong { overflow: hidden; color: #314a3a; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 深森林绿导航：保留功能分组，折叠后所有入口仍可通过图标和名称访问。 */
+.primary-sidebar {
+  position: sticky; z-index: 90; top: 0; width: var(--console-sidebar-width); height: 100dvh;
+  padding: 0 18px 22px; overflow-x: hidden; overflow-y: auto;
+  border: 0; color: #fff; background: var(--brand-dark); box-shadow: none;
+}
+.sidebar-brand { min-height: var(--console-header-height); gap: 11px; padding: 20px 10px; }
+.sidebar-brand:hover { color: #fff; }
+/* 品牌图标与名称沿用模板侧栏标识：lime 图标，悬停轻微放大旋转。 */
+.sidebar-brand-mark { width: 30px; height: 34px; border-radius: 0; color: var(--accent); background: transparent; box-shadow: none; }
+.sidebar-brand-mark svg { width: 26px; height: 26px; fill: currentColor; stroke: none; transition: transform .3s ease, color .3s ease; }
+.sidebar-brand:hover .sidebar-brand-mark svg { transform: scale(1.1) rotate(90deg); }
+.sidebar-brand strong { white-space: nowrap; font-size: 24px; font-weight: 650; letter-spacing: .01em; }
+.sidebar-section-label { margin: 24px 15px 12px; color: #7f998b; font-size: 13px; font-weight: 600; letter-spacing: .1em; white-space: nowrap; }
+.primary-sidebar .tabs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.sidebar-nav-group { min-width: 0; }
+.primary-sidebar :is(.tab, .sidebar-subtab) {
+  position: relative; display: flex; width: 100%; align-items: center; justify-content: flex-start; min-width: 0; min-height: 54px; gap: 14px;
+  padding: 13px 15px; border: 0; border-radius: 12px; color: #a4b8ad; background: transparent; font-size: 18px; font-weight: 500; text-align: left; text-decoration: none;
+}
+.primary-sidebar :is(.tab, .sidebar-subtab):hover { color: #fff; background: rgb(255 255 255 / 5%); }
+.primary-sidebar :is(.tab, .sidebar-subtab).active { color: #fff; background: #142e22; box-shadow: none; }
+.primary-sidebar :is(.tab, .sidebar-subtab).active::before { position: absolute; left: -18px; width: 3px; height: 24px; border-radius: 0 3px 3px 0; background: var(--accent); content: ""; }
+.primary-sidebar :is(.tab, .sidebar-subtab).active svg { color: var(--accent); }
+.primary-sidebar :is(.tab, .sidebar-subtab) svg { width: 22px; height: 22px; flex: none; stroke-width: 1.65; }
+.primary-sidebar :is(.tab, .sidebar-subtab) span { font-size: inherit; white-space: nowrap; }
+.primary-sidebar .sidebar-subtabs { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
+.sidebar-footer { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; margin-top: auto; padding: 18px 10px 0; border-top: 1px solid #20382b; }
+.sidebar-footer-label { display: block; color: #92a59a; font-size: 12px; font-weight: 400; letter-spacing: 0; white-space: nowrap; }
+.sidebar-footer .frontend-version { padding: 4px 7px; border-color: #304538; color: #a4b8ad; background: #142e22; font-size: 11px; font-weight: 500; }
+.sidebar-collapsed .primary-sidebar { padding-inline: 12px; }
+.sidebar-collapsed .sidebar-brand { justify-content: center; padding-inline: 0; }
+.sidebar-collapsed .primary-sidebar :is(.tab, .sidebar-subtab) { justify-content: center; padding-inline: 0; }
+.sidebar-collapsed :is(.sidebar-brand-name, .sidebar-section-label, .sidebar-footer) { display: none; }
+.sidebar-collapsed .primary-sidebar .tabs { margin-top: 24px; }
+.sidebar-collapsed .primary-sidebar :is(.tab, .sidebar-subtab) > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.sidebar-collapsed .primary-sidebar .sidebar-subtabs { margin: 0; padding: 0; border: 0; }
+.sidebar-collapsed .primary-sidebar :is(.tab, .sidebar-subtab).active::before { left: -12px; }
+.sidebar-collapsed .sidebar-nav-group + .sidebar-nav-group { margin-top: 12px; padding-top: 12px; border-top: 1px solid #20382b; }
+.sidebar-backdrop { display: none; }
+.sidebar-close { display: none; }
+
+/* 运行区采用通栏上下文 + 宽结果区 + 紧凑策略区，防止选择器挤占结果宽度。 */
+.layout { gap: 24px; padding: 0 var(--console-page-padding) 36px; }
+.layout:has([data-tab-view="schedule"].active) { grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: "context context" "results strategy"; padding-top: 24px; }
+/* 运行首页之外的页面在顶部工具栏下直接开始，用与外层一致的间距替代已删除的页头。 */
+.layout:has([data-tab-view="test-management"].active),
+.layout:has([data-tab-view="analysis"].active) { padding-top: 24px; }
+.layout:has([data-tab-view="schedule"].active) > .main,
+[data-tab-view="schedule"].active { display: contents; }
+.run-selection-panel { grid-area: context; }
+.run-preview-stack { grid-area: results; min-width: 0; }
+.side { grid-area: strategy; grid-row: auto; top: calc(var(--console-header-height) + 24px); }
+.layout.editor-mode { grid-template-columns: minmax(0, 1fr); }
+.layout.editor-mode .main, [data-tab-view="test-management"] { width: 100%; max-width: none; margin: 0; }
+.main, .tab-view, .management-section { gap: 24px; }
+#testManagementSections { min-width: 0; }
+/* 设备与测试组选择保持紧凑：两条下拉都不再拉满整行，测试组与导入导出按钮留出间隔。 */
+.run-device-control { grid-template-columns: minmax(150px, 260px) auto auto minmax(180px, 320px); gap: 16px; justify-content: start; }
+.run-device-control .run-group-control { margin-left: 32px; }
+.run-selection-panel-head { align-items: stretch; }
+.run-selection-head-controls .field label { margin-bottom: 8px; font-size: 14px; color: var(--muted); font-weight: 500; }
+.workspace-device-summary .chip { min-height: 32px; border-color: #dce8d4; color: #506e3c; background: #f2f7ed; font-size: 13px; }
+.run-device-control .workspace-device-summary { align-self: center; padding-top: 22px; }
+.run-workspace-transfer-actions { gap: 8px; }
+.result-panel .batch-results { grid-template-columns: repeat(auto-fill, minmax(min(205px, 100%), 1fr)); max-height: clamp(300px, calc(100dvh - 540px), 620px); }
+.catalog-toolbar { grid-template-columns: minmax(160px, .85fr) minmax(250px, 1.2fr) auto; }
+.catalog-toolbar .workspace-device-controls { grid-template-columns: minmax(0, 1fr); }
+.test-row-actions { gap: 10px; }
+.run-preview-stack { display: grid; align-content: start; gap: 20px; }
+
+/* 控件遵循同一圆角和焦点语言，不覆盖回放画布内的精确尺寸。 */
+body :is(.field input, .field select, .field textarea, .compact-select-trigger) { border-color: #dce4dd; border-radius: 12px; color: var(--ink); background: #fff; box-shadow: none; }
+body :is(.field input, .field select, .compact-select-trigger) { min-height: 46px; font-size: 16px; }
+body .field label { color: #5f7266; font-size: 14px; font-weight: 500; }
+body :is(.field input, .field select, .field textarea):focus { border-color: #93ae82; box-shadow: 0 0 0 3px rgb(7 47 31 / 7%); }
+.compact-select-trigger { padding-inline: 13px; }
+.compact-select-value { color: var(--ink); font-size: 16px; }
+.compact-select.is-open .compact-select-trigger { border-color: #93ae82; box-shadow: 0 0 0 3px rgb(7 47 31 / 7%); }
+.compact-select-menu { padding: 6px; border-color: var(--line); border-radius: 13px; box-shadow: 0 12px 28px rgb(5 28 18 / 12%); }
+.compact-select-option { min-height: 42px; padding-block: 10px; border-radius: 8px; color: #506456; font-size: 16px; }
+.compact-select-option:hover:not(:disabled), .compact-select-option:focus-visible { color: var(--brand); background: var(--soft); }
+.compact-select-option[aria-selected="true"] { color: var(--brand); background: var(--brand-soft); }
+.btn { min-height: 44px; padding: 9px 14px; border-color: #dfe6df; border-radius: 12px; color: #38503f; background: #fff; font-size: 15px; font-weight: 600; box-shadow: none; }
+.btn:hover:not(:disabled) { border-color: #b3c4ab; color: var(--brand); background: #f4f8ef; }
+.btn.primary { border-color: var(--brand); color: #fff; background: var(--brand); }
+.btn.primary:hover:not(:disabled) { border-color: #164c32; color: #fff; background: #164c32; }
+.btn.danger { border-color: #efd9dc; color: var(--red); background: #fff6f7; }
+.btn.danger:hover:not(:disabled) { border-color: #dfabb2; color: var(--red); background: var(--red-soft); }
+.btn.small { min-height: 36px; padding: 6px 10px; font-size: 14px; }
+.workspace-icon-button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 11px; }
+.workspace-icon-button svg { flex: none; width: 18px; height: 18px; }
+.workspace-icon-button:hover:not(:disabled) { box-shadow: none; transform: none; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); }
+
+/* 画布本身沿用旧主题与几何；仅为新增工具栏和可折叠侧栏预留视口。 */
+[data-tab-view="playback"] {
+  --bg: #f4f6fa; --surface: #fff; --soft: #f8fafc; --ink: #14213d; --muted: #64748b;
+  --line: #dbe2ea; --brand: #2457d6; --brand-dark: #173d9f; --brand-soft: #edf2ff;
+  --green: #087f5b; --green-soft: #e8f8f1; --red: #bd2837; --red-soft: #fff0f1;
+  --shadow: 0 12px 32px rgba(32, 47, 81, .08); --radius: 16px;
+  color: var(--ink);
+  font: 14px/1.55 Inter, "Microsoft YaHei", system-ui, sans-serif;
+}
+body:has([data-tab-view="playback"].active) .layout,
+body:has([data-tab-view="gantt"].active) .layout { padding: 0; }
+[data-tab-view="playback"].active .playback-workbench { min-height: calc(100dvh - var(--console-header-height)); }
+[data-tab-view="playback"].active #visualTopologyPlayback:not([hidden]) { inset: var(--console-header-height) 0 0 var(--console-sidebar-width); }
+[data-tab-view="playback"].active .playback-log-import { top: calc(var(--console-header-height) + 3px); }
+/* 甘特图页签内嵌独立查看器：铺满顶栏以下的整块区域，保留查看器自带的工具与缩放。 */
+.tab-view[data-tab-view="gantt"] { display: block; height: calc(100dvh - var(--console-gantt-toolbar-height, var(--console-header-height))); overflow: hidden; }
+.tab-view[data-tab-view="gantt"]:not(.active) { display: none; }
+.gantt-frame { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+
+@media (min-width: 1700px) {
+  :root { --console-sidebar-width: 280px; --console-page-padding: 32px; }
+  .layout:has([data-tab-view="schedule"].active) { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+@media (max-width: 1200px) {
+  :root { --console-sidebar-width: 240px; --console-page-padding: 24px; }
+  .primary-sidebar { padding-inline: 12px; }
+  .primary-sidebar :is(.tab, .sidebar-subtab).active::before { left: -12px; }
+  .sidebar-footer { grid-template-columns: minmax(0, 1fr); }
+  .sidebar-footer .frontend-version { justify-self: start; }
+  .layout:has([data-tab-view="schedule"].active) { grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; }
+  .run-device-control { grid-template-columns: minmax(140px, 240px) auto auto; gap: 12px; }
+  .run-device-control .run-group-control { margin-left: 0; }
+  .run-group-control { grid-column: 1 / -1; }
+  .run-workspace-transfer-actions { grid-column: auto; }
+  .catalog-toolbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+  .catalog-primary-actions { grid-column: 1 / -1; justify-content: flex-end; }
+}
+@media (max-width: 1000px) {
+  .layout:has([data-tab-view="schedule"].active) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "context" "strategy" "results"; }
+  .side { position: static; }
+  #scheduleSide > .panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, .85fr); }
+  #scheduleSide > .panel > .panel-head { grid-column: 1 / -1; }
+  #scheduleSide .run-box { border-top: 0; }
+}
+@media (max-width: 760px) {
+  :root { --console-sidebar-width: 0px; --console-page-padding: 18px; --console-header-height: 66px; }
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .primary-sidebar { position: fixed; z-index: 100; width: 280px; padding-inline: 18px; transform: translateX(-100%); visibility: hidden; }
+  .sidebar-open .primary-sidebar { transform: translateX(0); visibility: visible; }
+  .sidebar-close { position: absolute; top: 22px; right: 14px; display: grid; width: 30px; height: 30px; place-items: center; padding: 0; border: 1px solid #304538; border-radius: 9px; color: #a4b8ad; background: #142e22; }
+  .sidebar-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+  .primary-sidebar .sidebar-brand { padding-right: 30px; }
+  .sidebar-backdrop:not([hidden]) { position: fixed; z-index: 85; inset: 0; display: block; padding: 0; border: 0; background: rgb(5 28 18 / 40%); }
+  .console-topbar { gap: 12px; padding-block: 12px; }
+  .console-topbar-start, .console-topbar-actions { gap: 10px; }
+  .console-breadcrumb { font-size: 13px; }
+  .console-help-link { width: 36px; height: 36px; }
+  .layout { gap: 18px; }
+  .run-device-control { grid-template-columns: minmax(0, 1fr) auto; }
+  .run-device-control .run-group-control { margin-left: 0; }
+  .run-group-control { grid-column: 1; grid-row: 2; min-width: 0; }
+  .run-workspace-transfer-actions { grid-column: 2; grid-row: 2; }
+  .run-device-control .workspace-device-summary { justify-content: flex-end; }
+  .catalog-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .catalog-primary-actions { justify-content: flex-start; flex-wrap: wrap; }
+  .catalog-group-control > .compact-select { min-width: 0; }
+  .sidebar-footer { grid-template-columns: minmax(0, 1fr) auto; }
+  .test-list-row { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 14px; }
+  .test-row-actions { gap: 6px; }
+}
+@media (max-width: 520px) {
+  #scheduleSide > .panel { display: block; }
+  #scheduleSide .run-box { border-top: 1px solid rgb(255 255 255 / 10%); }
+  .run-device-control { gap: 12px 8px; }
+  .run-workspace-transfer-actions { gap: 5px; }
+  .workspace-transfer-button { padding-inline: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .primary-sidebar .tab, .compact-select-trigger { transition: none; }
+}

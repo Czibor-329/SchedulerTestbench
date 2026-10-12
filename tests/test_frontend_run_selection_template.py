@@ -41,11 +41,14 @@ def test_run_actions_only_offer_settings_and_selected_tests() -> None:
     assert template.index('id="batchRunButton"') < template.index('id="openRunSettingsButton"')
 
 
-def test_result_header_keeps_only_test_selection_actions() -> None:
-    """结果预览首行不重复提供日志导出或全部甘特图入口。"""
+def test_test_selection_button_lives_in_the_run_strategy_card() -> None:
+    """选择测试入口位于右侧运行策略卡；结果区首行不重复提供日志导出或全部甘特图入口。"""
     template = EDITOR_PATH.read_text(encoding="utf-8")
+    strategy_card = template.split('<aside class="side" id="scheduleSide">', 1)[1].split("</aside>", 1)[0]
+    preview_area = template.split('id="runPreviewArea"', 1)[1].split('id="batchTestDetails"', 1)[0]
 
-    assert 'id="batchResultFilterButton"' in template
+    assert 'id="batchResultFilterButton"' in strategy_card
+    assert 'id="batchResultFilterButton"' not in preview_area
     assert 'id="batchLogButton"' not in template
     assert 'id="resultBatchLogButton"' in template
     assert 'id="batchGanttButton"' in template
@@ -91,21 +94,26 @@ def test_cancelled_card_does_not_repeat_status_below_metrics() -> None:
     assert 'item.status === "cancelled" ? "调度已终止"' not in render_function
 
 
-def test_result_cards_toggle_readonly_test_details_below_preview_cards() -> None:
-    """结果卡片按需展示只读详情，详情位于结果预览面板下方，不再外包一层面板。"""
+def test_result_rows_toggle_readonly_test_details_below_preview_table() -> None:
+    """结果表按需展示只读详情，详情位于结果预览面板下方，不再外包一层面板。"""
     template = EDITOR_PATH.read_text(encoding="utf-8")
     source = (EDITOR_PATH.parent / "src" / "config_editor.ts").read_text(encoding="utf-8")
+    table_source = (EDITOR_PATH.parent / "src" / "result_table.ts").read_text(encoding="utf-8")
+    schedule_view = template.split(
+        '<div class="tab-view active" data-tab-view="schedule">', 1
+    )[1].split('<div class="tab-view" data-tab-view="analysis">', 1)[0]
 
     assert template.index('id="runPreviewArea"') < template.index('id="runResultsView"')
     assert template.index('id="resultBatchLogButton"') < template.index('id="batchTestDetails"')
-    assert template.index('id="batchTestDetails"') < template.index('id="runAnalysisView"')
+    assert 'id="runPreviewArea"' in schedule_view
+    assert 'id="batchTestDetails"' in schedule_view
+    assert 'id="testGroupAnalysisPanel"' not in schedule_view
     assert 'class="batch-test-details"' in template
     assert 'class="panel batch-test-details"' not in template
-    assert 'getElementById("runPreviewArea").hidden = analysis' in source
-    assert 'data-batch-test-card=' in source
+    assert 'data-batch-test-card=' in table_source
+    assert 'aria-controls="batchTestDetails"' in table_source
     assert "async function toggleBatchTestDetails" in source
     assert "/api/workspaces/${state.workspaceDeviceId}/tests/${encodeURIComponent(testId)}" in source
-    assert "点击测试卡片可展开详情<br>再次点击即可收起。" in template
     assert "batch-test-details-head" not in source
 
 
@@ -124,29 +132,73 @@ def test_analysis_wizard_selects_tests_without_reference_comparison() -> None:
     assert 'id="analysisTimeBudget"' in template
 
 
-def test_result_cards_double_click_into_a_serial_run_queue() -> None:
-    """双击卡片使用独立串行队列，并且在服务接收前先显示等待状态。"""
+def test_result_rows_keep_accessible_run_and_detail_controls() -> None:
+    """结果行保留稳定交互入口；事件隔离与排队顺序由 TypeScript 行为测试验证。"""
+    template = EDITOR_PATH.read_text(encoding="utf-8")
+    table_source = (EDITOR_PATH.parent / "src" / "result_table.ts").read_text(encoding="utf-8")
+
+    assert 'id="batchResults"' in template
+    assert 'data-batch-test-card=' in table_source
+    assert 'data-result-table-run=' in table_source
+    assert 'data-result-table-details=' in table_source
+    assert 'aria-controls="batchTestDetails"' in table_source
+
+
+def test_result_actions_export_metrics_csv_next_to_gantt() -> None:
+    """结果区底部在“全部甘特图”右侧提供指标 CSV 导出，内容为表格中的三项指标。"""
+    template = EDITOR_PATH.read_text(encoding="utf-8")
+    table_source = (EDITOR_PATH.parent / "src" / "result_table.ts").read_text(encoding="utf-8")
+    source = (EDITOR_PATH.parent / "src" / "config_editor.ts").read_text(encoding="utf-8")
+
+    assert template.index('id="batchGanttButton"') < template.index('id="exportMetricsCsvButton"')
+    assert "exportResultMetricsCsv" in source
+    assert "export function resultTableMetricsCsv" in table_source
+    assert "metricsCsv()" in table_source
+    for header in ("产能（片/h）", "平均重算（s）", "Makespan（s）"):
+        assert header in table_source
+
+
+def test_analysis_report_is_a_workspace_tab_without_batch_progress() -> None:
+    """分析报告是工作空间下的独立页签；结果标题栏不再内嵌预览/分析切换。"""
     template = EDITOR_PATH.read_text(encoding="utf-8")
     source = (EDITOR_PATH.parent / "src" / "config_editor.ts").read_text(encoding="utf-8")
 
-    run_hint = "双击测试卡片可运行<br>多个测试将按顺序排队。"
-    detail_hint = "点击测试卡片可展开详情<br>再次点击即可收起。"
-    assert run_hint in template
-    assert template.index(run_hint) < template.index(detail_hint)
-    assert 'document.addEventListener("dblclick"' in source
-    assert "createResultCardRunQueue" in source
-    assert "markResultCardTestQueued" in source
-    assert "maximumWorkers: fromResultCardQueue ? 1 : batchParallelism()" in source
-
-
-def test_result_header_uses_preview_and_analysis_tabs_without_batch_progress() -> None:
-    """结果标题栏内切换预览和分析；没有可分析结果时分析页不可点击。"""
-    template = EDITOR_PATH.read_text(encoding="utf-8")
-    source = (EDITOR_PATH.parent / "src" / "config_editor.ts").read_text(encoding="utf-8")
-
-    assert 'id="resultPreviewViewButton"' in template
-    assert 'id="analysisReportViewButton"' in template
+    assert 'data-tab-target="analysis"' in template
+    assert '<div class="tab-view" data-tab-view="analysis">' in template
+    assert 'id="generateAnalysisReportButton"' in template
+    assert 'id="resultPreviewViewButton"' not in template
+    assert 'id="analysisReportViewButton"' not in template
     assert 'id="testGroupAnalysisButton"' not in template
     assert 'id="batchProgress"' not in template
     assert 'function canOpenAnalysisReport()' in source
     assert 'button.disabled = !enabled;' in source
+    assert 'switchTab("analysis")' in source
+
+
+def test_gantt_viewer_is_an_in_app_tab_under_result_diagnostics() -> None:
+    """甘特图是“结果诊断”分组下的页签，工具条并入控制台顶栏，初始只展示开头时间窗。"""
+    template = EDITOR_PATH.read_text(encoding="utf-8")
+    source = (EDITOR_PATH.parent / "src" / "config_editor.ts").read_text(encoding="utf-8")
+    toolbar_source = (EDITOR_PATH.parent / "src" / "gantt_toolbar.ts").read_text(encoding="utf-8")
+    viewer = (EDITOR_PATH.parent / "movelist_gantt_viewer.html").read_text(encoding="utf-8")
+    diagnostic_group = template.split('aria-labelledby="diagnosticNavigationTitle"', 1)[1]
+    diagnostic_group = diagnostic_group.split("</nav>", 1)[0]
+
+    assert 'data-tab-target="gantt"' in diagnostic_group
+    assert '<div class="tab-view" data-tab-view="gantt">' in template
+    assert 'id="ganttFrame"' in template
+    assert 'id="batchGanttButton"' in template
+    assert 'id="consoleGanttControls"' in template
+    assert "console_gantt_toolbar.css" in template
+    assert "initializeConsoleGanttToolbar()" in source
+    assert ".toolbar" in toolbar_source
+    assert "function openGanttViewer(url)" in source
+    assert 'switchTab("gantt")' in source
+    assert 'a[href*="movelist_gantt_viewer.html"]' in source
+    assert "result-card-run-hint" not in template
+    assert "双击测试行可运行" not in template
+    # 查看器侧：工具条可被顶栏接管，且初始时间窗固定为 0~1500 秒。
+    assert 'id="ganttToolbar"' in viewer
+    assert "toolbar-detached" in viewer
+    assert "const INITIAL_VIEW_SECONDS = 1500;" in viewer
+    assert "model.domainMin + INITIAL_VIEW_SECONDS" in viewer

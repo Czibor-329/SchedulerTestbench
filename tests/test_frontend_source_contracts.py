@@ -350,25 +350,30 @@ class ConfigEditorFrontendTests(unittest.TestCase):
     def test_result_preview_and_group_analysis_use_main_area(self) -> None:
         """结果预览应保持简洁，并提供独立的测试组分析入口。"""
         html = _editor_source()
+        table_source = (EDITOR_PATH.parent / "src" / "result_table.ts").read_text(encoding="utf-8")
         schedule = html.split('<div class="tab-view active" data-tab-view="schedule">', 1)[1]
-        schedule = schedule.split('<div class="tab-view" data-tab-view="test-management">', 1)[0]
+        schedule = schedule.split('<div class="tab-view" data-tab-view="analysis">', 1)[0]
+        analysis = html.split('<div class="tab-view" data-tab-view="analysis">', 1)[1]
+        analysis = analysis.split('<div class="tab-view" data-tab-view="test-management">', 1)[0]
         sidebar = html.split('<aside class="side" id="scheduleSide">', 1)[1]
         sidebar = sidebar.split("</aside>", 1)[0]
 
         self.assertNotIn('id="runTestPreview"', schedule)
-        self.assertIn('id="runAnalysisView"', schedule)
+        self.assertIn('id="runPreviewArea"', schedule)
+        self.assertNotIn('id="testGroupAnalysisPanel"', schedule)
         self.assertNotIn('class="panel batch-selection-panel"', schedule)
-        self.assertIn('class="panel result-panel"', schedule)
+        self.assertIn('id="runResultsView"', schedule)
+        self.assertIn('data-tab-target="analysis"', html)
+        self.assertIn('id="testGroupAnalysisPanel"', analysis)
+        self.assertIn('id="generateAnalysisReportButton"', analysis)
+        self.assertNotIn('id="runPreviewArea"', analysis)
         self.assertIn("运行策略", sidebar)
         self.assertNotIn("开始运行", sidebar)
         self.assertIn("运行所选测试", sidebar)
         self.assertNotIn("结果预览", sidebar)
-        self.assertIn("container-name: result-area", html)
-        self.assertIn(".batch-results { display: grid;", html)
-        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr))", html)
-        self.assertIn("@container result-area (max-width: 1100px)", html)
-        self.assertIn("@container result-area (max-width: 720px)", html)
-        self.assertIn("@container result-area (max-width: 520px)", html)
+        self.assertIn('id="batchResults"', html)
+        self.assertIn('aria-label="运行结果分页"', table_source)
+        self.assertNotIn('data-result-table-size', table_source)
         self.assertNotIn('class="terminal-section"', html)
         self.assertNotIn('id="clearButton"', html)
         self.assertIn('id="resultErrorPanel" role="alert" hidden', html)
@@ -379,18 +384,16 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         self.assertIn("deadlock?.message", html)
         self.assertNotIn("error-artifact-strip", html)
         self.assertIn("只有错误才显示", html)
-        self.assertIn('class="batch-result-summary"', html)
-        self.assertIn('class="batch-metric-tags"', html)
-        self.assertIn("batch-metric-tag production", html)
-        self.assertIn("batch-metric-tag recompute", html)
-        self.assertNotIn('class="batch-result-metrics"', html)
-        self.assertIn('const displayId = `t${index + 1}`', html)
-        self.assertIn("产能 ${throughput.toFixed(1)} 片/h", html)
-        self.assertIn("平均重算 ${hasMetrics && hasAverageRecomputeTime", html)
+        self.assertIn('scope="col">测试名称', table_source)
+        self.assertIn('scope="col">状态', table_source)
+        self.assertIn("产能", table_source)
+        self.assertIn("平均重算", table_source)
+        self.assertIn('aria-controls="batchTestDetails"', table_source)
         self.assertNotIn("已跳过基线", html)
         self.assertNotIn('id="testGroupAnalysisButton"', html)
-        self.assertIn('id="analysisReportViewButton"', html)
-        self.assertIn('id="testGroupAnalysisPanel"', html)
+        self.assertNotIn('id="analysisReportViewButton"', html)
+        self.assertIn('id="generateAnalysisReportButton"', analysis)
+        self.assertIn('id="testGroupAnalysisPanel"', analysis)
         self.assertIn("renderTestGroupAnalysis", html)
         self.assertIn("testGroupSummaryCsv", html)
         self.assertNotIn('data-batch-item-index="${index}"', html)
@@ -428,7 +431,7 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         self.assertIn('id="visualPlaybackEmpty"', page)
         self.assertNotIn('id="visualTopologyToggle"', page)
         self.assertIn('id="visualTopologyPlayback" hidden', page)
-        analysis_view = page.split('id="runAnalysisView"', 1)[1].split('data-tab-view="test-management"', 1)[0]
+        analysis_view = page.split('<div class="tab-view" data-tab-view="analysis">', 1)[1].split('<div class="tab-view" data-tab-view="test-management">', 1)[0]
         self.assertNotIn('id="visualTopologyPlayback"', analysis_view)
         topology_playback = page.split('id="visualTopologyPlayback"', 1)[1]
         self.assertIn('id="visualTimeline"', topology_playback)
@@ -457,7 +460,9 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         self.assertIn("this.elements.groupAnalysis.hidden = true", workspace_source)
         self.assertIn("visualizationWorkspace.showGroupAnalysis(panelMarkup)", editor_source)
         self.assertIn('panel.querySelector("[data-return-run-results]")', editor_source)
-        self.assertIn('setRunResultView("results")', editor_source)
+        self.assertIn('switchTab("analysis")', editor_source)
+        self.assertIn('switchTab("schedule")', editor_source)
+        self.assertNotIn("setRunResultView", editor_source)
         self.assertIn('requestSearchControl(command)', editor_source)
         self.assertIn("async function controlSearchTelemetry(command)", editor_source)
         self.assertNotIn("visualizationWorkspace.beginLiveSolve", editor_source)
@@ -470,9 +475,11 @@ class ConfigEditorFrontendTests(unittest.TestCase):
             '<span class="eyebrow">测试组结果分析</span>',
         ):
             self.assertNotIn(removed_content, group_view_source)
-        self.assertIn('class="group-analysis-head"', group_view_source)
+        self.assertIn('aria-label="本次分析指标"', group_view_source)
         self.assertNotIn('<div class="group-kpi-grid">', group_view_source)
-        self.assertIn('<section class="group-analysis-table-wrap">', group_view_source)
+        self.assertIn('aria-label="逐测试分析报告，可横向滚动"', group_view_source)
+        self.assertIn('scope="col"', group_view_source)
+        self.assertIn('scope="row"', group_view_source)
         self.assertIn('data-return-run-results', group_view_source)
         self.assertIn('返回运行结果', group_view_source)
         self.assertNotIn('参考测试：', group_view_source)

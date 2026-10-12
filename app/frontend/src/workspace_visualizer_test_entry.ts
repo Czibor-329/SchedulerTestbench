@@ -37,7 +37,7 @@ export { isAnalysisViewVisible, mountAnalysisWorkspace } from "./analysis_worksp
 export { mountReplayInspectorDock, setReplayDockExpanded, setReplayInspectorExpanded } from "./replay_inspector_dock";
 export { projectTopologyTransfers } from "./topology_transfer_projection";
 export { waferDispatchProgress, renderWaferDispatchProgress, updateWaferProgressPanel } from "./wafer_dispatch_progress";
-export { testGroupSummaryCsv } from "./group_analysis_view";
+export { renderTestGroupAnalysis, testGroupSummaryCsv } from "./group_analysis_view";
 export { movelistResultSourceUrl } from "./result_artifact_urls";
 export { projectReplayWaferDestinations, replayMaterialInstanceKey, replayMoveMaterials, replayWaferWaitingSeconds } from "./replay_wafer_destinations";
 export { replayObjectKey, replayObjectIsCurrent, replayObjectEvents, replayMoveMatchesObject, replayActionMatchesObject, replayObjectGanttUrl,

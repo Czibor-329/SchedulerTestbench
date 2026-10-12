@@ -121,12 +121,12 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         package = json.loads((frontend_root / "package.json").read_text(encoding="utf-8"))
         package_lock = json.loads((frontend_root / "package-lock.json").read_text(encoding="utf-8"))
 
-        self.assertEqual("1.6.18", package["version"])
-        self.assertEqual("1.6.18", package_lock["version"])
-        self.assertEqual("1.6.18", package_lock["packages"][""]["version"])
-        self.assertIn('class="frontend-version">V1.6.18</span>', template)
-        self.assertIn('/assets/config_editor.css?v=1.6.18', template)
-        self.assertIn('/assets/config_editor.js?v=1.6.18', template)
+        self.assertEqual("1.6.19", package["version"])
+        self.assertEqual("1.6.19", package_lock["version"])
+        self.assertEqual("1.6.19", package_lock["packages"][""]["version"])
+        self.assertIn('class="frontend-version">V1.6.19</span>', template)
+        self.assertIn('/assets/config_editor.css?v=1.6.19', template)
+        self.assertIn('/assets/config_editor.js?v=1.6.19', template)
 
     def test_single_run_failure_card_does_not_duplicate_validation_issue(self) -> None:
         """状态推进校验失败只展示一条完整错误，不再重复渲染问题列表。"""
@@ -175,11 +175,11 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         self.assertIn("renderSignature !== lastBatchItemsRenderSignature", source)
         self.assertNotIn("window.setTimeout(resolve, 450)", source)
 
-    def test_batch_selection_dialog_and_scrollable_ordered_cards_exist(self) -> None:
-        """批量弹窗应支持范围、勾选和全量运行，结果卡片保持顺序并限制高度。"""
+    def test_batch_selection_dialog_and_paginated_results_exist(self) -> None:
+        """批量弹窗保留运行选择，结果用独立分页导航保持大量测试可浏览。"""
         template = EDITOR_PATH.read_text(encoding="utf-8")
         source = EDITOR_SCRIPT_PATH.read_text(encoding="utf-8")
-        style = EDITOR_STYLE_PATH.read_text(encoding="utf-8")
+        table_source = (EDITOR_PATH.parent / "src" / "result_table.ts").read_text(encoding="utf-8")
 
         for element_id in (
             "batchTestSelectionDialog",
@@ -197,15 +197,17 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         self.assertIn('batchSelectionMode === "filter"', source)
         self.assertIn("function orderedBatchItems(items)", source)
         self.assertIn("result.items = orderedBatchItems", source)
-        self.assertRegex(style, r"\.batch-results\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto")
+        self.assertIn('aria-label="运行结果分页"', table_source)
+        self.assertNotIn('data-result-table-size', table_source)
 
-    def test_batch_result_card_opens_topology_playback(self) -> None:
-        """批量结果卡片应提供回放入口，并在载入结果后进入拓扑回放。"""
+    def test_batch_result_table_opens_topology_playback(self) -> None:
+        """批量结果表格应提供回放入口，并在载入结果后进入拓扑回放。"""
         source = EDITOR_SCRIPT_PATH.read_text(encoding="utf-8")
+        table_source = (EDITOR_PATH.parent / "src" / "result_table.ts").read_text(encoding="utf-8")
 
-        self.assertIn('data-playback-result="${escapeHtml(item.resultUrl)}"', source)
-        self.assertIn(">回放</button>", source)
-        self.assertNotIn(">工作台</button>", source)
+        self.assertIn('data-playback-result=', table_source)
+        self.assertIn('data-playback-name=', table_source)
+        self.assertIn('data-playback-log=', table_source)
         self.assertIn('event.target.closest("[data-playback-result]")', source)
         self.assertIn(".then(() => visualizationWorkspace.showPlayback())", source)
 

@@ -1210,6 +1210,15 @@
         width: min(100%, 260px);
       }
     }
+
+    /* 控制台页签内嵌模式：工具条已搬到控制台顶栏，这里释放它原来的占位。 */
+    html.toolbar-detached .controls {
+      display: none;
+    }
+
+    html.toolbar-detached .layout {
+      grid-template-rows: auto minmax(0, 1fr);
+    }
   </style>
 </head>
 <body>
@@ -1217,7 +1226,7 @@
     <div class="layout">
       <section class="controls" aria-label="Viewer controls">
         <main class="main movelist-panel">
-          <div class="toolbar">
+          <div class="toolbar" id="ganttToolbar">
             <div class="toolbar-rows">
               <div class="toolbar-row">
                 <div class="toolbar-group">
@@ -1291,6 +1300,10 @@
   <script>
     "use strict";
 
+    // 内嵌在控制台“甘特图”页签时，工具条由控制台顶栏承载：在首次布局前就释放它原来的占位，
+    // 之后的绘制仍按去掉工具条后的可用高度计算。独立打开本页时保持原有工具条。
+    if (window.self !== window.top) document.documentElement.classList.add("toolbar-detached");
+
     const LANE_H = 28;
     const SUBLANE_H = 28;
     const LANE_GAP = 8;
@@ -1301,6 +1314,8 @@
     const ZERO_DURATION_EPSILON_SECONDS = 1e-9;
     const ZERO_DURATION_MARKER_WIDTH = 3;
     const REPLAY_FOCUS_TIME_PADDING_SECONDS = 10;
+/** 首次打开文件时默认展示的时间窗（秒）；更长的计划需点击 Fit 查看全程。 */
+const INITIAL_VIEW_SECONDS = 1500;
 
     const S = {
       MOVETYPE_NAMES: {
@@ -2088,8 +2103,9 @@
 
     function fitViewIfNeeded(dataset, model) {
       if (!Number.isFinite(dataset.view.t0) || !Number.isFinite(dataset.view.t1) || dataset.view.t1 <= dataset.view.t0) {
+        // 初始只展示开头的时间窗，长计划不会一上来就被压缩成看不清细节的整段。
         dataset.view.t0 = model.domainMin;
-        dataset.view.t1 = model.domainMax;
+        dataset.view.t1 = Math.min(model.domainMin + INITIAL_VIEW_SECONDS, model.domainMax);
       }
       clampView(dataset, model);
     }

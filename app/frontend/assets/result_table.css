@@ -1,0 +1,50 @@
+/**
+ * 首页结果分页的领域适配：依赖 spark_table.css 的原版共享表格样式。
+ * 这里只处理有限宽度、运行状态、分页控件和顶层结果菜单；卡片边界由父容器拥有。
+ * 指标表头只写指标名，单位放在表头悬浮提示中；行操作沿用模板的图标按钮几何，不再带文字。
+ */
+#batchResults.result-table-container { display: block; max-height: none; overflow: visible; padding: 0; }
+/* 结果行全部直接展示，不在卡片内滚动；只保留窄屏下的横向滚动。 */
+.result-table-scroll { width: 100%; overflow-x: auto; border: 0; border-radius: 0; }
+/* 列宽固定、测试名称列吸收剩余宽度，避免自动布局把状态与指标列撑成宽窄不一的空列。 */
+.result-table { min-width: 760px; table-layout: fixed; font-size: 17px; line-height: 1.5; }
+.result-table th, .result-table td { padding: 14px 12px; border-right: 0; text-align: left; vertical-align: middle; }
+.result-table thead th { box-shadow: inset 0 -1px rgba(11, 19, 15, 0.08); }
+.result-table .table-user-name { font-size: 17px; }
+.result-table .badge-table { font-size: 15px; }
+.result-table .result-table-status-column { width: 110px; }
+.result-table .result-table-metric-column { width: 120px; }
+.result-table .result-table-actions-column { width: 132px; }
+.result-table tbody th { min-width: 120px; background: transparent; white-space: normal; }
+.result-table-name { display: block; max-width: 300px; overflow-wrap: anywhere; }
+/* 指标数字加粗并用等宽字形对齐；无值占位退为浅色，避免整列都是同样醒目的“—”。 */
+.result-table .result-table-number { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink); }
+.result-table .result-table-number.is-empty { color: #a9b3ad; font-weight: 400; }
+.result-table-row { cursor: pointer; }
+.result-table-row.details-open { background: var(--brand-soft); }
+.result-table .badge-table.neutral { color: var(--muted); background: #f0f3f1; }
+.result-table .badge-table.running { color: #226eb0; background: #edf4fb; }
+.result-table .badge-table.neutral::before, .result-table .badge-table.running::before { background: currentColor; }
+.result-table-actions { display: flex; align-items: center; flex-wrap: nowrap; gap: 5px; }
+/* 图标按钮沿用 spark_table.css 的模板几何（32×32、10px 圆角），这里只约束图标尺寸。 */
+.result-table .table-btn-action { cursor: pointer; }
+.result-table .table-btn-action svg { width: 16px; height: 16px; }
+.result-table .table-btn-action:disabled { color: #9ba59f; background: #fff; border-color: #e9eeea; cursor: default; }
+.result-table-menu { position: fixed; inset: auto; margin: 0; width: 180px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--brand); box-shadow: 0 12px 36px rgba(7, 47, 31, .16); }
+.result-table-menu:popover-open { display: flex; flex-direction: column; gap: 2px; }
+.result-table-menu:not(:popover-open) { display: none; }
+.result-table-menu [role="menuitem"] { display: flex; align-items: center; min-height: 40px; width: 100%; padding: 8px 12px; border: 0; border-radius: 7px; background: transparent; color: inherit; font: inherit; font-size: 15px; text-align: left; text-decoration: none; cursor: pointer; }
+.result-table-menu [role="menuitem"]:hover, .result-table-menu [role="menuitem"]:focus-visible { background: var(--brand-soft); outline: none; }
+.result-table-menu [role="menuitem"]:disabled { color: #9ba59f; background: transparent; cursor: default; }
+.result-table-menu [role="menuitem"].danger { color: var(--red); }
+.result-table .result-table-empty { padding: 48px 20px; color: var(--muted); text-align: center; font-size: 15px; }
+.result-table-footer { border-radius: 0; font-size: 14px; }
+.result-table-page-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; color: var(--muted); }
+.result-table-page-summary label { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; font-weight: 400; }
+.result-table-page-summary select { width: auto; min-width: 78px; min-height: 36px; padding: 5px 26px 5px 9px; border: 1px solid var(--line); border-radius: 10px; background-color: #fff; font-size: 14px; }
+.result-table-pagination { display: flex; align-items: center; gap: 4px; padding: 0; margin: 0; list-style: none; }
+.result-table-pagination .page-link { min-width: 34px; min-height: 36px; padding: 5px 10px; border: 0; font: inherit; cursor: pointer; }
+.result-table-pagination .page-link:disabled { cursor: default; }
+.result-table-page-gap { padding: 0 3px; color: var(--muted); }
+.result-table .table-btn-action:focus-visible, .result-table-pagination button:focus-visible, .result-table-scroll:focus-visible { outline: 2px solid #46765a; outline-offset: 2px; }
+@media (max-width: 760px) { .result-table-footer { align-items: flex-start; padding: 12px; } .result-table-pagination { flex-wrap: wrap; } }

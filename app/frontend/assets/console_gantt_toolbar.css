@@ -1,0 +1,131 @@
+/**
+ * 甘特图页签统一顶栏的布局与控件外观；与 gantt_toolbar.ts 的工具条搬移配套。
+ * 控件取值来自 spark-admin-v1.0.0.zip / assets/css/main.css 第 19（表单元素）与第 20（按钮）节，
+ * 颜色映射到 console_shell.css 的语义变量，只作用于顶栏内的甘特图控件，不影响页面其它区域。
+ */
+.console-topbar.console-gantt-toolbar {
+  display: flex; align-items: center; gap: 12px; min-height: 72px;
+  padding: 10px 16px; background: #fff;
+}
+.console-gantt-toolbar .console-topbar-start,
+.console-gantt-toolbar .console-topbar-actions { flex: none; gap: 8px; }
+.console-gantt-toolbar :is(.console-menu-toggle, .console-help-link) { width: 34px; height: 34px; border-radius: 10px; }
+.console-gantt-controls { display: flex; flex: 1; min-width: 0; align-items: center; }
+.console-gantt-controls[hidden] { display: none; }
+
+/* 搬移进来的查看器工具条：去掉原卡片外观，按顶栏宽度换行。 */
+.console-gantt-controls .toolbar {
+  display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px;
+  padding: 0; background: transparent; border: 0;
+}
+.console-gantt-controls .toolbar-rows {
+  flex: 1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+}
+.console-gantt-controls .toolbar-row { flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.console-gantt-controls .toolbar-file-btns { flex-direction: row; align-items: center; gap: 8px; }
+.console-gantt-controls .toolbar-group {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px;
+  padding: 3px 8px; border: 1px solid rgba(11, 19, 15, 0.06); border-radius: 14px; background: #f8faf9;
+}
+.console-gantt-controls .field {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  color: var(--muted); font-size: 13px; font-weight: 650; white-space: nowrap;
+}
+.console-gantt-controls .field strong {
+  color: var(--ink); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+
+/* 模板按钮：白底窄描边、悬停加深；主操作使用森林绿。 */
+.console-gantt-controls button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 0 12px; border: 1px solid rgba(11, 19, 15, 0.1); border-radius: 10px;
+  color: var(--brand-dark); background: #fff; font-size: 14px; font-weight: 600; white-space: nowrap;
+  cursor: pointer; transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+.console-gantt-controls button:hover:not(:disabled) { background: #eef2f0; border-color: rgba(11, 19, 15, 0.16); }
+.console-gantt-controls button:active:not(:disabled) { transform: scale(0.97); }
+.console-gantt-controls button:focus-visible { outline: 0; border-color: var(--brand); box-shadow: 0 0 0 3px rgb(7 47 31 / 8%); }
+.console-gantt-controls button:disabled {
+  color: #93a29a; background: #f8faf9; border-color: rgba(11, 19, 15, 0.06); opacity: 0.8; cursor: not-allowed;
+}
+.console-gantt-controls button.primary { color: #fff; background: var(--brand); border-color: var(--brand); }
+.console-gantt-controls button.primary:hover:not(:disabled) { background: var(--brand-dark); border-color: var(--brand-dark); }
+
+/* 模板输入与下拉：白底、圆角，聚焦时使用森林绿描边与柔和光圈。 */
+.console-gantt-controls :is(input[type="search"], input[type="number"], input[type="text"], select) {
+  min-height: 34px; padding: 0 12px; border: 1px solid rgba(11, 19, 15, 0.12); border-radius: 10px;
+  color: var(--ink); background-color: #fff; font-size: 14px; font-weight: 500;
+}
+.console-gantt-controls select {
+  padding-right: 32px; appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23072F1F' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+  background-repeat: no-repeat; background-position: right 11px center; background-size: 12px 10px;
+}
+.console-gantt-controls :is(input, select):focus {
+  border-color: var(--brand); outline: 0; box-shadow: 0 0 0 3px rgb(7 47 31 / 8%);
+}
+.console-gantt-controls :is(input, select):disabled {
+  color: var(--muted); background-color: #f8faf9; border-color: rgba(11, 19, 15, 0.06);
+  opacity: 0.8; cursor: not-allowed;
+}
+.console-gantt-controls .field input[type="number"] { width: 92px; }
+.console-gantt-controls .field.search-field input { width: 168px; }
+
+/* 模板开关：38×20 滑块，选中时用森林绿填充。 */
+.console-gantt-controls .switch {
+  display: inline-flex; align-items: center; gap: 8px; color: var(--ink);
+  font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.console-gantt-controls .switch input[type="checkbox"] {
+  position: relative; width: 38px; height: 20px; flex: none; margin: 0;
+  border: 1px solid rgba(11, 19, 15, 0.08); border-radius: 50rem; background-color: rgba(11, 19, 15, 0.1);
+  appearance: none; cursor: pointer; transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.console-gantt-controls .switch input[type="checkbox"]::before {
+  content: ""; position: absolute; top: 1px; left: 1px; width: 16px; height: 16px;
+  border-radius: 50rem; background-color: #fff; box-shadow: 0 2px 4px rgb(11 19 15 / 15%);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.console-gantt-controls .switch input[type="checkbox"]:checked { background-color: var(--brand); border-color: var(--brand); }
+.console-gantt-controls .switch input[type="checkbox"]:checked::before { transform: translateX(18px); }
+.console-gantt-controls .switch input[type="checkbox"]:focus-visible { outline: 0; box-shadow: 0 0 0 3px rgb(7 47 31 / 8%); }
+.console-gantt-controls .switch input[type="checkbox"]:disabled { opacity: 0.8; cursor: not-allowed; }
+
+/* 搜索与差异状态文本沿用查看器的语义色。 */
+.console-gantt-controls .search-status { color: var(--muted); font-size: 12px; font-weight: 600; }
+.console-gantt-controls .diff-status { color: var(--muted); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.console-gantt-controls .diff-status.warn { color: #d97706; }
+.console-gantt-controls .hidden { display: none !important; }
+.console-gantt-controls .sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+}
+
+/* 文件按钮图标：与查看器一致地用伪元素绘制加号与文件。 */
+.console-gantt-controls .button-icon {
+  position: relative; display: inline-grid; place-items: center; flex: none;
+  width: 18px; height: 18px; border-radius: 5px; background: rgb(15 23 42 / 8%);
+}
+.console-gantt-controls button.primary .button-icon { background: rgb(255 255 255 / 18%); }
+.console-gantt-controls .plus-icon::before,
+.console-gantt-controls .plus-icon::after {
+  content: ""; position: absolute; left: 5px; right: 5px; top: 8px; height: 2px;
+  border-radius: 999px; background: currentColor;
+}
+.console-gantt-controls .plus-icon::after { left: 8px; right: auto; top: 5px; width: 2px; height: 8px; }
+.console-gantt-controls .files-icon::before,
+.console-gantt-controls .files-icon::after {
+  content: ""; position: absolute; width: 9px; height: 11px;
+  border: 1.5px solid currentColor; border-radius: 2px; background: #fff;
+}
+.console-gantt-controls .files-icon::before { left: 4px; top: 3px; opacity: 0.55; }
+.console-gantt-controls .files-icon::after { left: 6px; top: 5px; }
+
+/* 窄屏让出空间：面包屑先隐藏，再收紧控件间距。 */
+@media (max-width: 1500px) {
+  .console-topbar.console-gantt-toolbar .console-breadcrumb { display: none; }
+}
+@media (max-width: 760px) {
+  .console-topbar.console-gantt-toolbar { align-items: flex-start; gap: 10px; padding: 10px 12px; }
+  .console-gantt-controls button { padding-inline: 10px; }
+  .console-gantt-controls .field.search-field input { width: 132px; }
+}

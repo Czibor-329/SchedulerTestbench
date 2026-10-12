@@ -82,6 +82,8 @@ def _run_frontend(*, fail_fast: bool) -> int:
         gantt_semantics_output = build_root / "gantt_move_semantics.js"
         run_workspace_output = build_root / "run_workspace.js"
         result_card_run_queue_output = build_root / "result_card_run_queue.js"
+        result_table_output = build_root / "result_table.js"
+        gantt_toolbar_output = build_root / "gantt_toolbar.js"
         entries = (
             (FRONTEND_ROOT / "src" / "workspace_visualizer_test_entry.ts", workspace_output),
             (FRONTEND_ROOT / "src" / "route_editor_logic.ts", route_output),
@@ -91,6 +93,11 @@ def _run_frontend(*, fail_fast: bool) -> int:
             (
                 FRONTEND_ROOT / "src" / "result_card_run_queue_test_entry.ts",
                 result_card_run_queue_output,
+            ),
+            (FRONTEND_ROOT / "src" / "result_table.ts", result_table_output),
+            (
+                FRONTEND_ROOT / "src" / "gantt_toolbar_test_entry.ts",
+                gantt_toolbar_output,
             ),
         )
         for source, destination in entries:
@@ -118,6 +125,8 @@ def _run_frontend(*, fail_fast: bool) -> int:
         environment["CT_RESULT_CARD_RUN_QUEUE_TEST_BUILD"] = str(
             result_card_run_queue_output
         )
+        environment["CT_RESULT_TABLE_TEST_BUILD"] = str(result_table_output)
+        environment["CT_GANTT_TOOLBAR_TEST_BUILD"] = str(gantt_toolbar_output)
         command = [
             "node",
             "--test",

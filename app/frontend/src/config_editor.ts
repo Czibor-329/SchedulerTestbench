@@ -8,6 +8,9 @@
 
 // @ts-nocheck
 import { createDraftChoiceDialog, resolveTestDraft } from "./test_draft_navigation";
+import { initializeConsoleShell } from "./console_shell";
+import { initializeConsoleReplayToolbar } from "./console_replay_toolbar";
+import { initializeConsoleGanttToolbar } from "./gantt_toolbar";
 import * as RouteEditorLogic from "./route_editor_logic";
 import {
   cancelTestGroupAnalysisJob,
@@ -21,6 +24,7 @@ import {
 import { createVisualizationWorkspace, detectDeviceTopologyLayout, updateThroughputChartRange } from "./workspace_visualizer";
 import { renderTestGroupAnalysis, testGroupSummaryCsv } from "./group_analysis_view";
 import { createResultCardRunQueue } from "./result_card_run_queue";
+import { createResultTable } from "./result_table";
 import { createTestCreationCoordinator } from "./test_creation_coordinator";
 import { createBatchAnalysisContext } from "./batch_analysis_context";
 import {
@@ -50,6 +54,10 @@ let expandedBatchTestId = "";
 let batchTestDetailsRequestVersion = 0;
 let batchCardClickTimer = 0;
 const batchResultItemHistory = new Map<string, any>();
+const batchResultTable = createResultTable(document.getElementById("batchResults"), {
+  showDetails: testId => toggleBatchTestDetails(testId).catch(error => writeTerminal(`$ 测试详情读取失败\n  ${error.message || "未知错误"}`, true)),
+  runTest: testId => enqueueResultCardTest(testId),
+});
 let runPreparationActive = false;
 let navigationPending = false;
 let activeManagementSection = "cases";
@@ -129,6 +137,8 @@ const SEARCH_TELEMETRY_POLL_MILLISECONDS = 75;
 const BATCH_STATUS_POLL_MILLISECONDS = 1000;
 const BATCH_CARD_SINGLE_CLICK_DELAY_MILLISECONDS = 500;
 const WORKSPACE_TRANSFER_POLL_MILLISECONDS = 500;
+/** 结果表的重算耗时按秒展示，接口与指标缓存仍以毫秒为准。 */
+const MILLISECONDS_PER_SECOND = 1000;
 const TEST_ORDER_COLLATOR = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
 const DEFAULT_DUMMY_WAFER_COUNT = 8;
 const STATION_ACTION_TIME_FIELDS = [
@@ -1588,7 +1598,25 @@ function initializeCompactSelects() {
       if (!optionButton || optionButton.disabled) return;
       select.selectedIndex = Number(optionButton.dataset.optionIndex);
       setOpen(false);
+      trigger.focus();
       select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    // 自定义选择器代替原生 select 后，保留方向键浏览、退出与顺序焦点行为。
+    menu.addEventListener("keydown", event => {
+      if (event.key === "Escape" || event.key === "Tab") {
+        if (event.key === "Escape") event.preventDefault();
+        setOpen(false);
+        trigger.focus();
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const options = Array.from(menu.querySelectorAll("[data-option-index]:not(:disabled):not([hidden])"));
+      if (!options.length) return;
+      const currentIndex = options.indexOf(document.activeElement);
+      const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1
+        : (currentIndex + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+      options[nextIndex].focus();
     });
     refreshCompactSelect(select);
   });
@@ -1668,8 +1696,8 @@ function renderWorkspaceControls() {
   document.getElementById("roundCount").disabled = !hasTest;
   document.getElementById("saveAndRunPageButton").disabled = !hasTest;
   document.getElementById("discardTestButton").disabled = !hasTest || !state.dirty;
-  document.querySelectorAll('[data-tab-target="test-management"], [data-tab-target="device-config"], [data-tab-target="route"]').forEach(button => {
-    button.disabled = busy; button.title = busy ? "运行结束后可编辑配置" : "";
+  document.querySelectorAll('[data-management-target], [data-tab-target="test-management"], [data-tab-target="device-config"], [data-tab-target="route"]').forEach(button => {
+    button.disabled = busy; button.title = busy ? "运行结束后可编辑配置" : button.textContent.trim();
   });
   renderTestCatalog(visibleTests);
   compactSelectTargets().forEach(refreshCompactSelect);
@@ -1803,7 +1831,6 @@ function markRoutesDirty() {
 
 /** 清理上一测试集的结果链接和批量状态，避免把旧结果误认为当前结果。 */
 function resetRunResult() {
-  setRunResultView("results");
   visualizationWorkspace.clear();
   state.batchResult = null; activeBatchContext = null;
   batchCardAnalyses.clear();
@@ -2647,38 +2674,24 @@ function canOpenAnalysisReport() {
   return Boolean(state.batchResult?.items?.some(item => hasBatchResultMetrics(item) && item.resultUrl));
 }
 
-/** 按批量结果状态启用分析报告入口；没有可分析结果时固定留在结果预览。 */
+/** 按批量结果状态启用分析报告页的生成入口；没有可分析结果时不启动分析向导。 */
 function updateAnalysisReportAvailability() {
-  const button = document.getElementById("analysisReportViewButton");
+  const button = document.getElementById("generateAnalysisReportButton") as HTMLButtonElement;
   const enabled = canOpenAnalysisReport();
   button.disabled = !enabled;
-  button.title = enabled ? "配置或查看测试组分析报告" : "至少完成一项可分析测试后才能查看分析报告";
-  if (!enabled && !document.getElementById("runAnalysisView").hidden) setRunResultView("results");
-}
-
-/** 在首页切换结果预览与分析报告，不改变运行选择，也不触发指标计算。 */
-function setRunResultView(view) {
-  const analysis = view === "analysis";
-  if (analysis && !canOpenAnalysisReport()) return;
-  document.getElementById("runPreviewArea").hidden = analysis;
-  document.getElementById("runAnalysisView").hidden = !analysis;
-  document.querySelectorAll("[data-result-view]").forEach(button => {
-    const selected = button.dataset.resultView === view;
-    button.classList.toggle("active", selected);
-    button.setAttribute("aria-selected", String(selected));
-  });
+  button.title = enabled ? "配置并生成测试组分析报告" : "至少完成一项可分析测试后才能生成分析报告";
 }
 
 /** 切换页面；编辑草稿解决前不离开，运行中保持配置稳定但允许查看回放。 */
-async function switchTab(name) {
+async function switchTab(name, managementSection = null) {
   if (navigationPending) return;
-  const requestedManagementSection = name === "route" ? "routes" : name === "device-config" ? "devices" : null;
+  const requestedManagementSection = managementSection || (name === "route" ? "routes" : name === "device-config" ? "devices" : null);
   if (requestedManagementSection) name = "test-management";
   if (document.querySelector("[data-tab-view].active")?.dataset.tabView === name) {
     if (requestedManagementSection) await switchManagementSection(requestedManagementSection);
     return;
   }
-  if ((runPreparationActive || state.batchRunning) && !["schedule", "playback"].includes(name)) return;
+  if ((runPreparationActive || state.batchRunning) && !["schedule", "analysis", "playback", "gantt"].includes(name)) return;
   navigationPending = true;
   try {
     if (!await settleTestDraft()) return;
@@ -2694,14 +2707,18 @@ async function switchTab(name) {
       else button.removeAttribute("aria-current");
     });
     document.querySelectorAll("[data-tab-view]").forEach(view => view.classList.toggle("active", view.dataset.tabView === name));
-    const managementSubtabs = document.querySelector(".sidebar-subtabs") as HTMLElement | null;
-    if (managementSubtabs) managementSubtabs.hidden = name !== "test-management";
+    document.querySelectorAll("[data-management-target]").forEach(button => {
+      const selected = name === "test-management" && button.dataset.managementTarget === activeManagementSection;
+      button.classList.toggle("active", selected);
+      if (selected) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
+    });
     document.getElementById("scheduleSide").classList.toggle("is-hidden", name !== "schedule");
     document.getElementById("pageLayout").classList.toggle("editor-mode", name !== "schedule");
     if (name === "test-management" && requestedManagementSection) await switchManagementSection(requestedManagementSection);
     if (name === "test-management" && activeManagementSection === "devices") renderDeviceTimingConfiguration();
     closeStepDrawer(); closePJobRoutePicker(false);
     if (name === "schedule") renderAll();
+    if (name === "gantt") ensureGanttFrameLoaded();
     renderWorkspaceControls();
   } catch (error) {
     setWorkspaceStatus(`无法离开测试：${error.message}`, "dirty");
@@ -4885,13 +4902,35 @@ async function showTestGroupAnalysis() {
   document.getElementById("analysisOptionsCancel").disabled = false;
   document.getElementById("analysisOptionsClose").disabled = false;
   (document.getElementById("analysisOptionsDialog") as HTMLDialogElement).close();
-  await switchTab("schedule");
-  setRunResultView("analysis");
+  await switchTab("analysis");
   const panel = document.getElementById("testGroupAnalysisPanel");
   bindTestGroupExport(panel, summary, result.group || state.activeTestGroup || "当前测试组");
-  panel.querySelector("[data-return-run-results]")?.addEventListener("click", () => setRunResultView("results"));
+  panel.querySelector("[data-return-run-results]")?.addEventListener("click", () => void switchTab("schedule"));
   panel.querySelector("[data-reconfigure-analysis]")?.addEventListener("click", openGroupAnalysisOptions);
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+/** 触发 CSV 文本下载；统一加 BOM，保证 Excel 正确识别中文。 */
+function downloadCsv(csv: string, fileName: string) {
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** 生成下载文件名中的时间戳，避免同一秒内多次导出互相覆盖。 */
+function csvFileNameStamp() {
+  return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+}
+
+/** 去掉文件名中的非法字符，保留设备或测试组的可读名称。 */
+function safeFileNamePart(value) {
+  return String(value || "测试组").replace(/[\\/:*?"<>|]/g, "_");
 }
 
 /** 绑定测试组逐测试指标面板的“导出 CSV”按钮，生成 CSV 并触发浏览器下载。 */
@@ -4902,18 +4941,15 @@ function bindTestGroupExport(panel, summary, groupName) {
     // 阻止事件冒泡到 <summary>，避免点击导出时展开/收起表格。
     event.preventDefault();
     event.stopPropagation();
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const safeName = String(groupName || "测试组").replace(/[\\/:*?"<>|]/g, "_");
-    const blob = new Blob([`\uFEFF${testGroupSummaryCsv(summary)}`], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `测试组指标-${safeName}-${stamp}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    downloadCsv(testGroupSummaryCsv(summary), `测试组指标-${safeFileNamePart(groupName)}-${csvFileNameStamp()}.csv`);
   });
+}
+
+/** 导出结果表当前筛选范围内的三项指标；分页只影响屏幕，不影响导出内容。 */
+function exportResultMetricsCsv() {
+  const device = safeFileNamePart(state.workspaceDevice?.name || "设备");
+  const group = safeFileNamePart(state.activeTestGroup || "测试组");
+  downloadCsv(batchResultTable.metricsCsv(), `结果指标-${device}-${group}-${csvFileNameStamp()}.csv`);
 }
 
 /** 返回影响测试卡片显示的轻量签名，避免轮询时重建整组 DOM。 */
@@ -5032,24 +5068,19 @@ async function hydrateBatchCardAnalyses(items) {
   await Promise.all(Array.from({ length: Math.min(2, pending.length) }, worker));
 }
 
+/** 合并结果历史并保留既有指标口径，将分页展示交给独立结果表格。 */
 function renderBatchItems(items) {
   for (const item of orderedBatchItems(items)) {
     const testId = String(item.testId || "");
     if (testId) batchResultItemHistory.set(testId, item);
   }
-  const entries = currentBatchGroupTests()
-    .map((test, index) => ({
-      item: batchResultItemHistory.get(String(test.id || "")) || {
-        index,
-        testId: String(test.id || ""),
-        testName: String(test.name || `测试 ${index + 1}`),
-        status: "not-run",
-      },
+  const rows = currentBatchGroupTests().map((test, index) => {
+    const item = batchResultItemHistory.get(String(test.id || "")) || {
       index,
-    }))
-    .filter(({ item }) => !(resultTestFilterIds instanceof Set) || resultTestFilterIds.has(String(item.testId || "")));
-  const statusLabels = { "not-run": "未运行", queued: "等待中", running: "运行中", succeeded: "成功", failed: "失败", cancelled: "已终止" };
-  document.getElementById("batchResults").innerHTML = entries.map(({ item, index }) => {
+      testId: String(test.id || ""),
+      testName: String(test.name || `测试 ${index + 1}`),
+      status: "not-run",
+    };
     const hasMetrics = hasBatchResultMetrics(item);
     const resultUrl = String(item.resultUrl || "");
     const cardAnalysis = batchCardAnalyses.get(resultUrl);
@@ -5060,34 +5091,32 @@ function renderBatchItems(items) {
     const hasAverageRecomputeTime = rawAverageRecomputeTime !== null
       && rawAverageRecomputeTime !== undefined
       && Number.isFinite(averageRecomputeTime);
-    const summaryError = batchItemErrorText(item);
-    const failed = Boolean(summaryError);
-    // 已终止状态已由卡片顶部标签表达，避免在指标下方重复显示相同信息。
-    const summaryNote = failed ? "" : summaryError;
-    const displayId = `t${index + 1}`;
-    const testId = String(item.testId || "");
+    const rawMakespan = item.makespan;
+    const makespan = Number(rawMakespan);
+    const hasMakespan = rawMakespan !== null && rawMakespan !== undefined && Number.isFinite(makespan);
     const companyBaseline = companyCapacityBaselineFor(state.workspaceDevice?.name, item.testName);
-    return `
-      <div class="batch-result ${escapeHtml(item.status || "queued")} ${testId === expandedBatchTestId ? "details-open" : ""}" data-batch-test-card="${escapeHtml(testId)}" role="button" tabindex="0" aria-expanded="${testId === expandedBatchTestId}" aria-label="${escapeHtml(item.testName || `测试 ${index + 1}`)}：单击查看详情，双击加入运行队列" title="单击查看只读配置；双击加入运行队列">
-        <div class="batch-result-head">
-          <span class="batch-result-title"><strong title="${escapeHtml(item.testName || `测试 ${index + 1}`)}">${escapeHtml(item.testName || `测试 ${index + 1}`)}</strong></span>
-          <div class="batch-result-meta">
-            <span class="batch-status">${statusLabels[item.status] || "等待中"}</span>
-            ${item.logUrl ? `<a class="btn" href="${escapeHtml(item.logUrl)}" download="${escapeHtml(readableLogFileName(item.testName || `测试-${index + 1}`))}">日志</a>` : `<span class="btn" aria-disabled="true">日志</span>`}
-            ${item.resultUrl ? `<button class="btn primary" type="button" data-playback-result="${escapeHtml(item.resultUrl)}" data-playback-name="${escapeHtml(item.testName || `测试 ${index + 1}`)}" data-playback-log="${escapeHtml(item.logUrl || "")}">回放</button>` : `<span class="btn" aria-disabled="true">回放</span>`}
-            ${item.ganttUrl ? `<a class="btn" href="${escapeHtml(item.ganttUrl)}" target="_blank">甘特图</a>` : `<span class="btn" aria-disabled="true">甘特图</span>`}
-            ${failed ? `<button class="btn danger" type="button" data-batch-error="${escapeHtml(testId)}" aria-label="查看 ${escapeHtml(displayId)} 的报错信息">报错</button>` : ""}
-          </div>
-        </div>
-        <div class="batch-result-summary">
-          <div class="batch-metric-tags" aria-label="主要指标">
-            <span class="batch-metric-tag production">${companyBaseline === null ? (hasThroughput ? `产能 ${throughput.toFixed(1)} 片/h` : "产能 -") : `产能 ${hasThroughput ? throughput.toFixed(1) : "-"}/${companyBaseline.toFixed(1)} 片/h`}</span>
-            <span class="batch-metric-tag recompute">平均重算 ${hasMetrics && hasAverageRecomputeTime ? `${averageRecomputeTime.toFixed(1)} ms` : "—"}</span>
-          </div>
-          ${summaryNote ? `<span class="summary-error" title="${escapeHtml(summaryNote)}">${escapeHtml(summaryNote)}</span>` : ""}
-        </div>
-      </div>`;
-  }).join("");
+    return {
+      testId: String(item.testId || ""),
+      testName: String(item.testName || `测试 ${index + 1}`),
+      status: String(item.status || "queued"),
+      productionText: companyBaseline === null
+        ? (hasThroughput ? throughput.toFixed(1) : "—")
+        : `${hasThroughput ? throughput.toFixed(1) : "-"}/${companyBaseline.toFixed(1)}`,
+      recomputeText: hasMetrics && hasAverageRecomputeTime
+        ? (averageRecomputeTime / MILLISECONDS_PER_SECOND).toFixed(2) : "—",
+      makespanText: hasMetrics && hasMakespan ? makespan.toFixed(2) : "—",
+      logUrl: String(item.logUrl || ""),
+      logFileName: readableLogFileName(item.testName || `测试-${index + 1}`),
+      resultUrl,
+      ganttUrl: String(item.ganttUrl || ""),
+      errorText: batchItemErrorText(item),
+    };
+  });
+  batchResultTable.update(rows, {
+    scope: JSON.stringify([state.workspaceDeviceId, state.activeTestGroup]),
+    selectedTestIds: resultTestFilterIds,
+    expandedTestId: expandedBatchTestId,
+  });
 }
 
 /** 关闭结果预览面板下方的测试只读详情，并让失效请求不能覆盖当前状态。 */
@@ -5097,15 +5126,6 @@ function closeBatchTestDetails() {
   const panel = document.getElementById("batchTestDetails");
   panel.hidden = true;
   panel.innerHTML = "";
-}
-
-/** 同步结果卡片的展开视觉状态，不重置当前批量结果。 */
-function updateBatchTestCardDetailState() {
-  document.querySelectorAll("[data-batch-test-card]").forEach(card => {
-    const expanded = card.dataset.batchTestCard === expandedBatchTestId;
-    card.classList.toggle("details-open", expanded);
-    card.setAttribute("aria-expanded", String(expanded));
-  });
 }
 
 /** 将测试配置字段绘制为只读的紧凑字段，不提供表单控件。 */
@@ -5158,12 +5178,12 @@ function renderBatchTestDetails(testCase) {
   return `<div class="batch-test-details-body">${details}</div>`;
 }
 
-/** 点击结果卡片时按需读取保存的测试配置；再次点击同一卡片则收起。 */
+/** 点击测试行或详情按钮时读取已保存配置；再次选择同一测试则收起。 */
 async function toggleBatchTestDetails(testId) {
   if (!testId || !state.workspaceDeviceId) return;
   if (expandedBatchTestId === testId) {
     closeBatchTestDetails();
-    updateBatchTestCardDetailState();
+    batchResultTable.setExpandedTest(expandedBatchTestId);
     return;
   }
   expandedBatchTestId = testId;
@@ -5171,7 +5191,7 @@ async function toggleBatchTestDetails(testId) {
   const panel = document.getElementById("batchTestDetails");
   panel.hidden = false;
   panel.innerHTML = '<div class="batch-test-details-body"><p class="hint">正在读取测试详情…</p></div>';
-  updateBatchTestCardDetailState();
+  batchResultTable.setExpandedTest(expandedBatchTestId);
   try {
     const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${encodeURIComponent(testId)}`);
     if (requestVersion !== batchTestDetailsRequestVersion || expandedBatchTestId !== testId) return;
@@ -5200,6 +5220,35 @@ function batchGanttUrl(items) {
     params.append("name", item.testName);
   });
   return params.size ? `/movelist_gantt_viewer.html?${params.toString()}` : "";
+}
+
+/** 无指定结果时“甘特图”页签加载的独立查看器地址：仍可使用其自带的文件导入。 */
+const GANTT_VIEWER_URL = "/movelist_gantt_viewer.html";
+/** “甘特图”页签当前已载入的查看器地址；相同地址不重复加载，保留缩放、筛选与搜索状态。 */
+let ganttFrameUrl = "";
+
+/** 在“甘特图”页签内载入指定查看器地址；空地址或重复地址不重新加载。 */
+function loadGanttFrame(url) {
+  const target = String(url || "");
+  if (!target || target === ganttFrameUrl) return;
+  ganttFrameUrl = target;
+  const frame = document.getElementById("ganttFrame") as HTMLIFrameElement | null;
+  if (frame) frame.src = target;
+}
+
+/**
+ * 首次进入“甘特图”页签时载入内容：优先当前批次的全部结果，没有结果时载入空查看器。
+ * 之后保留用户已经在查看器里选定的内容，重新进入页签不会覆盖。
+ */
+function ensureGanttFrameLoaded() {
+  if (ganttFrameUrl) return;
+  loadGanttFrame(batchGanttUrl(state.batchResult?.items || []) || GANTT_VIEWER_URL);
+}
+
+/** 从应用内入口打开甘特图：载入目标地址并切换到“甘特图”页签。 */
+function openGanttViewer(url) {
+  loadGanttFrame(url);
+  void switchTab("gantt");
 }
 
 /** 清空底部“全部甘特图”入口，防止它沿用上一批测试结果。 */
@@ -5352,7 +5401,6 @@ function renderRunFailureCard({
 
 /** 检查本地服务以及内置策略模型可用性。 */
 async function checkService() {
-  const pill = document.getElementById("serviceState");
   const batchRunButton = document.getElementById("batchRunButton");
   try {
     const response = await fetch("/api/health", { cache: "no-store" });
@@ -5363,9 +5411,7 @@ async function checkService() {
     renderOtherAlgorithmOptions(status.algorithms || status.otherAlgorithms || []);
     batchRunButton.disabled = !compatible || (state.batchRunning && state.batchCancelRequested);
     renderWorkspaceControls();
-    pill.textContent = compatible ? "本地服务已连接" : "服务版本过旧";
     if (!compatible) {
-      pill.style.color = "var(--red)"; pill.style.background = "var(--red-soft)";
       writeTerminal("$ 本地服务版本过旧\n  请重启: python -m app.backend.main", true);
     }
   }
@@ -5373,9 +5419,6 @@ async function checkService() {
     state.serviceCompatible = false;
     batchRunButton.disabled = true;
     renderWorkspaceControls();
-    pill.textContent = "本地服务未连接";
-    pill.style.color = "var(--red)";
-    pill.style.background = "var(--red-soft)";
     writeTerminal("$ 无法连接本地服务\n  请运行: python -m app.backend.main", true);
   }
 }
@@ -5548,11 +5591,8 @@ document.getElementById("testExchangeFile").addEventListener("change", event => 
     writeTerminal(`$ 测试集导入失败\n  ${error.message}`, true);
   });
 });
-document.getElementById("resultPreviewViewButton").addEventListener("click", () => setRunResultView("results"));
-document.getElementById("analysisReportViewButton").addEventListener("click", () => {
-  if (!canOpenAnalysisReport()) return;
-  if (document.getElementById("testGroupAnalysisPanel").hidden) openGroupAnalysisOptions();
-  else setRunResultView("analysis");
+document.getElementById("generateAnalysisReportButton").addEventListener("click", () => {
+  if (canOpenAnalysisReport()) openGroupAnalysisOptions();
 });
 document.getElementById("batchResultFilterButton").addEventListener("click", () => openBatchTestSelectionDialog("filter"));
 for (const [sourceId, targetId] of [["runDeviceSelect", "deviceSelect"], ["runGroupSelect", "testGroupSelect"]]) {
@@ -5571,10 +5611,8 @@ document.getElementById("cancelTestEditButton").addEventListener("click", async 
   catch (error) { setWorkspaceStatus(`无法返回列表：${error.message}`, "dirty"); }
 });
 document.querySelectorAll("[data-management-target]").forEach(button => button.addEventListener("click", () => {
-  (async () => {
-    await switchTab("test-management");
-    await switchManagementSection(button.dataset.managementTarget);
-  })().catch(error => setWorkspaceStatus(`切换失败：${error.message}`, "dirty"));
+  switchTab("test-management", button.dataset.managementTarget)
+    .catch(error => setWorkspaceStatus(`切换失败：${error.message}`, "dirty"));
 }));
 document.getElementById("testCatalogBody").addEventListener("click", event => {
   const button = event.target.closest("[data-test-action]");
@@ -5738,7 +5776,7 @@ document.getElementById("analysisOptionsForm").addEventListener("submit", event 
       document.getElementById("analysisOptionsCancel").textContent = "取消";
     } else {
       visualizationWorkspace.showGroupAnalysis(`<section class="group-analysis-warning"><strong>结果分析失败</strong><br>${escapeHtml(error.message || "未知错误")}</section>`);
-      setRunResultView("analysis");
+      void switchTab("analysis");
     }
     writeTerminal(`$ 测试组结果分析失败\n  ${error.message || "未知错误"}`, true);
   });
@@ -5747,6 +5785,20 @@ document.querySelectorAll(".batch-log-download").forEach(button => {
   button.addEventListener("click", event => { if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault(); });
 });
 document.getElementById("batchGanttButton").addEventListener("click", event => { if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault(); });
+document.getElementById("exportMetricsCsvButton").addEventListener("click", exportResultMetricsCsv);
+/**
+ * 甘特图入口统一在应用内“甘特图”页签打开：结果行菜单、结果区“全部甘特图”、
+ * 回放工具栏和对象卡片都指向同一个查看器。按住 Ctrl/⌘/Shift 或中键点击仍按
+ * 浏览器默认行为在新标签打开，便于并排对照。
+ */
+document.addEventListener("click", event => {
+  const link = (event.target as Element | null)?.closest?.('a[href*="movelist_gantt_viewer.html"]') as HTMLAnchorElement | null;
+  if (!link || event.defaultPrevented || event.button !== 0) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  if (link.getAttribute("aria-disabled") === "true") return;
+  event.preventDefault();
+  openGanttViewer(link.getAttribute("href") || link.href);
+});
 document.getElementById("closeDrawer").addEventListener("click", closeStepDrawer);
 document.getElementById("drawerLayer").addEventListener("click", event => { if (event.target.id === "drawerLayer") closeStepDrawer(); });
 document.addEventListener("keydown", event => { if (event.key === "Escape") closeStepDrawer(); });
@@ -5936,6 +5988,9 @@ window.addEventListener("pagehide", () => {
 const managementSections = document.getElementById("testManagementSections");
 for (const id of ["routeManagementSection", "deviceManagementSection"]) managementSections.append(document.getElementById(id));
 initializeCompactSelects();
+initializeConsoleShell();
+initializeConsoleReplayToolbar();
+initializeConsoleGanttToolbar();
 renderAll(); renderWorkspaceControls(); renderDeviceTimingConfiguration(); checkService();
 loadRunSettingsPreferences().catch(error => writeTerminal(`$ 运行设置读取失败\n  ${error.message || "未知错误"}`, true));
 loadAnalysisSettingsPreferences().catch(error => writeTerminal(`$ 分析设置读取失败\n  ${error.message || "未知错误"}`, true));

@@ -29,6 +29,263 @@ function createDraftChoiceDialog(dialog) {
   };
 }
 
+// src/console_shell.ts
+var MOBILE_NAVIGATION_QUERY = "(max-width: 760px)";
+function initializeConsoleShell() {
+  const shell = document.querySelector(".shell");
+  const sidebar = document.getElementById("primarySidebar");
+  const toggle = document.getElementById("sidebarToggle");
+  const backdrop = document.getElementById("sidebarBackdrop");
+  const closeButton = document.getElementById("sidebarClose");
+  const breadcrumb = document.getElementById("consoleBreadcrumb");
+  const layout = document.getElementById("pageLayout");
+  if (!shell || !sidebar || !toggle || !backdrop || !breadcrumb || !layout) {
+    return () => {
+    };
+  }
+  const mobile = window.matchMedia(MOBILE_NAVIGATION_QUERY);
+  let desktopCollapsed = false;
+  let mobileOpen = false;
+  let currentPage = "";
+  sidebar.querySelectorAll(".tab, .sidebar-subtab").forEach((link) => {
+    link.title = link.textContent?.trim() || "";
+  });
+  function renderNavigation() {
+    const expanded = mobile.matches ? mobileOpen : !desktopCollapsed;
+    shell.classList.toggle("sidebar-collapsed", !mobile.matches && desktopCollapsed);
+    shell.classList.toggle("sidebar-open", mobile.matches && mobileOpen);
+    toggle.setAttribute("aria-expanded", String(expanded));
+    const label = mobile.matches ? expanded ? "\u5173\u95ED\u5BFC\u822A" : "\u6253\u5F00\u5BFC\u822A" : expanded ? "\u6298\u53E0\u5BFC\u822A" : "\u5C55\u5F00\u5BFC\u822A";
+    toggle.setAttribute("aria-label", label);
+    toggle.setAttribute("title", label);
+    backdrop.hidden = !mobile.matches || !mobileOpen;
+    sidebar.inert = mobile.matches && !mobileOpen;
+    layout.inert = mobile.matches && mobileOpen;
+    const replayControls = document.getElementById("consoleReplayControls");
+    if (replayControls) replayControls.inert = mobile.matches && mobileOpen;
+  }
+  function closeNavigation(restoreFocus) {
+    mobileOpen = false;
+    renderNavigation();
+    if (restoreFocus) toggle.focus();
+  }
+  function synchronizePage() {
+    const activeView = document.querySelector("[data-tab-view].active");
+    const view = activeView?.dataset.tabView || "schedule";
+    const section = view === "test-management" ? sidebar.querySelector("[data-management-target].active") : null;
+    const activeLink = section || sidebar.querySelector(`.tab[data-tab-target="${view}"]`);
+    const page = section?.dataset.managementTarget || view;
+    const title = activeLink?.textContent?.trim() || "\u8FD0\u884C\u5206\u6790";
+    breadcrumb.textContent = section ? `\u6D4B\u8BD5\u7BA1\u7406 / ${title}` : title;
+    document.title = `${title} \xB7 \u8C03\u5EA6\u5E73\u53F0`;
+    if (currentPage && currentPage !== page && mobileOpen) closeNavigation(true);
+    currentPage = page;
+  }
+  function toggleNavigation() {
+    if (mobile.matches) mobileOpen = !mobileOpen;
+    else desktopCollapsed = !desktopCollapsed;
+    renderNavigation();
+    if (mobile.matches && mobileOpen) sidebar.querySelector(".tab.active, .sidebar-subtab.active")?.focus();
+  }
+  function resizeNavigation() {
+    closeNavigation(sidebar.contains(document.activeElement));
+  }
+  function handleNavigationKey(event) {
+    if (!mobile.matches || !mobileOpen) return;
+    if (document.querySelector("dialog[open]")) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeNavigation(true);
+    } else if (event.key === "Tab") {
+      const targets = Array.from(sidebar.querySelectorAll("a[href], button:not(:disabled)")).filter((element) => element.getClientRects().length > 0 && element.tabIndex >= 0);
+      const first = targets[0];
+      const last = targets.at(-1);
+      if (!first || !last) return;
+      const focused = document.activeElement;
+      if (!sidebar.contains(focused) || (event.shiftKey ? focused === first : focused === last)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    }
+  }
+  function handleBackdrop() {
+    closeNavigation(true);
+  }
+  function handleCurrentNavigation(event) {
+    const target = event.target.closest(".tab.active, .sidebar-subtab.active");
+    if (mobile.matches && mobileOpen && target) closeNavigation(true);
+  }
+  const observer = new MutationObserver(synchronizePage);
+  document.querySelectorAll("[data-tab-view], .sidebar-subtab").forEach((element) => {
+    observer.observe(element, { attributes: true, attributeFilter: ["class"] });
+  });
+  toggle.addEventListener("click", toggleNavigation);
+  backdrop.addEventListener("click", handleBackdrop);
+  closeButton?.addEventListener("click", handleBackdrop);
+  sidebar.addEventListener("click", handleCurrentNavigation);
+  document.addEventListener("keydown", handleNavigationKey);
+  mobile.addEventListener("change", resizeNavigation);
+  renderNavigation();
+  synchronizePage();
+  return () => {
+    observer.disconnect();
+    toggle.removeEventListener("click", toggleNavigation);
+    backdrop.removeEventListener("click", handleBackdrop);
+    closeButton?.removeEventListener("click", handleBackdrop);
+    sidebar.removeEventListener("click", handleCurrentNavigation);
+    document.removeEventListener("keydown", handleNavigationKey);
+    mobile.removeEventListener("change", resizeNavigation);
+    sidebar.inert = layout.inert = false;
+    const replayControls = document.getElementById("consoleReplayControls");
+    if (replayControls) replayControls.inert = false;
+  };
+}
+
+// src/console_replay_toolbar.ts
+var COMPACT_METRIC_LABELS = ["\u4EA7\u80FD", "\u5E73\u5747\u91CD\u7B97", "\u74F6\u9888\u5229\u7528\u7387", "LoadLock \u6548\u7387"];
+function initializeConsoleReplayToolbar() {
+  const shell = document.querySelector(".shell");
+  const topbar = document.querySelector(".console-topbar");
+  const slot = document.getElementById("consoleReplayControls");
+  const playback = document.querySelector('[data-tab-view="playback"]');
+  const topology = document.getElementById("visualTopologyPlayback");
+  const status = playback?.querySelector(".replay-status-bar");
+  const tools = playback?.querySelector(".playback-log-import");
+  const metrics = document.getElementById("visualReplayKpis");
+  if (!shell || !topbar || !slot || !playback || !topology || !status || !tools) return () => {
+  };
+  const statusAnchor = document.createComment("\u56DE\u653E\u72B6\u6001\u6761\u539F\u59CB\u4F4D\u7F6E");
+  const toolsAnchor = document.createComment("\u56DE\u653E\u65E5\u5FD7\u5DE5\u5177\u539F\u59CB\u4F4D\u7F6E");
+  status.before(statusAnchor);
+  tools.before(toolsAnchor);
+  const originalStatusHidden = status.hidden;
+  let mounted = false;
+  let measuredHeight = 0;
+  function compactMetricLabels() {
+    metrics?.querySelectorAll(".performance-kpi-label > span:first-child").forEach((label, index) => {
+      const compact = COMPACT_METRIC_LABELS[index];
+      if (!compact || label.textContent === compact) return;
+      label.title = label.textContent || compact;
+      label.textContent = compact;
+    });
+  }
+  function measureToolbar() {
+    if (!mounted) return;
+    const height = Math.ceil(topbar.getBoundingClientRect().height);
+    if (height === measuredHeight) return;
+    measuredHeight = height;
+    shell.style.setProperty("--console-replay-toolbar-height", `${height}px`);
+  }
+  function synchronizeToolbar() {
+    const active = playback.classList.contains("active");
+    if (active !== mounted) {
+      mounted = active;
+      if (active) slot.append(status, tools);
+      else {
+        statusAnchor.after(status);
+        toolsAnchor.after(tools);
+        status.hidden = originalStatusHidden;
+        measuredHeight = 0;
+        shell.style.removeProperty("--console-replay-toolbar-height");
+      }
+    }
+    slot.hidden = !active;
+    topbar.classList.toggle("console-replay-toolbar", active);
+    topbar.classList.toggle("console-replay-empty", active && topology.hidden);
+    if (active) {
+      status.hidden = topology.hidden;
+      measureToolbar();
+    }
+  }
+  const observer = new MutationObserver(synchronizeToolbar);
+  observer.observe(playback, { attributes: true, attributeFilter: ["class"] });
+  observer.observe(topology, { attributes: true, attributeFilter: ["hidden"] });
+  const resizeObserver = new ResizeObserver(measureToolbar);
+  resizeObserver.observe(topbar);
+  const metricObserver = new MutationObserver(compactMetricLabels);
+  if (metrics) metricObserver.observe(metrics, { childList: true, subtree: true });
+  compactMetricLabels();
+  synchronizeToolbar();
+  return () => {
+    observer.disconnect();
+    resizeObserver.disconnect();
+    metricObserver.disconnect();
+    statusAnchor.replaceWith(status);
+    toolsAnchor.replaceWith(tools);
+    status.hidden = originalStatusHidden;
+    slot.hidden = true;
+    topbar.classList.remove("console-replay-toolbar", "console-replay-empty");
+    shell.style.removeProperty("--console-replay-toolbar-height");
+  };
+}
+
+// src/gantt_toolbar.ts
+var GANTT_TOOLBAR_SLOT_ID = "consoleGanttControls";
+var GANTT_FRAME_ID = "ganttFrame";
+var TOOLBAR_HEIGHT_VARIABLE = "--console-gantt-toolbar-height";
+function initializeConsoleGanttToolbar() {
+  const shell = document.querySelector(".shell");
+  const topbar = document.querySelector(".console-topbar");
+  const slot = document.getElementById(GANTT_TOOLBAR_SLOT_ID);
+  const frame = document.getElementById(GANTT_FRAME_ID);
+  const view = document.querySelector('[data-tab-view="gantt"]');
+  if (!shell || !topbar || !slot || !frame || !view) return () => {
+  };
+  let measuredHeight = 0;
+  let mounted = null;
+  let mountedDocument = null;
+  function measureToolbar() {
+    if (!view.classList.contains("active") || !mounted) return;
+    const height = Math.ceil(topbar.getBoundingClientRect().height);
+    if (height === measuredHeight) return;
+    measuredHeight = height;
+    shell.style.setProperty(TOOLBAR_HEIGHT_VARIABLE, `${height}px`);
+  }
+  function synchronizeToolbar() {
+    const active = view.classList.contains("active") && Boolean(mounted);
+    slot.hidden = !active;
+    topbar.classList.toggle("console-gantt-toolbar", active);
+    if (active) {
+      measureToolbar();
+    } else {
+      measuredHeight = 0;
+      shell.style.removeProperty(TOOLBAR_HEIGHT_VARIABLE);
+    }
+  }
+  function adoptToolbar() {
+    const viewerDocument = frame?.contentDocument;
+    mounted = viewerDocument?.querySelector(".toolbar") ?? null;
+    mountedDocument = mounted ? viewerDocument : null;
+    if (viewerDocument) viewerDocument.documentElement.classList.toggle("toolbar-detached", Boolean(mounted));
+    slot.replaceChildren();
+    if (mounted) slot.append(mounted);
+    synchronizeToolbar();
+  }
+  const observer = new MutationObserver(synchronizeToolbar);
+  observer.observe(view, { attributes: true, attributeFilter: ["class"] });
+  const resizeObserver = new ResizeObserver(measureToolbar);
+  resizeObserver.observe(topbar);
+  frame.addEventListener("load", adoptToolbar);
+  if (frame.contentDocument?.readyState === "complete") adoptToolbar();
+  synchronizeToolbar();
+  return () => {
+    observer.disconnect();
+    resizeObserver.disconnect();
+    frame.removeEventListener("load", adoptToolbar);
+    if (mounted && mountedDocument) {
+      const container = mountedDocument.querySelector(".controls") ?? mountedDocument.body;
+      container.append(mounted);
+      mountedDocument.documentElement.classList.remove("toolbar-detached");
+    }
+    mounted = null;
+    mountedDocument = null;
+    slot.replaceChildren();
+    slot.hidden = true;
+    topbar.classList.remove("console-gantt-toolbar");
+    shell.style.removeProperty(TOOLBAR_HEIGHT_VARIABLE);
+  };
+}
+
 // src/route_editor_logic.ts
 var route_editor_logic_exports = {};
 __export(route_editor_logic_exports, {
@@ -5503,10 +5760,6 @@ var VisualizationWorkspace = class {
     this.elements.playbackEmpty.hidden = false;
     this.setTopologyVisible(false);
     this.elements.empty.classList.remove("is-loading", "is-error");
-    this.elements.empty.innerHTML = `
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg>
-      <strong>\u7B49\u5F85\u5206\u6790\u6570\u636E</strong>
-      <span>\u6279\u91CF\u8FD0\u884C\u6D4B\u8BD5\u7EC4\u540E\uFF0C\u5728\u7ED3\u679C\u9884\u89C8\u4E2D\u9009\u62E9\u201C\u6D4B\u8BD5\u7EC4\u7ED3\u679C\u5206\u6790\u201D\u3002\u5355\u6B21\u6D4B\u8BD5\u8BF7\u4F7F\u7528\u56DE\u653E\u8BCA\u65AD\u3002</span>`;
     this.elements.playbackEmpty.classList.remove("is-loading", "is-error");
     this.elements.playbackEmpty.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg>
@@ -6090,7 +6343,7 @@ function testGroupSummaryCsv(summary) {
   ].map(csvEscape));
   return [headers.map(csvEscape).join(","), ...rows.map((row) => row.join(","))].join("\r\n");
 }
-function resultTable(summary, selected, compact = false) {
+function resultTable(summary, selected) {
   return summary.cases.map((item, index) => {
     const cells = [`<th scope="row">${escapeHtml2(caseLabel(item, index))}</th>`];
     if (selected.has("throughput")) cells.push(`<td>${finiteText(item.throughputPerHour, 1, " \u7247/h")}</td>`);
@@ -6116,9 +6369,7 @@ function resultTable(summary, selected, compact = false) {
     const rowClasses = [
       item.analysisStatus && item.analysisStatus !== "completed" ? "is-incomplete" : ""
     ].filter(Boolean).join(" ");
-    const compactValues = cells.slice(1).map((cell) => cell.replace(/^<td(?:\s[^>]*)?>|<\/td>$/g, "")).join('<span aria-hidden="true"> \xB7 </span>');
-    const rowCells = compact ? [cells[0], `<td><div class="group-analysis-compact-values">${compactValues}</div></td>`] : cells;
-    return `<tr${rowClasses ? ` class="${rowClasses}"` : ""}>${rowCells.join("")}</tr>`;
+    return `<tr${rowClasses ? ` class="${rowClasses}"` : ""}>${cells.join("")}</tr>`;
   }).join("");
 }
 function renderTestGroupAnalysis(summary, groupName) {
@@ -6142,17 +6393,16 @@ function renderTestGroupAnalysis(summary, groupName) {
     loadlock_full_cycle_ratio: "LoadLock \u6EE1\u8F7D\u5468\u671F\u7387",
     loadlock_empty_cycle_ratio: "LoadLock \u7A7A\u8F7D\u5468\u671F\u7387"
   };
-  const compactTable = selected.size <= 2;
-  const tableHeaders = compactTable ? ["<th>\u6D4B\u8BD5</th>", "<th>\u6307\u6807\u7ED3\u679C</th>"] : ["<th>\u6D4B\u8BD5</th>"];
-  if (!compactTable && selected.has("throughput")) tableHeaders.push("<th>\u4EA7\u80FD</th>");
-  if (!compactTable && selected.has("average_recompute_time")) tableHeaders.push("<th>\u5E73\u5747\u91CD\u7B97\u65F6\u95F4</th>");
-  if (!compactTable && selected.has("company_capacity_baseline")) tableHeaders.push("<th>\u4EA7\u80FD\u57FA\u7EBF</th>");
-  if (!compactTable && selected.has("company_capacity_ratio")) tableHeaders.push("<th>\u4EA7\u80FD\u6BD4</th>");
-  if (!compactTable && selected.has("bottleneck_candidates")) tableHeaders.push("<th>\u74F6\u9888</th>");
-  if (!compactTable && selected.has("makespan")) tableHeaders.push("<th>Makespan</th>");
-  if (!compactTable && selected.has("validation")) tableHeaders.push("<th>\u6821\u9A8C\u7ED3\u679C</th>");
-  if (!compactTable && selected.has("cpu_time")) tableHeaders.push("<th>\u7B97\u6CD5\u603B\u8017\u65F6</th>");
-  if (!compactTable && selected.has("resource_utilization")) tableHeaders.push("<th>\u5229\u7528\u7387</th>");
+  const tableHeaders = ["<th>\u6D4B\u8BD5</th>"];
+  if (selected.has("throughput")) tableHeaders.push("<th>\u4EA7\u80FD</th>");
+  if (selected.has("average_recompute_time")) tableHeaders.push("<th>\u5E73\u5747\u91CD\u7B97\u65F6\u95F4</th>");
+  if (selected.has("company_capacity_baseline")) tableHeaders.push("<th>\u4EA7\u80FD\u57FA\u7EBF</th>");
+  if (selected.has("company_capacity_ratio")) tableHeaders.push("<th>\u4EA7\u80FD\u6BD4</th>");
+  if (selected.has("bottleneck_candidates")) tableHeaders.push("<th>\u74F6\u9888</th>");
+  if (selected.has("makespan")) tableHeaders.push("<th>Makespan</th>");
+  if (selected.has("validation")) tableHeaders.push("<th>\u6821\u9A8C\u7ED3\u679C</th>");
+  if (selected.has("cpu_time")) tableHeaders.push("<th>\u7B97\u6CD5\u603B\u8017\u65F6</th>");
+  if (selected.has("resource_utilization")) tableHeaders.push("<th>\u5229\u7528\u7387</th>");
   if (selected.has("departure_interval_cv")) tableHeaders.push("<th>\u51FA\u7AD9 CV</th>");
   if (selected.has("process_chamber_dwell")) tableHeaders.push("<th>\u52A0\u5DE5\u8154\u9A7B\u7559\u5747\u503C</th>");
   if (selected.has("robot_wafer_dwell")) tableHeaders.push("<th>\u673A\u5668\u624B\u9A7B\u7559\u5747\u503C</th>");
@@ -6162,24 +6412,23 @@ function renderTestGroupAnalysis(summary, groupName) {
   if (selected.has("loadlock_full_cycle_ratio")) tableHeaders.push("<th>LoadLock \u6EE1\u8F7D\u5468\u671F\u7387</th>");
   if (selected.has("loadlock_empty_cycle_ratio")) tableHeaders.push("<th>LoadLock \u7A7A\u8F7D\u5468\u671F\u7387</th>");
   return `
-    <div class="group-analysis-head">
-      <div class="group-analysis-selection">${[...selected].map((metric) => `<span>${escapeHtml2(selectedLabels[metric] || metric)}</span>`).join("")}</div>
+    <header class="group-analysis-head table-header-control">
+      <div class="group-analysis-heading"><h2>${escapeHtml2(groupName || "\u5F53\u524D\u6D4B\u8BD5\u7EC4")}</h2><p>${summary.cases.length} \u9879\u6D4B\u8BD5 \xB7 ${selected.size} \u9879\u6307\u6807</p></div>
       <div class="group-analysis-actions">
         <button class="btn small group-analysis-back" type="button" data-return-run-results><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7-5 5 5 5M5 12h14"/></svg><span>\u8FD4\u56DE\u8FD0\u884C\u7ED3\u679C</span></button>
         <button class="btn small" type="button" data-reconfigure-analysis>\u91CD\u65B0\u9009\u62E9\u6307\u6807\u4E0E\u6D4B\u8BD5</button>
         <button type="button" class="btn small group-analysis-export" data-group-export-csv>\u5BFC\u51FA CSV</button>
       </div>
-    </div>
+    </header>
+    <div class="group-analysis-selection" aria-label="\u672C\u6B21\u5206\u6790\u6307\u6807">${[...selected].map((metric) => `<span>${escapeHtml2(selectedLabels[metric] || metric)}</span>`).join("")}</div>
     ${summary.timedOut ? '<div class="group-analysis-warning">\u5DF2\u8FBE\u5230\u65F6\u95F4\u9884\u7B97\uFF0C\u4EE5\u4E0B\u62A5\u544A\u4FDD\u7559\u5B8C\u6210\u90E8\u5206\uFF1B\u53EF\u51CF\u5C11\u6307\u6807\u6216\u63D0\u9AD8\u65F6\u95F4\u9884\u7B97\u540E\u7EE7\u7EED\u3002</div>' : ""}
-    <section class="group-analysis-table-wrap">
-      <div class="group-analysis-table-scroll">
-        <table class="group-analysis-table">
+    <div class="table-responsive group-analysis-table-scroll" tabindex="0" role="region" aria-label="\u9010\u6D4B\u8BD5\u5206\u6790\u62A5\u544A\uFF0C\u53EF\u6A2A\u5411\u6EDA\u52A8">
+        <table class="table-custom group-analysis-table">
           <caption class="sr-only">${escapeHtml2(groupName || "\u5F53\u524D\u6D4B\u8BD5\u7EC4")}\u9010\u6D4B\u8BD5\u6307\u6807</caption>
-          <thead><tr>${tableHeaders.join("")}</tr></thead>
-          <tbody>${resultTable(summary, selected, compactTable)}</tbody>
+          <thead><tr>${tableHeaders.map((header) => header.replace("<th>", '<th scope="col">')).join("")}</tr></thead>
+          <tbody>${resultTable(summary, selected)}</tbody>
         </table>
-      </div>
-    </section>`;
+    </div>`;
 }
 
 // src/result_card_run_queue.ts
@@ -6229,6 +6478,294 @@ function createResultCardRunQueue(options) {
         options.onStateChange?.(testId, "settled");
       }
       return removed;
+    }
+  };
+}
+
+// src/result_table.ts
+var RESULT_TABLE_PAGE_SIZES = [10, 20, 50];
+var DEFAULT_PAGE_SIZE = RESULT_TABLE_PAGE_SIZES[0];
+var PAGE_NEIGHBOR_COUNT = 1;
+var RESULT_TABLE_ACTION_ICONS = {
+  details: '<path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>',
+  collapse: '<path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7 7 0 0 0-2.79.588l.77.771A6 6 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755q-.247.248-.517.486z"/><path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829"/><path d="M3.35 5.47q-.27.24-.518.487A13 13 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7 7 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12z"/>',
+  run: '<path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393"/>',
+  more: '<path d="M3 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3m5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3m5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3"/>'
+};
+function normalizePageSize(value) {
+  return RESULT_TABLE_PAGE_SIZES.includes(value) ? value : DEFAULT_PAGE_SIZE;
+}
+function createResultTableState(pageSize = DEFAULT_PAGE_SIZE) {
+  return { page: 1, pageSize: normalizePageSize(pageSize), scopeKey: null };
+}
+function filterResultRows(rows, selectedTestIds) {
+  return selectedTestIds === null ? rows : rows.filter((row) => selectedTestIds.has(row.testId));
+}
+function projectResultTablePage(rows, state2, context) {
+  const selectedIds = context.selectedTestIds;
+  const scopeKey = JSON.stringify([
+    context.scope,
+    selectedIds === null ? null : [...selectedIds].sort()
+  ]);
+  const selectedRows = filterResultRows(rows, selectedIds);
+  const pageSize = normalizePageSize(state2.pageSize);
+  const total = selectedRows.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const requestedPage = state2.scopeKey === scopeKey && Number.isFinite(state2.page) ? Math.trunc(state2.page) : 1;
+  const page = Math.max(1, Math.min(pageCount, requestedPage));
+  const offset = (page - 1) * pageSize;
+  return {
+    rows: selectedRows.slice(offset, offset + pageSize),
+    state: { page, pageSize, scopeKey },
+    total,
+    pageCount,
+    start: total ? offset + 1 : 0,
+    end: Math.min(offset + pageSize, total)
+  };
+}
+function escapeResultText(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[character]);
+}
+function resultLink(value) {
+  return /^\/(?!\/)/.test(value) ? escapeResultText(value) : "";
+}
+function pageNumbers(page, pageCount) {
+  const visible = /* @__PURE__ */ new Set([1, pageCount]);
+  for (let candidate = page - PAGE_NEIGHBOR_COUNT; candidate <= page + PAGE_NEIGHBOR_COUNT; candidate += 1) {
+    if (candidate >= 1 && candidate <= pageCount) visible.add(candidate);
+  }
+  const ordered = [...visible].sort((left, right) => left - right);
+  const result = [];
+  for (const candidate of ordered) {
+    const previous = result[result.length - 1];
+    if (typeof previous === "number" && candidate - previous > 1) result.push(null);
+    result.push(candidate);
+  }
+  return result;
+}
+var RESULT_STATUS_LABELS = {
+  "not-run": "\u672A\u8FD0\u884C",
+  queued: "\u7B49\u5F85\u4E2D",
+  running: "\u8FD0\u884C\u4E2D",
+  succeeded: "\u6210\u529F",
+  failed: "\u5931\u8D25",
+  cancelled: "\u5DF2\u7EC8\u6B62"
+};
+function resultStatusKey(status) {
+  return Object.hasOwn(RESULT_STATUS_LABELS, status) ? status : "queued";
+}
+var METRICS_CSV_COLUMNS = [
+  { header: "\u6D4B\u8BD5\u540D\u79F0", value: (row) => row.testName },
+  { header: "\u72B6\u6001", value: (row) => RESULT_STATUS_LABELS[resultStatusKey(row.status)] },
+  { header: "\u4EA7\u80FD\uFF08\u7247/h\uFF09", value: (row) => row.productionText },
+  { header: "\u5E73\u5747\u91CD\u7B97\uFF08s\uFF09", value: (row) => row.recomputeText },
+  { header: "Makespan\uFF08s\uFF09", value: (row) => row.makespanText }
+];
+function csvField(value) {
+  const text = String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+function resultTableMetricsCsv(rows) {
+  const headers = METRICS_CSV_COLUMNS.map((column) => csvField(column.header));
+  const body = rows.map((row) => METRICS_CSV_COLUMNS.map((column) => csvField(column.value(row))).join(","));
+  return [headers.join(","), ...body].join("\r\n");
+}
+function actionIcon(name) {
+  return `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">${RESULT_TABLE_ACTION_ICONS[name]}</svg>`;
+}
+var EMPTY_METRIC_TEXT = "\u2014";
+function metricCell(text) {
+  const empty = text === EMPTY_METRIC_TEXT;
+  return `<td class="result-table-number${empty ? " is-empty" : ""}">${escapeResultText(text)}</td>`;
+}
+function renderResultRow(row, expandedTestId) {
+  const status = resultStatusKey(row.status);
+  const badgeClass = { succeeded: "success", failed: "failed", queued: "pending", running: "running" }[status] || "neutral";
+  const testId = escapeResultText(row.testId);
+  const name = escapeResultText(row.testName);
+  const expanded = row.testId === expandedTestId;
+  const logUrl = resultLink(row.logUrl);
+  const resultUrl = resultLink(row.resultUrl);
+  const ganttUrl = resultLink(row.ganttUrl);
+  const menuId = `result-table-menu-${encodeURIComponent(row.testId)}`;
+  return `<tr class="result-table-row ${status}${expanded ? " details-open" : ""}" data-batch-test-card="${testId}">
+    <th scope="row"><span class="table-user-name result-table-name" title="${name}">${name}</span></th>
+    <td><span class="badge-table ${badgeClass}">${RESULT_STATUS_LABELS[status]}</span></td>
+    ${metricCell(row.productionText)}
+    ${metricCell(row.recomputeText)}
+    ${metricCell(row.makespanText)}
+    <td><div class="result-table-actions">
+      <button class="table-btn-action" type="button" title="${expanded ? "\u6536\u8D77" : "\u67E5\u770B"}\u8BE6\u60C5" data-result-table-details="${testId}" aria-expanded="${expanded}" aria-controls="batchTestDetails" aria-label="${expanded ? "\u6536\u8D77" : "\u67E5\u770B"} ${name} \u7684\u8BE6\u60C5">${actionIcon(expanded ? "collapse" : "details")}</button>
+      <button class="table-btn-action" type="button" title="\u8FD0\u884C" data-result-table-run="${testId}" aria-label="\u8FD0\u884C ${name}"${["queued", "running"].includes(status) ? " disabled" : ""}>${actionIcon("run")}</button>
+      <button class="table-btn-action" type="button" title="\u66F4\u591A\u64CD\u4F5C" data-result-table-more="${testId}" aria-haspopup="menu" aria-expanded="false" aria-controls="${menuId}" aria-label="${name} \u7684\u66F4\u591A\u64CD\u4F5C">${actionIcon("more")}</button>
+      <div class="result-table-menu" id="${menuId}" popover="auto" role="menu" aria-label="${name} \u7684\u7ED3\u679C\u64CD\u4F5C" data-result-table-menu="${testId}">
+        ${logUrl ? `<a role="menuitem" data-result-table-menu-action="log" href="${logUrl}" download="${escapeResultText(row.logFileName)}">\u4E0B\u8F7D\u65E5\u5FD7</a>` : '<button role="menuitem" type="button" disabled>\u4E0B\u8F7D\u65E5\u5FD7</button>'}
+        ${resultUrl ? `<button role="menuitem" data-result-table-menu-action="playback" type="button" data-playback-result="${resultUrl}" data-playback-name="${name}" data-playback-log="${logUrl}">\u56DE\u653E\u8BCA\u65AD</button>` : '<button role="menuitem" type="button" disabled>\u56DE\u653E\u8BCA\u65AD</button>'}
+        ${ganttUrl ? `<a role="menuitem" data-result-table-menu-action="gantt" href="${ganttUrl}" target="_blank" rel="noopener">\u67E5\u770B\u7518\u7279\u56FE</a>` : '<button role="menuitem" type="button" disabled>\u67E5\u770B\u7518\u7279\u56FE</button>'}
+        ${row.errorText ? `<button role="menuitem" data-result-table-menu-action="error" class="danger" type="button" data-batch-error="${testId}">\u67E5\u770B\u62A5\u9519</button>` : ""}
+      </div>
+    </div></td>
+  </tr>`;
+}
+function renderResultTable(page, expandedTestId = "") {
+  const { state: state2, pageCount, total, start, end } = page;
+  return `<div class="table-responsive result-table-scroll" tabindex="0" role="region" aria-label="\u6D4B\u8BD5\u8FD0\u884C\u7ED3\u679C\u8868\u683C\uFF0C\u53EF\u6EDA\u52A8">
+    <table class="table-custom result-table">
+      <caption class="sr-only">\u6240\u9009\u6D4B\u8BD5\u7684\u8FD0\u884C\u7ED3\u679C\uFF1B\u5355\u51FB\u6D4B\u8BD5\u884C\u67E5\u770B\u8BE6\u60C5\uFF0C\u53CC\u51FB\u52A0\u5165\u8FD0\u884C\u961F\u5217\u3002</caption>
+      <thead><tr><th scope="col">\u6D4B\u8BD5\u540D\u79F0</th><th scope="col" class="result-table-status-column">\u72B6\u6001</th><th scope="col" class="result-table-number result-table-metric-column" title="\u5355\u4F4D\uFF1A\u7247/h">\u4EA7\u80FD</th><th scope="col" class="result-table-number result-table-metric-column" title="\u5355\u4F4D\uFF1As">\u5E73\u5747\u91CD\u7B97</th><th scope="col" class="result-table-number result-table-metric-column" title="\u5355\u4F4D\uFF1As">Makespan</th><th scope="col" class="result-table-actions-column">\u64CD\u4F5C</th></tr></thead>
+      <tbody>${page.rows.length ? page.rows.map((row) => renderResultRow(row, expandedTestId)).join("") : '<tr><td colspan="6" class="result-table-empty">\u5F53\u524D\u6CA1\u6709\u53EF\u663E\u793A\u7684\u6D4B\u8BD5\uFF0C\u8BF7\u9009\u62E9\u8BBE\u5907\u4E0E\u6D4B\u8BD5\u7EC4\u3002</td></tr>'}</tbody>
+    </table>
+  </div>
+  <footer class="table-footer-control result-table-footer">
+    <div class="result-table-page-summary"><span class="table-pagination-info" role="status" aria-live="polite">\u7B2C ${start}\u2013${end} \u6761\uFF0C\u5171 ${total} \u6761</span></div>
+    <nav aria-label="\u8FD0\u884C\u7ED3\u679C\u5206\u9875"><ul class="pagination result-table-pagination">
+      <li class="page-item${state2.page === 1 ? " disabled" : ""}"><button class="page-link" type="button" data-result-table-page="${state2.page - 1}" aria-label="\u4E0A\u4E00\u9875"${state2.page === 1 ? " disabled" : ""}>\u4E0A\u4E00\u9875</button></li>
+      ${pageNumbers(state2.page, pageCount).map((number) => number === null ? '<li class="result-table-page-gap" aria-hidden="true">\u2026</li>' : `<li class="page-item${number === state2.page ? " active" : ""}"><button class="page-link" type="button" data-result-table-page="${number}" aria-label="\u7B2C ${number} \u9875"${number === state2.page ? ' aria-current="page"' : ""}>${number}</button></li>`).join("")}
+      <li class="page-item${state2.page === pageCount ? " disabled" : ""}"><button class="page-link" type="button" data-result-table-page="${state2.page + 1}" aria-label="\u4E0B\u4E00\u9875"${state2.page === pageCount ? " disabled" : ""}>\u4E0B\u4E00\u9875</button></li>
+    </ul></nav>
+  </footer>`;
+}
+function createResultTable(container, actions) {
+  let state2 = createResultTableState();
+  let rows = [];
+  let context = { scope: "", selectedTestIds: null, expandedTestId: "" };
+  let lastMarkup = "";
+  let activeMenu = null;
+  let menuOpener = null;
+  function closeMenu(restoreFocus = false) {
+    const previousOpener = menuOpener;
+    if (activeMenu?.matches(":popover-open")) activeMenu.hidePopover();
+    previousOpener?.setAttribute("aria-expanded", "false");
+    activeMenu = null;
+    menuOpener = null;
+    if (restoreFocus) previousOpener?.focus();
+  }
+  function openMenu(button, focusFirst = true) {
+    const menu = container.ownerDocument.getElementById(button.getAttribute("aria-controls") || "");
+    if (!menu) return;
+    closeMenu();
+    activeMenu = menu;
+    menuOpener = button;
+    menu.showPopover();
+    button.setAttribute("aria-expanded", "true");
+    const rect = button.getBoundingClientRect();
+    const view = container.ownerDocument.defaultView;
+    const gap = 6;
+    const viewportPadding = 8;
+    const viewportWidth = view?.innerWidth || container.ownerDocument.documentElement.clientWidth;
+    const viewportHeight = view?.innerHeight || container.ownerDocument.documentElement.clientHeight;
+    menu.style.left = `${Math.max(viewportPadding, Math.min(rect.right - menu.offsetWidth, viewportWidth - menu.offsetWidth - viewportPadding))}px`;
+    menu.style.top = `${rect.bottom + gap + menu.offsetHeight > viewportHeight - viewportPadding ? Math.max(viewportPadding, rect.top - menu.offsetHeight - gap) : rect.bottom + gap}px`;
+    if (focusFirst) menu.querySelector("a[href], button:not(:disabled)")?.focus();
+  }
+  function refresh() {
+    const page = projectResultTablePage(rows, state2, context);
+    state2 = page.state;
+    const markup = renderResultTable(page, context.expandedTestId);
+    if (lastMarkup !== markup || !container.innerHTML) {
+      const openTestId = menuOpener?.dataset.resultTableMore;
+      const focusedMenuAction = activeMenu?.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement?.dataset.resultTableMenuAction : void 0;
+      closeMenu();
+      container.innerHTML = markup;
+      lastMarkup = markup;
+      if (openTestId) {
+        const opener = Array.from(container.querySelectorAll("[data-result-table-more]")).find((button) => button.dataset.resultTableMore === openTestId);
+        if (opener) {
+          openMenu(opener, false);
+          if (focusedMenuAction) activeMenu?.querySelector(`[data-result-table-menu-action="${focusedMenuAction}"]`)?.focus();
+        }
+      }
+    }
+  }
+  function handleClick(event) {
+    const target = event.target;
+    if (target?.closest("[data-result-table-menu] a, [data-result-table-menu] button:not(:disabled)")) {
+      closeMenu();
+      return;
+    }
+    const button = target?.closest("[data-result-table-page], [data-result-table-details], [data-result-table-run], [data-result-table-more]");
+    if (!button || !container.contains(button)) {
+      closeMenu();
+      return;
+    }
+    if (button.disabled) return;
+    event.stopPropagation();
+    if (button.dataset.resultTableMore !== void 0) {
+      if (menuOpener === button) closeMenu(true);
+      else openMenu(button);
+    } else if (button.dataset.resultTablePage !== void 0) {
+      closeMenu();
+      state2 = { ...state2, page: Number(button.dataset.resultTablePage) };
+      refresh();
+      container.querySelector('[aria-current="page"]')?.focus();
+    } else if (button.dataset.resultTableDetails !== void 0) {
+      closeMenu();
+      actions.showDetails(button.dataset.resultTableDetails);
+      Array.from(container.querySelectorAll("[data-result-table-details]")).find((candidate) => candidate.dataset.resultTableDetails === button.dataset.resultTableDetails)?.focus();
+    } else if (button.dataset.resultTableRun !== void 0) {
+      closeMenu();
+      actions.runTest(button.dataset.resultTableRun);
+    }
+  }
+  function handleKeydown(event) {
+    const target = event.target;
+    const more = target?.closest("[data-result-table-more]");
+    if (more && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      event.stopPropagation();
+      openMenu(more);
+      return;
+    }
+    if (!activeMenu || !target || !activeMenu.contains(target)) return;
+    if (event.key === "Tab") {
+      closeMenu(true);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu(true);
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const items = Array.from(activeMenu.querySelectorAll("a[href], button:not(:disabled)"));
+    if (!items.length) return;
+    const current = items.indexOf(target);
+    const index = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items[index].focus();
+  }
+  function handleToggle(event) {
+    if (event.target === activeMenu && !activeMenu.matches(":popover-open")) closeMenu();
+  }
+  container.addEventListener("click", handleClick);
+  container.addEventListener("keydown", handleKeydown);
+  container.addEventListener("toggle", handleToggle, true);
+  return {
+    update(nextRows, nextContext) {
+      rows = nextRows;
+      context = nextContext;
+      refresh();
+    },
+    setExpandedTest(testId) {
+      context = { ...context, expandedTestId: testId };
+      refresh();
+    },
+    metricsCsv() {
+      return resultTableMetricsCsv(filterResultRows(rows, context.selectedTestIds));
+    },
+    dispose() {
+      closeMenu();
+      container.removeEventListener("click", handleClick);
+      container.removeEventListener("keydown", handleKeydown);
+      container.removeEventListener("toggle", handleToggle, true);
     }
   };
 }
@@ -6468,6 +7005,11 @@ var expandedBatchTestId = "";
 var batchTestDetailsRequestVersion = 0;
 var batchCardClickTimer = 0;
 var batchResultItemHistory = /* @__PURE__ */ new Map();
+var batchResultTable = createResultTable(document.getElementById("batchResults"), {
+  showDetails: (testId) => toggleBatchTestDetails(testId).catch((error) => writeTerminal(`$ \u6D4B\u8BD5\u8BE6\u60C5\u8BFB\u53D6\u5931\u8D25
+  ${error.message || "\u672A\u77E5\u9519\u8BEF"}`, true)),
+  runTest: (testId) => enqueueResultCardTest(testId)
+});
 var runPreparationActive = false;
 var navigationPending = false;
 var activeManagementSection = "cases";
@@ -6545,6 +7087,7 @@ var DUAL_ARM_SLOT_COUNT = 2;
 var BATCH_STATUS_POLL_MILLISECONDS = 1e3;
 var BATCH_CARD_SINGLE_CLICK_DELAY_MILLISECONDS = 500;
 var WORKSPACE_TRANSFER_POLL_MILLISECONDS = 500;
+var MILLISECONDS_PER_SECOND = 1e3;
 var TEST_ORDER_COLLATOR = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
 var DEFAULT_DUMMY_WAFER_COUNT = 8;
 var STATION_ACTION_TIME_FIELDS = [
@@ -7840,7 +8383,23 @@ function initializeCompactSelects() {
       if (!optionButton || optionButton.disabled) return;
       select.selectedIndex = Number(optionButton.dataset.optionIndex);
       setOpen(false);
+      trigger.focus();
       select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    menu.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" || event.key === "Tab") {
+        if (event.key === "Escape") event.preventDefault();
+        setOpen(false);
+        trigger.focus();
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const options = Array.from(menu.querySelectorAll("[data-option-index]:not(:disabled):not([hidden])"));
+      if (!options.length) return;
+      const currentIndex = options.indexOf(document.activeElement);
+      const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 : (currentIndex + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+      options[nextIndex].focus();
     });
     refreshCompactSelect(select);
   });
@@ -7920,9 +8479,9 @@ function renderWorkspaceControls() {
   document.getElementById("roundCount").disabled = !hasTest;
   document.getElementById("saveAndRunPageButton").disabled = !hasTest;
   document.getElementById("discardTestButton").disabled = !hasTest || !state.dirty;
-  document.querySelectorAll('[data-tab-target="test-management"], [data-tab-target="device-config"], [data-tab-target="route"]').forEach((button) => {
+  document.querySelectorAll('[data-management-target], [data-tab-target="test-management"], [data-tab-target="device-config"], [data-tab-target="route"]').forEach((button) => {
     button.disabled = busy;
-    button.title = busy ? "\u8FD0\u884C\u7ED3\u675F\u540E\u53EF\u7F16\u8F91\u914D\u7F6E" : "";
+    button.title = busy ? "\u8FD0\u884C\u7ED3\u675F\u540E\u53EF\u7F16\u8F91\u914D\u7F6E" : button.textContent.trim();
   });
   renderTestCatalog(visibleTests);
   compactSelectTargets().forEach(refreshCompactSelect);
@@ -8038,7 +8597,6 @@ function markRoutesDirty() {
   setWorkspaceStatus("\u5F53\u524D\u8DEF\u5F84\u6A21\u677F\u6709\u672A\u4FDD\u5B58\u4FEE\u6539\uFF0C\u8BF7\u5728\u6A21\u677F\u65C1\u70B9\u51FB\u201C\u4FDD\u5B58\u201D", "dirty");
 }
 function resetRunResult() {
-  setRunResultView("results");
   visualizationWorkspace.clear();
   state.batchResult = null;
   activeBatchContext = null;
@@ -8556,32 +9114,20 @@ function canOpenAnalysisReport() {
   return Boolean(state.batchResult?.items?.some((item) => hasBatchResultMetrics(item) && item.resultUrl));
 }
 function updateAnalysisReportAvailability() {
-  const button = document.getElementById("analysisReportViewButton");
+  const button = document.getElementById("generateAnalysisReportButton");
   const enabled = canOpenAnalysisReport();
   button.disabled = !enabled;
-  button.title = enabled ? "\u914D\u7F6E\u6216\u67E5\u770B\u6D4B\u8BD5\u7EC4\u5206\u6790\u62A5\u544A" : "\u81F3\u5C11\u5B8C\u6210\u4E00\u9879\u53EF\u5206\u6790\u6D4B\u8BD5\u540E\u624D\u80FD\u67E5\u770B\u5206\u6790\u62A5\u544A";
-  if (!enabled && !document.getElementById("runAnalysisView").hidden) setRunResultView("results");
+  button.title = enabled ? "\u914D\u7F6E\u5E76\u751F\u6210\u6D4B\u8BD5\u7EC4\u5206\u6790\u62A5\u544A" : "\u81F3\u5C11\u5B8C\u6210\u4E00\u9879\u53EF\u5206\u6790\u6D4B\u8BD5\u540E\u624D\u80FD\u751F\u6210\u5206\u6790\u62A5\u544A";
 }
-function setRunResultView(view) {
-  const analysis = view === "analysis";
-  if (analysis && !canOpenAnalysisReport()) return;
-  document.getElementById("runPreviewArea").hidden = analysis;
-  document.getElementById("runAnalysisView").hidden = !analysis;
-  document.querySelectorAll("[data-result-view]").forEach((button) => {
-    const selected = button.dataset.resultView === view;
-    button.classList.toggle("active", selected);
-    button.setAttribute("aria-selected", String(selected));
-  });
-}
-async function switchTab(name) {
+async function switchTab(name, managementSection = null) {
   if (navigationPending) return;
-  const requestedManagementSection = name === "route" ? "routes" : name === "device-config" ? "devices" : null;
+  const requestedManagementSection = managementSection || (name === "route" ? "routes" : name === "device-config" ? "devices" : null);
   if (requestedManagementSection) name = "test-management";
   if (document.querySelector("[data-tab-view].active")?.dataset.tabView === name) {
     if (requestedManagementSection) await switchManagementSection(requestedManagementSection);
     return;
   }
-  if ((runPreparationActive || state.batchRunning) && !["schedule", "playback"].includes(name)) return;
+  if ((runPreparationActive || state.batchRunning) && !["schedule", "analysis", "playback", "gantt"].includes(name)) return;
   navigationPending = true;
   try {
     if (!await settleTestDraft()) return;
@@ -8599,8 +9145,12 @@ async function switchTab(name) {
       else button.removeAttribute("aria-current");
     });
     document.querySelectorAll("[data-tab-view]").forEach((view) => view.classList.toggle("active", view.dataset.tabView === name));
-    const managementSubtabs = document.querySelector(".sidebar-subtabs");
-    if (managementSubtabs) managementSubtabs.hidden = name !== "test-management";
+    document.querySelectorAll("[data-management-target]").forEach((button) => {
+      const selected = name === "test-management" && button.dataset.managementTarget === activeManagementSection;
+      button.classList.toggle("active", selected);
+      if (selected) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
     document.getElementById("scheduleSide").classList.toggle("is-hidden", name !== "schedule");
     document.getElementById("pageLayout").classList.toggle("editor-mode", name !== "schedule");
     if (name === "test-management" && requestedManagementSection) await switchManagementSection(requestedManagementSection);
@@ -8608,6 +9158,7 @@ async function switchTab(name) {
     closeStepDrawer();
     closePJobRoutePicker(false);
     if (name === "schedule") renderAll();
+    if (name === "gantt") ensureGanttFrameLoaded();
     renderWorkspaceControls();
   } catch (error) {
     setWorkspaceStatus(`\u65E0\u6CD5\u79BB\u5F00\u6D4B\u8BD5\uFF1A${error.message}`, "dirty");
@@ -10571,13 +11122,29 @@ async function showTestGroupAnalysis() {
   document.getElementById("analysisOptionsCancel").disabled = false;
   document.getElementById("analysisOptionsClose").disabled = false;
   document.getElementById("analysisOptionsDialog").close();
-  await switchTab("schedule");
-  setRunResultView("analysis");
+  await switchTab("analysis");
   const panel = document.getElementById("testGroupAnalysisPanel");
   bindTestGroupExport(panel, summary, result.group || state.activeTestGroup || "\u5F53\u524D\u6D4B\u8BD5\u7EC4");
-  panel.querySelector("[data-return-run-results]")?.addEventListener("click", () => setRunResultView("results"));
+  panel.querySelector("[data-return-run-results]")?.addEventListener("click", () => void switchTab("schedule"));
   panel.querySelector("[data-reconfigure-analysis]")?.addEventListener("click", openGroupAnalysisOptions);
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function downloadCsv(csv, fileName) {
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+function csvFileNameStamp() {
+  return (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+}
+function safeFileNamePart(value) {
+  return String(value || "\u6D4B\u8BD5\u7EC4").replace(/[\\/:*?"<>|]/g, "_");
 }
 function bindTestGroupExport(panel, summary, groupName) {
   const button = panel?.querySelector("[data-group-export-csv]");
@@ -10585,18 +11152,13 @@ function bindTestGroupExport(panel, summary, groupName) {
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const safeName = String(groupName || "\u6D4B\u8BD5\u7EC4").replace(/[\\/:*?"<>|]/g, "_");
-    const blob = new Blob([`\uFEFF${testGroupSummaryCsv(summary)}`], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `\u6D4B\u8BD5\u7EC4\u6307\u6807-${safeName}-${stamp}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    downloadCsv(testGroupSummaryCsv(summary), `\u6D4B\u8BD5\u7EC4\u6307\u6807-${safeFileNamePart(groupName)}-${csvFileNameStamp()}.csv`);
   });
+}
+function exportResultMetricsCsv() {
+  const device = safeFileNamePart(state.workspaceDevice?.name || "\u8BBE\u5907");
+  const group = safeFileNamePart(state.activeTestGroup || "\u6D4B\u8BD5\u7EC4");
+  downloadCsv(batchResultTable.metricsCsv(), `\u7ED3\u679C\u6307\u6807-${device}-${group}-${csvFileNameStamp()}.csv`);
 }
 function batchItemsRenderSignature(items) {
   return JSON.stringify(items.map((item) => [
@@ -10709,17 +11271,13 @@ function renderBatchItems(items) {
     const testId = String(item.testId || "");
     if (testId) batchResultItemHistory.set(testId, item);
   }
-  const entries = currentBatchGroupTests().map((test, index) => ({
-    item: batchResultItemHistory.get(String(test.id || "")) || {
+  const rows = currentBatchGroupTests().map((test, index) => {
+    const item = batchResultItemHistory.get(String(test.id || "")) || {
       index,
       testId: String(test.id || ""),
       testName: String(test.name || `\u6D4B\u8BD5 ${index + 1}`),
       status: "not-run"
-    },
-    index
-  })).filter(({ item }) => !(resultTestFilterIds instanceof Set) || resultTestFilterIds.has(String(item.testId || "")));
-  const statusLabels = { "not-run": "\u672A\u8FD0\u884C", queued: "\u7B49\u5F85\u4E2D", running: "\u8FD0\u884C\u4E2D", succeeded: "\u6210\u529F", failed: "\u5931\u8D25", cancelled: "\u5DF2\u7EC8\u6B62" };
-  document.getElementById("batchResults").innerHTML = entries.map(({ item, index }) => {
+    };
     const hasMetrics = hasBatchResultMetrics(item);
     const resultUrl = String(item.resultUrl || "");
     const cardAnalysis = batchCardAnalyses.get(resultUrl);
@@ -10728,33 +11286,29 @@ function renderBatchItems(items) {
     const averageRecomputeTime = Number(rawAverageRecomputeTime);
     const hasThroughput = Number.isFinite(throughput) && throughput > 0;
     const hasAverageRecomputeTime = rawAverageRecomputeTime !== null && rawAverageRecomputeTime !== void 0 && Number.isFinite(averageRecomputeTime);
-    const summaryError = batchItemErrorText(item);
-    const failed = Boolean(summaryError);
-    const summaryNote = failed ? "" : summaryError;
-    const displayId = `t${index + 1}`;
-    const testId = String(item.testId || "");
+    const rawMakespan = item.makespan;
+    const makespan = Number(rawMakespan);
+    const hasMakespan = rawMakespan !== null && rawMakespan !== void 0 && Number.isFinite(makespan);
     const companyBaseline = companyCapacityBaselineFor(state.workspaceDevice?.name, item.testName);
-    return `
-      <div class="batch-result ${escapeHtml3(item.status || "queued")} ${testId === expandedBatchTestId ? "details-open" : ""}" data-batch-test-card="${escapeHtml3(testId)}" role="button" tabindex="0" aria-expanded="${testId === expandedBatchTestId}" aria-label="${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}\uFF1A\u5355\u51FB\u67E5\u770B\u8BE6\u60C5\uFF0C\u53CC\u51FB\u52A0\u5165\u8FD0\u884C\u961F\u5217" title="\u5355\u51FB\u67E5\u770B\u53EA\u8BFB\u914D\u7F6E\uFF1B\u53CC\u51FB\u52A0\u5165\u8FD0\u884C\u961F\u5217">
-        <div class="batch-result-head">
-          <span class="batch-result-title"><strong title="${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}">${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}</strong></span>
-          <div class="batch-result-meta">
-            <span class="batch-status">${statusLabels[item.status] || "\u7B49\u5F85\u4E2D"}</span>
-            ${item.logUrl ? `<a class="btn" href="${escapeHtml3(item.logUrl)}" download="${escapeHtml3(readableLogFileName(item.testName || `\u6D4B\u8BD5-${index + 1}`))}">\u65E5\u5FD7</a>` : `<span class="btn" aria-disabled="true">\u65E5\u5FD7</span>`}
-            ${item.resultUrl ? `<button class="btn primary" type="button" data-playback-result="${escapeHtml3(item.resultUrl)}" data-playback-name="${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}" data-playback-log="${escapeHtml3(item.logUrl || "")}">\u56DE\u653E</button>` : `<span class="btn" aria-disabled="true">\u56DE\u653E</span>`}
-            ${item.ganttUrl ? `<a class="btn" href="${escapeHtml3(item.ganttUrl)}" target="_blank">\u7518\u7279\u56FE</a>` : `<span class="btn" aria-disabled="true">\u7518\u7279\u56FE</span>`}
-            ${failed ? `<button class="btn danger" type="button" data-batch-error="${escapeHtml3(testId)}" aria-label="\u67E5\u770B ${escapeHtml3(displayId)} \u7684\u62A5\u9519\u4FE1\u606F">\u62A5\u9519</button>` : ""}
-          </div>
-        </div>
-        <div class="batch-result-summary">
-          <div class="batch-metric-tags" aria-label="\u4E3B\u8981\u6307\u6807">
-            <span class="batch-metric-tag production">${companyBaseline === null ? hasThroughput ? `\u4EA7\u80FD ${throughput.toFixed(1)} \u7247/h` : "\u4EA7\u80FD -" : `\u4EA7\u80FD ${hasThroughput ? throughput.toFixed(1) : "-"}/${companyBaseline.toFixed(1)} \u7247/h`}</span>
-            <span class="batch-metric-tag recompute">\u5E73\u5747\u91CD\u7B97 ${hasMetrics && hasAverageRecomputeTime ? `${averageRecomputeTime.toFixed(1)} ms` : "\u2014"}</span>
-          </div>
-          ${summaryNote ? `<span class="summary-error" title="${escapeHtml3(summaryNote)}">${escapeHtml3(summaryNote)}</span>` : ""}
-        </div>
-      </div>`;
-  }).join("");
+    return {
+      testId: String(item.testId || ""),
+      testName: String(item.testName || `\u6D4B\u8BD5 ${index + 1}`),
+      status: String(item.status || "queued"),
+      productionText: companyBaseline === null ? hasThroughput ? throughput.toFixed(1) : "\u2014" : `${hasThroughput ? throughput.toFixed(1) : "-"}/${companyBaseline.toFixed(1)}`,
+      recomputeText: hasMetrics && hasAverageRecomputeTime ? (averageRecomputeTime / MILLISECONDS_PER_SECOND).toFixed(2) : "\u2014",
+      makespanText: hasMetrics && hasMakespan ? makespan.toFixed(2) : "\u2014",
+      logUrl: String(item.logUrl || ""),
+      logFileName: readableLogFileName(item.testName || `\u6D4B\u8BD5-${index + 1}`),
+      resultUrl,
+      ganttUrl: String(item.ganttUrl || ""),
+      errorText: batchItemErrorText(item)
+    };
+  });
+  batchResultTable.update(rows, {
+    scope: JSON.stringify([state.workspaceDeviceId, state.activeTestGroup]),
+    selectedTestIds: resultTestFilterIds,
+    expandedTestId: expandedBatchTestId
+  });
 }
 function closeBatchTestDetails() {
   expandedBatchTestId = "";
@@ -10762,13 +11316,6 @@ function closeBatchTestDetails() {
   const panel = document.getElementById("batchTestDetails");
   panel.hidden = true;
   panel.innerHTML = "";
-}
-function updateBatchTestCardDetailState() {
-  document.querySelectorAll("[data-batch-test-card]").forEach((card) => {
-    const expanded = card.dataset.batchTestCard === expandedBatchTestId;
-    card.classList.toggle("details-open", expanded);
-    card.setAttribute("aria-expanded", String(expanded));
-  });
 }
 function renderBatchTestDetailField(label, value) {
   const text = readonlyText(value);
@@ -10818,7 +11365,7 @@ async function toggleBatchTestDetails(testId) {
   if (!testId || !state.workspaceDeviceId) return;
   if (expandedBatchTestId === testId) {
     closeBatchTestDetails();
-    updateBatchTestCardDetailState();
+    batchResultTable.setExpandedTest(expandedBatchTestId);
     return;
   }
   expandedBatchTestId = testId;
@@ -10826,7 +11373,7 @@ async function toggleBatchTestDetails(testId) {
   const panel = document.getElementById("batchTestDetails");
   panel.hidden = false;
   panel.innerHTML = '<div class="batch-test-details-body"><p class="hint">\u6B63\u5728\u8BFB\u53D6\u6D4B\u8BD5\u8BE6\u60C5\u2026</p></div>';
-  updateBatchTestCardDetailState();
+  batchResultTable.setExpandedTest(expandedBatchTestId);
   try {
     const result = await requestJson(`/api/workspaces/${state.workspaceDeviceId}/tests/${encodeURIComponent(testId)}`);
     if (requestVersion !== batchTestDetailsRequestVersion || expandedBatchTestId !== testId) return;
@@ -10851,6 +11398,23 @@ function batchGanttUrl(items) {
     params.append("name", item.testName);
   });
   return params.size ? `/movelist_gantt_viewer.html?${params.toString()}` : "";
+}
+var GANTT_VIEWER_URL = "/movelist_gantt_viewer.html";
+var ganttFrameUrl = "";
+function loadGanttFrame(url) {
+  const target = String(url || "");
+  if (!target || target === ganttFrameUrl) return;
+  ganttFrameUrl = target;
+  const frame = document.getElementById("ganttFrame");
+  if (frame) frame.src = target;
+}
+function ensureGanttFrameLoaded() {
+  if (ganttFrameUrl) return;
+  loadGanttFrame(batchGanttUrl(state.batchResult?.items || []) || GANTT_VIEWER_URL);
+}
+function openGanttViewer(url) {
+  loadGanttFrame(url);
+  void switchTab("gantt");
 }
 function resetBatchGanttLink() {
   const link = document.getElementById("batchGanttButton");
@@ -10917,7 +11481,6 @@ function writeTerminal(message, error = false) {
   panel.hidden = false;
 }
 async function checkService() {
-  const pill = document.getElementById("serviceState");
   const batchRunButton = document.getElementById("batchRunButton");
   try {
     const response = await fetch("/api/health", { cache: "no-store" });
@@ -10928,19 +11491,13 @@ async function checkService() {
     renderOtherAlgorithmOptions(status.algorithms || status.otherAlgorithms || []);
     batchRunButton.disabled = !compatible || state.batchRunning && state.batchCancelRequested;
     renderWorkspaceControls();
-    pill.textContent = compatible ? "\u672C\u5730\u670D\u52A1\u5DF2\u8FDE\u63A5" : "\u670D\u52A1\u7248\u672C\u8FC7\u65E7";
     if (!compatible) {
-      pill.style.color = "var(--red)";
-      pill.style.background = "var(--red-soft)";
       writeTerminal("$ \u672C\u5730\u670D\u52A1\u7248\u672C\u8FC7\u65E7\n  \u8BF7\u91CD\u542F: python -m app.backend.main", true);
     }
   } catch {
     state.serviceCompatible = false;
     batchRunButton.disabled = true;
     renderWorkspaceControls();
-    pill.textContent = "\u672C\u5730\u670D\u52A1\u672A\u8FDE\u63A5";
-    pill.style.color = "var(--red)";
-    pill.style.background = "var(--red-soft)";
     writeTerminal("$ \u65E0\u6CD5\u8FDE\u63A5\u672C\u5730\u670D\u52A1\n  \u8BF7\u8FD0\u884C: python -m app.backend.main", true);
   }
 }
@@ -11113,11 +11670,8 @@ document.getElementById("testExchangeFile").addEventListener("change", (event) =
   ${error.message}`, true);
   });
 });
-document.getElementById("resultPreviewViewButton").addEventListener("click", () => setRunResultView("results"));
-document.getElementById("analysisReportViewButton").addEventListener("click", () => {
-  if (!canOpenAnalysisReport()) return;
-  if (document.getElementById("testGroupAnalysisPanel").hidden) openGroupAnalysisOptions();
-  else setRunResultView("analysis");
+document.getElementById("generateAnalysisReportButton").addEventListener("click", () => {
+  if (canOpenAnalysisReport()) openGroupAnalysisOptions();
 });
 document.getElementById("batchResultFilterButton").addEventListener("click", () => openBatchTestSelectionDialog("filter"));
 for (const [sourceId, targetId] of [["runDeviceSelect", "deviceSelect"], ["runGroupSelect", "testGroupSelect"]]) {
@@ -11144,10 +11698,7 @@ document.getElementById("cancelTestEditButton").addEventListener("click", async 
   }
 });
 document.querySelectorAll("[data-management-target]").forEach((button) => button.addEventListener("click", () => {
-  (async () => {
-    await switchTab("test-management");
-    await switchManagementSection(button.dataset.managementTarget);
-  })().catch((error) => setWorkspaceStatus(`\u5207\u6362\u5931\u8D25\uFF1A${error.message}`, "dirty"));
+  switchTab("test-management", button.dataset.managementTarget).catch((error) => setWorkspaceStatus(`\u5207\u6362\u5931\u8D25\uFF1A${error.message}`, "dirty"));
 }));
 document.getElementById("testCatalogBody").addEventListener("click", (event) => {
   const button = event.target.closest("[data-test-action]");
@@ -11360,7 +11911,7 @@ document.getElementById("analysisOptionsForm").addEventListener("submit", (event
       document.getElementById("analysisOptionsCancel").textContent = "\u53D6\u6D88";
     } else {
       visualizationWorkspace.showGroupAnalysis(`<section class="group-analysis-warning"><strong>\u7ED3\u679C\u5206\u6790\u5931\u8D25</strong><br>${escapeHtml3(error.message || "\u672A\u77E5\u9519\u8BEF")}</section>`);
-      setRunResultView("analysis");
+      void switchTab("analysis");
     }
     writeTerminal(`$ \u6D4B\u8BD5\u7EC4\u7ED3\u679C\u5206\u6790\u5931\u8D25
   ${error.message || "\u672A\u77E5\u9519\u8BEF"}`, true);
@@ -11373,6 +11924,15 @@ document.querySelectorAll(".batch-log-download").forEach((button) => {
 });
 document.getElementById("batchGanttButton").addEventListener("click", (event) => {
   if (event.currentTarget.getAttribute("aria-disabled") === "true") event.preventDefault();
+});
+document.getElementById("exportMetricsCsvButton").addEventListener("click", exportResultMetricsCsv);
+document.addEventListener("click", (event) => {
+  const link = event.target?.closest?.('a[href*="movelist_gantt_viewer.html"]');
+  if (!link || event.defaultPrevented || event.button !== 0) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  if (link.getAttribute("aria-disabled") === "true") return;
+  event.preventDefault();
+  openGanttViewer(link.getAttribute("href") || link.href);
 });
 document.getElementById("closeDrawer").addEventListener("click", closeStepDrawer);
 document.getElementById("drawerLayer").addEventListener("click", (event) => {
@@ -11585,6 +12145,9 @@ window.addEventListener("pagehide", () => {
 var managementSections = document.getElementById("testManagementSections");
 for (const id of ["routeManagementSection", "deviceManagementSection"]) managementSections.append(document.getElementById(id));
 initializeCompactSelects();
+initializeConsoleShell();
+initializeConsoleReplayToolbar();
+initializeConsoleGanttToolbar();
 renderAll();
 renderWorkspaceControls();
 renderDeviceTimingConfiguration();

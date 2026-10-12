@@ -52,6 +52,7 @@ __export(workspace_visualizer_test_entry_exports, {
   renderParallelRobotArms: () => renderParallelRobotArms,
   renderReplayObjectDetails: () => renderReplayObjectDetails,
   renderSchedulePerformance: () => renderSchedulePerformance,
+  renderTestGroupAnalysis: () => renderTestGroupAnalysis,
   renderThroughputChart: () => renderThroughputChart,
   renderWaferDispatchProgress: () => renderWaferDispatchProgress,
   renderWaferResidenceChart: () => renderWaferResidenceChart,
@@ -5253,10 +5254,6 @@ var VisualizationWorkspace = class {
     this.elements.playbackEmpty.hidden = false;
     this.setTopologyVisible(false);
     this.elements.empty.classList.remove("is-loading", "is-error");
-    this.elements.empty.innerHTML = `
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg>
-      <strong>\u7B49\u5F85\u5206\u6790\u6570\u636E</strong>
-      <span>\u6279\u91CF\u8FD0\u884C\u6D4B\u8BD5\u7EC4\u540E\uFF0C\u5728\u7ED3\u679C\u9884\u89C8\u4E2D\u9009\u62E9\u201C\u6D4B\u8BD5\u7EC4\u7ED3\u679C\u5206\u6790\u201D\u3002\u5355\u6B21\u6D4B\u8BD5\u8BF7\u4F7F\u7528\u56DE\u653E\u8BCA\u65AD\u3002</span>`;
     this.elements.playbackEmpty.classList.remove("is-loading", "is-error");
     this.elements.playbackEmpty.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg>
@@ -5756,6 +5753,20 @@ function createVisualizationWorkspace(root = document) {
 }
 
 // src/group_analysis_view.ts
+function escapeHtml2(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function finiteText(value, digits, suffix = "") {
+  return value === null || !Number.isFinite(value) ? "\u2014" : `${value.toFixed(digits)}${suffix}`;
+}
+function percentText(value, fromRatio = false) {
+  const normalized = value === null ? null : value * (fromRatio ? 100 : 1);
+  return finiteText(normalized, 2, "%");
+}
+function durationText(value) {
+  if (value === null || !Number.isFinite(value)) return "\u2014";
+  return value >= 1e3 ? `${(value / 1e3).toFixed(2)} s` : `${value.toFixed(1)} ms`;
+}
 function csvNumber(value, digits) {
   return value === null || !Number.isFinite(value) ? "\u2014" : value.toFixed(digits);
 }
@@ -5826,6 +5837,93 @@ function testGroupSummaryCsv(summary) {
   ].map(csvEscape));
   return [headers.map(csvEscape).join(","), ...rows.map((row) => row.join(","))].join("\r\n");
 }
+function resultTable(summary, selected) {
+  return summary.cases.map((item, index) => {
+    const cells = [`<th scope="row">${escapeHtml2(caseLabel(item, index))}</th>`];
+    if (selected.has("throughput")) cells.push(`<td>${finiteText(item.throughputPerHour, 1, " \u7247/h")}</td>`);
+    if (selected.has("average_recompute_time")) cells.push(`<td>${durationText(item.averageRecomputeTimeMs ?? null)}</td>`);
+    if (selected.has("company_capacity_baseline")) cells.push(`<td>${finiteText(item.companyCapacityBaselineWph ?? null, 1, " \u7247/h")}</td>`);
+    if (selected.has("company_capacity_ratio")) {
+      const ratio = item.companyCapacityRatio ?? null;
+      cells.push(`<td class="${(ratio ?? 1) < 1 ? "loss" : "gain"}">${finiteText(ratio, 2)}</td>`);
+    }
+    if (selected.has("bottleneck_candidates")) cells.push(`<td>${escapeHtml2(item.bottleneckResource || "\u2014")}${item.bottleneckCandidateCount > 1 ? ` <small>+${item.bottleneckCandidateCount - 1} \u4E2A\u5019\u9009</small>` : ""}</td>`);
+    if (selected.has("makespan")) cells.push(`<td>${finiteText(item.makespan, 2, " s")}</td>`);
+    if (selected.has("validation")) cells.push(`<td>${item.analysisStatus && item.analysisStatus !== "completed" ? `<span class="group-fail">${escapeHtml2(item.error || item.analysisStatus)}</span>` : item.validationPassed ? '<span class="group-pass">\u901A\u8FC7</span>' : `<span class="group-fail">${escapeHtml2(item.validation || item.status)}</span>`}</td>`);
+    if (selected.has("cpu_time")) cells.push(`<td>${durationText(item.cpuTimeMs)}</td>`);
+    if (selected.has("resource_utilization")) cells.push(`<td>${percentText(item.bottleneckUtilization, true)}</td>`);
+    if (selected.has("departure_interval_cv")) cells.push(`<td>${finiteText(item.departureIntervalCv, 2)}</td>`);
+    if (selected.has("process_chamber_dwell")) cells.push(`<td>${finiteText(item.processChamberDwellMeanSeconds, 2, " s")}</td>`);
+    if (selected.has("robot_wafer_dwell")) cells.push(`<td>${finiteText(item.robotWaferDwellMeanSeconds, 2, " s")}</td>`);
+    if (selected.has("system_residence")) cells.push(`<td>${finiteText(item.waferSystemResidenceMeanSeconds, 2, " s")}</td>`);
+    if (selected.has("system_residence_cv")) cells.push(`<td>${finiteText(item.waferSystemResidenceCv, 2)}</td>`);
+    if (selected.has("loadlock_wafers_per_cycle")) cells.push(`<td>${finiteText(item.loadLockWafersPerCycle, 2, " \u7247")}</td>`);
+    if (selected.has("loadlock_full_cycle_ratio")) cells.push(`<td>${percentText(item.loadLockFullCycleRatio, true)}</td>`);
+    if (selected.has("loadlock_empty_cycle_ratio")) cells.push(`<td>${percentText(item.loadLockEmptyCycleRatio, true)}</td>`);
+    const rowClasses = [
+      item.analysisStatus && item.analysisStatus !== "completed" ? "is-incomplete" : ""
+    ].filter(Boolean).join(" ");
+    return `<tr${rowClasses ? ` class="${rowClasses}"` : ""}>${cells.join("")}</tr>`;
+  }).join("");
+}
+function renderTestGroupAnalysis(summary, groupName) {
+  const selected = selectedMetricIds(summary);
+  const selectedLabels = {
+    throughput: "\u4EA7\u80FD",
+    average_recompute_time: "\u5E73\u5747\u91CD\u7B97\u65F6\u95F4",
+    company_capacity_baseline: "\u4EA7\u80FD\u57FA\u7EBF",
+    company_capacity_ratio: "\u4EA7\u80FD\u6BD4",
+    bottleneck_candidates: "\u74F6\u9888",
+    makespan: "Makespan",
+    validation: "\u6821\u9A8C\u7ED3\u679C",
+    cpu_time: "\u7B97\u6CD5\u603B\u8017\u65F6",
+    resource_utilization: "\u8D44\u6E90\u5229\u7528\u7387",
+    departure_interval_cv: "\u51FA\u7AD9\u95F4\u9694 CV",
+    process_chamber_dwell: "\u52A0\u5DE5\u8154\u9A7B\u7559",
+    robot_wafer_dwell: "\u673A\u5668\u624B\u9A7B\u7559",
+    system_residence: "\u7CFB\u7EDF\u505C\u7559",
+    system_residence_cv: "\u7CFB\u7EDF\u505C\u7559 CV",
+    loadlock_wafers_per_cycle: "LoadLock \u6BCF\u5468\u671F\u6676\u5706",
+    loadlock_full_cycle_ratio: "LoadLock \u6EE1\u8F7D\u5468\u671F\u7387",
+    loadlock_empty_cycle_ratio: "LoadLock \u7A7A\u8F7D\u5468\u671F\u7387"
+  };
+  const tableHeaders = ["<th>\u6D4B\u8BD5</th>"];
+  if (selected.has("throughput")) tableHeaders.push("<th>\u4EA7\u80FD</th>");
+  if (selected.has("average_recompute_time")) tableHeaders.push("<th>\u5E73\u5747\u91CD\u7B97\u65F6\u95F4</th>");
+  if (selected.has("company_capacity_baseline")) tableHeaders.push("<th>\u4EA7\u80FD\u57FA\u7EBF</th>");
+  if (selected.has("company_capacity_ratio")) tableHeaders.push("<th>\u4EA7\u80FD\u6BD4</th>");
+  if (selected.has("bottleneck_candidates")) tableHeaders.push("<th>\u74F6\u9888</th>");
+  if (selected.has("makespan")) tableHeaders.push("<th>Makespan</th>");
+  if (selected.has("validation")) tableHeaders.push("<th>\u6821\u9A8C\u7ED3\u679C</th>");
+  if (selected.has("cpu_time")) tableHeaders.push("<th>\u7B97\u6CD5\u603B\u8017\u65F6</th>");
+  if (selected.has("resource_utilization")) tableHeaders.push("<th>\u5229\u7528\u7387</th>");
+  if (selected.has("departure_interval_cv")) tableHeaders.push("<th>\u51FA\u7AD9 CV</th>");
+  if (selected.has("process_chamber_dwell")) tableHeaders.push("<th>\u52A0\u5DE5\u8154\u9A7B\u7559\u5747\u503C</th>");
+  if (selected.has("robot_wafer_dwell")) tableHeaders.push("<th>\u673A\u5668\u624B\u9A7B\u7559\u5747\u503C</th>");
+  if (selected.has("system_residence")) tableHeaders.push("<th>\u7CFB\u7EDF\u505C\u7559\u5747\u503C</th>");
+  if (selected.has("system_residence_cv")) tableHeaders.push("<th>\u7CFB\u7EDF\u505C\u7559 CV</th>");
+  if (selected.has("loadlock_wafers_per_cycle")) tableHeaders.push("<th>LoadLock \u6BCF\u5468\u671F\u6676\u5706</th>");
+  if (selected.has("loadlock_full_cycle_ratio")) tableHeaders.push("<th>LoadLock \u6EE1\u8F7D\u5468\u671F\u7387</th>");
+  if (selected.has("loadlock_empty_cycle_ratio")) tableHeaders.push("<th>LoadLock \u7A7A\u8F7D\u5468\u671F\u7387</th>");
+  return `
+    <header class="group-analysis-head table-header-control">
+      <div class="group-analysis-heading"><h2>${escapeHtml2(groupName || "\u5F53\u524D\u6D4B\u8BD5\u7EC4")}</h2><p>${summary.cases.length} \u9879\u6D4B\u8BD5 \xB7 ${selected.size} \u9879\u6307\u6807</p></div>
+      <div class="group-analysis-actions">
+        <button class="btn small group-analysis-back" type="button" data-return-run-results><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7-5 5 5 5M5 12h14"/></svg><span>\u8FD4\u56DE\u8FD0\u884C\u7ED3\u679C</span></button>
+        <button class="btn small" type="button" data-reconfigure-analysis>\u91CD\u65B0\u9009\u62E9\u6307\u6807\u4E0E\u6D4B\u8BD5</button>
+        <button type="button" class="btn small group-analysis-export" data-group-export-csv>\u5BFC\u51FA CSV</button>
+      </div>
+    </header>
+    <div class="group-analysis-selection" aria-label="\u672C\u6B21\u5206\u6790\u6307\u6807">${[...selected].map((metric) => `<span>${escapeHtml2(selectedLabels[metric] || metric)}</span>`).join("")}</div>
+    ${summary.timedOut ? '<div class="group-analysis-warning">\u5DF2\u8FBE\u5230\u65F6\u95F4\u9884\u7B97\uFF0C\u4EE5\u4E0B\u62A5\u544A\u4FDD\u7559\u5B8C\u6210\u90E8\u5206\uFF1B\u53EF\u51CF\u5C11\u6307\u6807\u6216\u63D0\u9AD8\u65F6\u95F4\u9884\u7B97\u540E\u7EE7\u7EED\u3002</div>' : ""}
+    <div class="table-responsive group-analysis-table-scroll" tabindex="0" role="region" aria-label="\u9010\u6D4B\u8BD5\u5206\u6790\u62A5\u544A\uFF0C\u53EF\u6A2A\u5411\u6EDA\u52A8">
+        <table class="table-custom group-analysis-table">
+          <caption class="sr-only">${escapeHtml2(groupName || "\u5F53\u524D\u6D4B\u8BD5\u7EC4")}\u9010\u6D4B\u8BD5\u6307\u6807</caption>
+          <thead><tr>${tableHeaders.map((header) => header.replace("<th>", '<th scope="col">')).join("")}</tr></thead>
+          <tbody>${resultTable(summary, selected)}</tbody>
+        </table>
+    </div>`;
+}
 
 // src/result_artifact_urls.ts
 function movelistResultSourceUrl(source, pageUrl) {
@@ -5872,6 +5970,7 @@ function movelistResultSourceUrl(source, pageUrl) {
   renderParallelRobotArms,
   renderReplayObjectDetails,
   renderSchedulePerformance,
+  renderTestGroupAnalysis,
   renderThroughputChart,
   renderWaferDispatchProgress,
   renderWaferResidenceChart,

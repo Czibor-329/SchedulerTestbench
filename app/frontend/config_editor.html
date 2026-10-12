@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- 调度工作台页面骨架；console_shell 管理导航呈现，业务控件由 config_editor.ts 驱动。 -->
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -6,64 +7,91 @@
   <title>调度平台</title>
   <link rel="stylesheet" href="/assets/tabler.min.css">
   <link rel="stylesheet" href="/assets/katex.min.css?v=1.4.4">
-  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.18">
-  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.18">
+  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.19">
+  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.19">
+  <link rel="stylesheet" href="/assets/console_shell.css?v=1.6.19">
+  <link rel="stylesheet" href="/assets/console_components.css?v=1.6.19">
+  <link rel="stylesheet" href="/assets/spark_table.css?v=1.6.19">
+  <link rel="stylesheet" href="/assets/result_table.css?v=1.6.19">
+  <link rel="stylesheet" href="/assets/analysis_report.css?v=1.6.19">
+  <link rel="stylesheet" href="/assets/console_replay_toolbar.css?v=1.6.19">
+  <link rel="stylesheet" href="/assets/console_gantt_toolbar.css?v=1.6.19">
 </head>
 <body class="theme-light" data-bs-theme="light">
   <a class="skip-link" href="#mainContent">跳到主要内容</a>
   <main class="shell">
-    <aside class="primary-sidebar" aria-label="应用导航">
-      <a class="sidebar-brand" href="#" aria-label="329 调度平台首页">
+    <aside class="primary-sidebar" id="primarySidebar" aria-label="应用导航">
+      <button class="sidebar-close" id="sidebarClose" type="button" aria-label="关闭导航"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      <a class="sidebar-brand" href="#" aria-label="调度平台首页" data-tab-target="schedule">
         <span class="sidebar-brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 48 48"><path d="M10 32V19a5 5 0 0 1 5-5h7v20h-7a5 5 0 0 1-5-5v-3h12"/><path d="M28 14h5a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5h-5V14Z"/><path d="M28 24h10"/><circle cx="38" cy="12" r="3"/></svg>
+          <svg viewBox="0 0 16 16"><path d="M8 0a1 1 0 0 1 1 1v5.268l4.562-2.634a1 1 0 1 1 1 1.732L10 8l4.562 2.634a1 1 0 1 1-1 1.732L9 9.732V15a1 1 0 1 1-2 0V9.732l-4.562 2.634a1 1 0 1 1-1-1.732L6 8 1.438 5.366a1 1 0 0 1 1-1.732L7 6.268V1a1 1 0 0 1 1-1"/></svg>
         </span>
-        <span><strong>调度平台</strong></span>
+        <span class="sidebar-brand-name"><strong>调度平台</strong></span>
       </a>
       <nav class="tabs" aria-label="主要功能">
-        <button class="tab active" data-tab-target="schedule" type="button">
+        <div class="sidebar-nav-group" role="group" aria-labelledby="workspaceNavigationTitle">
+        <div class="sidebar-section-label" id="workspaceNavigationTitle">工作空间</div>
+        <button class="tab active" data-tab-target="schedule" type="button" aria-current="page">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m5 14v-8m5 8V8m5 11V3"/><path d="m4 14 5-4 5 2 6-6"/></svg><span>运行分析</span>
         </button>
-        <button class="tab" data-tab-target="test-management" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 4V2h6v2M8.5 12l2 2 4.5-4.5M9 17h6"/></svg><span>测试管理</span>
+        <button class="tab" data-tab-target="analysis" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M7 17V9m5 8V5m5 12v-5"/></svg><span>分析报告</span>
         </button>
-        <div class="sidebar-subtabs" aria-label="测试管理分类" hidden>
-          <button class="sidebar-subtab active" type="button" data-management-target="cases" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 4V2h6v2M8.5 12l2 2 4.5-4.5M9 17h6"/></svg><span>用例管理</span></button>
+        </div>
+        <div class="sidebar-nav-group" role="group" aria-labelledby="managementNavigationTitle">
+        <div class="sidebar-section-label" id="managementNavigationTitle">测试管理</div>
+        <div class="sidebar-subtabs" aria-label="测试管理分类">
+          <button class="sidebar-subtab" type="button" data-management-target="cases"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 4V2h6v2M8.5 12l2 2 4.5-4.5M9 17h6"/></svg><span>用例管理</span></button>
           <button class="sidebar-subtab" type="button" data-management-target="routes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h4a4 4 0 0 1 4 4v4M13 14v4h4"/></svg><span>路径配置</span></button>
           <button class="sidebar-subtab" type="button" data-management-target="devices"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h3M16 16h.01"/></svg><span>设备配置</span></button>
         </div>
+        </div>
+        <div class="sidebar-nav-group" role="group" aria-labelledby="diagnosticNavigationTitle">
+        <div class="sidebar-section-label" id="diagnosticNavigationTitle">结果诊断</div>
         <button class="tab" data-tab-target="playback" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m7 7.3 2.8 2.8M17 7.3l-2.8 2.8M7 16.7l2.8-2.8M17 16.7l-2.8-2.8"/></svg><span>回放诊断</span>
         </button>
-        <a class="tab" href="/documentation.html" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"/><path d="M15 4v4h4M8 12h8M8 16h6"/></svg><span>使用文档</span>
-        </a>
+        <button class="tab" data-tab-target="gantt" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v14h16M8 15v-3m4 3V8m4 7v-5"/></svg><span>甘特图</span>
+        </button>
+        </div>
       </nav>
       <div class="sidebar-footer">
-        <span class="sidebar-footer-label">系统状态</span>
-        <div class="service-pill" id="serviceState">本地服务</div>
-        <span class="frontend-version">V1.6.18</span>
+        <span class="sidebar-footer-label">本地调度工作台</span>
+        <span class="frontend-version">V1.6.19</span>
       </div>
     </aside>
+    <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="关闭导航" tabindex="-1" hidden></button>
 
     <div class="app-content" id="mainContent">
+      <header class="console-topbar">
+        <div class="console-topbar-start">
+          <button class="console-menu-toggle" id="sidebarToggle" type="button" aria-label="折叠导航" aria-controls="primarySidebar" aria-expanded="true" title="折叠导航">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.854 3.646a.5.5 0 0 1 0 .708L8.207 8l3.647 3.646a.5.5 0 0 1-.708.708l-4-4a.5.5 0 0 1 0-.708l4-4a.5.5 0 0 1 .708 0"/><path d="M4.5 1a.5.5 0 0 0-.5.5v13a.5.5 0 0 0 1 0v-13a.5.5 0 0 0-.5-.5"/></svg>
+          </button>
+          <div class="console-breadcrumb"><strong id="consoleBreadcrumb">运行分析</strong></div>
+        </div>
+        <div class="console-replay-controls" id="consoleReplayControls" hidden></div>
+        <div class="console-gantt-controls" id="consoleGanttControls" hidden></div>
+        <div class="console-topbar-actions">
+          <a class="console-help-link" href="/documentation.html" target="_blank" rel="noopener" aria-label="打开使用文档" title="使用文档"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4 2l-1.5 1v2m0 3h.01"/></svg></a>
+        </div>
+      </header>
       <div class="layout" id="pageLayout">
       <section class="main">
         <div class="tab-view active" data-tab-view="schedule">
+          <h1 class="visually-hidden">运行分析</h1>
           <article class="panel run-selection-panel">
             <div class="panel-head run-selection-panel-head">
               <div class="run-selection-head-controls">
-                <div class="run-device-control"><div class="field"><label for="runDeviceSelect">设备</label><select id="runDeviceSelect"></select></div><div class="chips workspace-device-summary" id="deviceSummary"><span class="chip">尚未选择设备</span></div><div class="workspace-transfer-actions run-workspace-transfer-actions" aria-label="设备与测试集导入导出"><button class="btn small workspace-transfer-button" id="workspaceImportButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg><span>导入</span></button><button class="btn small workspace-transfer-button" id="workspaceExportButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0 4 4m-4-4-4 4M5 20h14"/></svg><span>导出</span></button></div><div class="field run-group-control"><label for="runGroupSelect">测试组</label><select id="runGroupSelect"></select></div></div>
+                <div class="run-device-control"><div class="field"><label for="runDeviceSelect">设备</label><select id="runDeviceSelect" data-compact-label="设备" aria-label="设备"></select></div><div class="chips workspace-device-summary" id="deviceSummary"><span class="chip">尚未选择设备</span></div><div class="workspace-transfer-actions run-workspace-transfer-actions" aria-label="设备与测试集导入导出"><button class="btn small workspace-transfer-button" id="workspaceImportButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg><span>导入</span></button><button class="btn small workspace-transfer-button" id="workspaceExportButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0 4 4m-4-4-4 4M5 20h14"/></svg><span>导出</span></button></div><div class="field run-group-control"><label for="runGroupSelect">测试组</label><select id="runGroupSelect" data-compact-label="测试组" aria-label="测试组"></select></div></div>
               </div>
             </div>
           </article>
           <div class="run-preview-stack" id="runPreviewArea">
-          <article class="panel result-panel" id="runResultsView">
-            <div class="panel-head">
-              <div class="result-view-tabs" role="tablist" aria-label="结果视图"><button class="result-view-tab active" id="resultPreviewViewButton" type="button" data-result-view="results" role="tab" aria-selected="true">结果预览</button><button class="result-view-tab" id="analysisReportViewButton" type="button" data-result-view="analysis" role="tab" aria-selected="false" disabled>分析报告</button></div>
-              <div class="result-head-actions"><span class="result-card-run-hint">双击测试卡片可运行<br>多个测试将按顺序排队。</span><span class="result-card-detail-hint">点击测试卡片可展开详情<br>再次点击即可收起。</span><button class="btn" id="batchResultFilterButton" type="button">选择测试</button></div>
-            </div>
+          <article class="panel table-card-custom result-panel" id="runResultsView">
             <div class="panel-body">
-              <div class="batch-results" id="batchResults"></div>
+              <div class="result-table-container" id="batchResults"></div>
               <div class="result-error-panel" id="resultErrorPanel" role="alert" hidden>
                 <header class="result-error-header">
                   <span class="result-error-icon" aria-hidden="true">!</span>
@@ -73,19 +101,22 @@
                 <div id="resultErrorDetails" class="result-error-details" hidden></div>
                 <pre id="terminal"></pre>
               </div>
-              <div class="result-actions"><a class="btn batch-log-download" id="resultBatchLogButton" href="#" download aria-disabled="true">导出本批日志</a><a class="btn primary" id="batchGanttButton" href="#" target="_blank" aria-disabled="true">全部甘特图</a></div>
+              <div class="result-actions"><a class="btn batch-log-download" id="resultBatchLogButton" href="#" download aria-disabled="true">导出本批日志</a><a class="btn primary" id="batchGanttButton" href="#" target="_blank" aria-disabled="true">全部甘特图</a><button class="btn" id="exportMetricsCsvButton" type="button">导出指标 CSV</button></div>
             </div>
           </article>
           <section class="batch-test-details" id="batchTestDetails" aria-live="polite" hidden></section>
           </div>
-        <div id="runAnalysisView" hidden>
+        </div>
+
+        <div class="tab-view" data-tab-view="analysis">
           <article class="visual-workbench">
-            <section class="test-group-analysis" id="testGroupAnalysisPanel" hidden aria-live="polite"></section>
+            <section class="test-group-analysis table-card-custom" id="testGroupAnalysisPanel" hidden aria-live="polite"></section>
 
             <div class="visual-empty" id="visualEmpty">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg>
               <strong>等待分析数据</strong>
-              <span>至少完成一项可分析测试后，点击“分析报告”配置并生成报告。单次测试请使用回放诊断。</span>
+              <span>在“运行分析”中运行一次测试组后，回到这里点击下方按钮配置并生成报告。单次测试请使用回放诊断。</span>
+              <button class="btn primary analysis-report-generate" id="generateAnalysisReportButton" type="button" disabled>生成分析报告</button>
             </div>
 
             <div class="visual-content" id="visualContent" hidden>
@@ -100,8 +131,6 @@
               </section>
             </div>
           </article>
-        </div>
-
         </div>
 
         <div class="tab-view" data-tab-view="test-management">
@@ -248,6 +277,10 @@
           </article>
         </div>
 
+        <div class="tab-view" data-tab-view="gantt">
+          <iframe class="gantt-frame" id="ganttFrame" title="MoveList 甘特图查看器"></iframe>
+        </div>
+
         <div class="management-section detached-management-section" id="routeManagementSection" data-management-view="routes" hidden>
           <aside class="route-update-card" role="note" aria-label="路径模板更新说明">
             <div class="route-update-card-icon" aria-hidden="true">i</div>
@@ -258,7 +291,6 @@
           </aside>
           <article class="panel">
             <div class="panel-head route-panel-head">
-              <div><h2>路径配置</h2></div>
               <div class="route-panel-actions">
                 <div class="route-filter-bar" aria-label="路径分类选择">
                   <div class="route-filter-field">
@@ -277,9 +309,6 @@
 
         <div class="management-section detached-management-section" id="deviceManagementSection" data-management-view="devices" hidden>
           <header class="device-config-heading">
-            <div>
-              <h1>设备配置</h1>
-            </div>
             <div class="device-config-heading-actions">                  <button class="btn workspace-icon-button danger" id="deleteDeviceButton" type="button" title="删除当前设备" aria-label="删除当前设备" disabled>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>
                   </button>
@@ -380,7 +409,7 @@
 
       <aside class="side" id="scheduleSide">
         <article class="panel">
-          <div class="panel-head"><div><h2>运行策略</h2></div></div>
+          <div class="panel-head"><div><h2>运行策略</h2></div><button class="btn small" id="batchResultFilterButton" type="button">选择测试</button></div>
           <fieldset class="panel-body" id="runStrategyFields">
             <div class="strategy-options">
               <div class="other-algorithm-options" id="otherAlgorithmOptions"></div>
@@ -811,7 +840,7 @@
     </aside>
   </dialog>
 
-  <script type="module" src="/assets/config_editor.js?v=1.6.18"></script>
+  <script type="module" src="/assets/config_editor.js?v=1.6.19"></script>
   <dialog id="testDraftDialog" aria-labelledby="testDraftTitle">
     <h2 id="testDraftTitle">测试有未保存的修改</h2><p>保存后再离开，或放弃本次修改。</p>
     <form method="dialog" class="editor-save-actions"><button class="btn" value="cancel" autofocus>继续编辑</button><button class="btn" value="discard">放弃修改</button><button class="btn primary" value="save">保存并继续</button></form>
