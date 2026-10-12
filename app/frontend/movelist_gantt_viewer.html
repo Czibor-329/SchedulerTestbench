@@ -6,6 +6,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Movelist Gantt Viewer</title>
+  <link rel="stylesheet" href="/assets/fonts.css">
   <style>
     :root {
       color-scheme: light;
@@ -28,7 +29,9 @@
       --shadow: 0 16px 42px rgba(15, 23, 42, 0.10);
       --shadow-soft: 0 8px 22px rgba(15, 23, 42, 0.06);
       --radius: 8px;
-      font-family: "Segoe UI", "Inter", Arial, sans-serif;
+      /* 与控制台主页面统一的字体：西文自托管 Plus Jakarta Sans（fonts.css），中文回落系统字体。 */
+      --font-ui: "Plus Jakarta Sans", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+      font-family: var(--font-ui);
     }
 
     * {

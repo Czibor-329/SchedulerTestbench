@@ -983,14 +983,17 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def _send_frontend_asset(self, asset_name: str) -> None:
-        """发送构建后的前端资源，并拒绝目录穿越和未知文件类型。"""
+        """发送构建后的前端资源：允许 assets 下的子目录（如自托管字体），拒绝目录穿越和未知类型。"""
         content_types = {
             ".css": "text/css; charset=utf-8",
             ".js": "text/javascript; charset=utf-8",
             ".map": "application/json; charset=utf-8",
+            ".woff2": "font/woff2",
+            ".woff": "font/woff",
         }
-        asset_path = (FRONTEND_ASSET_DIR / asset_name).resolve()
-        if asset_path.parent != FRONTEND_ASSET_DIR.resolve():
+        asset_root = FRONTEND_ASSET_DIR.resolve()
+        asset_path = (asset_root / asset_name).resolve()
+        if not asset_path.is_relative_to(asset_root):
             self._send_json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)
             return
         content_type = content_types.get(asset_path.suffix.lower())

@@ -12,7 +12,7 @@
   --console-sidebar-width: 280px; --console-header-height: 76px; --console-page-padding: 28px;
   --tblr-primary: #072f1f; --tblr-body-color: #0b130f; --tblr-body-bg: #f4f6f5;
 }
-body { color: var(--ink); background: var(--bg); font: 16px/1.55 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+body { color: var(--ink); background: var(--bg); font: 16px/1.55 var(--font-ui); }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 :is(button, a, input, select, textarea):focus-visible { outline: 2px solid #628b40; outline-offset: 3px; }
 .shell { grid-template-columns: var(--console-sidebar-width) minmax(0, 1fr); padding: 0; gap: 0; }
@@ -141,7 +141,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); }
   --green: #087f5b; --green-soft: #e8f8f1; --red: #bd2837; --red-soft: #fff0f1;
   --shadow: 0 12px 32px rgba(32, 47, 81, .08); --radius: 16px;
   color: var(--ink);
-  font: 14px/1.55 Inter, "Microsoft YaHei", system-ui, sans-serif;
+  font: 14px/1.55 var(--font-ui);
 }
 body:has([data-tab-view="playback"].active) .layout,
 body:has([data-tab-view="gantt"].active) .layout { padding: 0; }
