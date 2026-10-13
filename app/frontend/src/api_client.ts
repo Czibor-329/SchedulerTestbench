@@ -11,6 +11,9 @@ import type {
   PerformanceWindowMode,
   SchedulePerformance,
   TestGroupPerformanceSummary,
+  TheoryCapacityDerivationResponse,
+  TheoryCapacityRouteIndexResponse,
+  TheoryCapacityScanResponse,
 } from "./analysis_contracts";
 
 /** 请求 JSON 接口，并把失败响应转换为带业务消息的异常。 */
@@ -138,7 +141,7 @@ export async function requestDeadlockDiagnostic(input: {
   };
 }
 
-/** 读取 Search Tree 搜索快照；版本未变化时后端只返回紧凑标记。 */
+/** 请求 Search Tree 搜索快照；版本未变化时后端只返回紧凑标记。 */
 export async function requestSearchTelemetry(
   sinceRevision: number | null = null,
 ): Promise<Record<string, any>> {
@@ -161,4 +164,52 @@ export async function requestSearchControl(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(actionKey ? { command, actionKey } : { command }),
   });
+}
+
+/** 请求一台设备的路线分类索引（筛选器可选值与数量，不求解曲线）。 */
+export async function requestTheoryCapacityRouteIndex(
+  deviceId: string,
+): Promise<TheoryCapacityRouteIndexResponse> {
+  const query = new URLSearchParams({ device: deviceId });
+  return await requestJson(
+    `/api/theory-capacity/route-index?${query.toString()}`,
+  ) as TheoryCapacityRouteIndexResponse;
+}
+
+/** 按筛选条件请求加工时间—理论产能扫描与测试数据点。 */
+export async function requestTheoryCapacityScan(
+  deviceId: string,
+  window: { firstSeconds: number; lastSeconds: number; stepSeconds: number },
+  filters: { kinds?: string; locks?: string; cleans?: string } = {},
+): Promise<TheoryCapacityScanResponse> {
+  const query = new URLSearchParams({
+    device: deviceId,
+    first: String(window.firstSeconds),
+    last: String(window.lastSeconds),
+    step: String(window.stepSeconds),
+  });
+  if (filters.kinds) query.set("kinds", filters.kinds);
+  if (filters.locks) query.set("locks", filters.locks);
+  if (filters.cleans) query.set("cleans", filters.cleans);
+  return await requestJson(
+    `/api/theory-capacity/scan?${query.toString()}`,
+  ) as TheoryCapacityScanResponse;
+}
+
+/** 请求一个测试或一条路线的理论产能完整推导。 */
+export async function requestTheoryCapacityDerivation(
+  deviceId: string,
+  target: { testId?: string; routeName?: string },
+): Promise<TheoryCapacityDerivationResponse> {
+  const query = new URLSearchParams({ device: deviceId });
+  if (target.testId) query.set("test", target.testId);
+  if (target.routeName) query.set("route", target.routeName);
+  return await requestJson(
+    `/api/theory-capacity/derivation?${query.toString()}`,
+  ) as TheoryCapacityDerivationResponse;
+}
+
+/** 读取设备固定 PM 组合的扫描与加工时间单点推导，不读取测试。 */
+export async function requestTheoryCapacityPreset(deviceId: string, values: Record<string, string>) {
+  return requestJson(`/api/theory-capacity/preset?${new URLSearchParams({device: deviceId, ...values})}`);
 }

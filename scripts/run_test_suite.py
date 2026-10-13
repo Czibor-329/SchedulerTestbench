@@ -84,6 +84,7 @@ def _run_frontend(*, fail_fast: bool) -> int:
         result_card_run_queue_output = build_root / "result_card_run_queue.js"
         result_table_output = build_root / "result_table.js"
         gantt_toolbar_output = build_root / "gantt_toolbar.js"
+        theory_capacity_output = build_root / "theory_capacity.js"
         entries = (
             (FRONTEND_ROOT / "src" / "workspace_visualizer_test_entry.ts", workspace_output),
             (FRONTEND_ROOT / "src" / "route_editor_logic.ts", route_output),
@@ -98,6 +99,10 @@ def _run_frontend(*, fail_fast: bool) -> int:
             (
                 FRONTEND_ROOT / "src" / "gantt_toolbar_test_entry.ts",
                 gantt_toolbar_output,
+            ),
+            (
+                FRONTEND_ROOT / "src" / "theory_capacity_test_entry.ts",
+                theory_capacity_output,
             ),
         )
         for source, destination in entries:
@@ -127,6 +132,7 @@ def _run_frontend(*, fail_fast: bool) -> int:
         )
         environment["CT_RESULT_TABLE_TEST_BUILD"] = str(result_table_output)
         environment["CT_GANTT_TOOLBAR_TEST_BUILD"] = str(gantt_toolbar_output)
+        environment["CT_THEORY_CAPACITY_TEST_BUILD"] = str(theory_capacity_output)
         command = [
             "node",
             "--test",

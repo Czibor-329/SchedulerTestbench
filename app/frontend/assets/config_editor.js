@@ -4,6 +4,76 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/api_client.ts
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, options);
+  const result = await response.json();
+  if (!response.ok || result?.ok === false) {
+    throw new Error(result?.error || `\u670D\u52A1\u8FD4\u56DE ${response.status}`);
+  }
+  return result;
+}
+async function requestScheduleAnalysis(input) {
+  const result = await requestJson("/api/analysis/schedule", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return {
+    analysis: result.analysis,
+    bottleneck: result.bottleneck ?? null
+  };
+}
+async function requestReplayDecision(input) {
+  const result = await requestJson("/api/analysis/replay-decision", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return result.decision;
+}
+async function createTestGroupAnalysisJob(input) {
+  const result = await requestJson("/api/analysis-jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  return result.job;
+}
+async function readTestGroupAnalysisJob(jobId) {
+  const result = await requestJson(`/api/analysis-jobs/${encodeURIComponent(jobId)}`, {
+    cache: "no-store"
+  });
+  return result.job;
+}
+async function cancelTestGroupAnalysisJob(jobId) {
+  const result = await requestJson(`/api/analysis-jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST"
+  });
+  return result.job;
+}
+async function requestDeadlockDiagnostic(input) {
+  const response = await fetch("/api/analysis/deadlock-diagnostic", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result?.error || `\u670D\u52A1\u8FD4\u56DE ${response.status}`);
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const fallbackName = disposition.match(/filename="([^"]+)"/i)?.[1];
+  return {
+    blob: await response.blob(),
+    fileName: encodedName ? decodeURIComponent(encodedName) : fallbackName || "deadlock-diagnostic.json"
+  };
+}
+async function requestTheoryCapacityPreset(deviceId, values4) {
+  return requestJson(`/api/theory-capacity/preset?${new URLSearchParams({ device: deviceId, ...values4 })}`);
+}
+
 // src/test_draft_navigation.ts
 async function resolveTestDraft(dirty, choose, save, discard) {
   if (!dirty) return true;
@@ -583,73 +653,6 @@ function normalizeStageProcessRecipes(stage, recipeName, normalizeVisit2 = (valu
     }
   }
   return changed;
-}
-
-// src/api_client.ts
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, options);
-  const result = await response.json();
-  if (!response.ok || result?.ok === false) {
-    throw new Error(result?.error || `\u670D\u52A1\u8FD4\u56DE ${response.status}`);
-  }
-  return result;
-}
-async function requestScheduleAnalysis(input) {
-  const result = await requestJson("/api/analysis/schedule", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input)
-  });
-  return {
-    analysis: result.analysis,
-    bottleneck: result.bottleneck ?? null
-  };
-}
-async function requestReplayDecision(input) {
-  const result = await requestJson("/api/analysis/replay-decision", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input)
-  });
-  return result.decision;
-}
-async function createTestGroupAnalysisJob(input) {
-  const result = await requestJson("/api/analysis-jobs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input)
-  });
-  return result.job;
-}
-async function readTestGroupAnalysisJob(jobId) {
-  const result = await requestJson(`/api/analysis-jobs/${encodeURIComponent(jobId)}`, {
-    cache: "no-store"
-  });
-  return result.job;
-}
-async function cancelTestGroupAnalysisJob(jobId) {
-  const result = await requestJson(`/api/analysis-jobs/${encodeURIComponent(jobId)}/cancel`, {
-    method: "POST"
-  });
-  return result.job;
-}
-async function requestDeadlockDiagnostic(input) {
-  const response = await fetch("/api/analysis/deadlock-diagnostic", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input)
-  });
-  if (!response.ok) {
-    const result = await response.json().catch(() => ({}));
-    throw new Error(result?.error || `\u670D\u52A1\u8FD4\u56DE ${response.status}`);
-  }
-  const disposition = response.headers.get("Content-Disposition") ?? "";
-  const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
-  const fallbackName = disposition.match(/filename="([^"]+)"/i)?.[1];
-  return {
-    blob: await response.blob(),
-    fileName: encodedName ? decodeURIComponent(encodedName) : fallbackName || "deadlock-diagnostic.json"
-  };
 }
 
 // src/wafer_dispatch_progress.ts
@@ -6825,6 +6828,448 @@ function createBatchAnalysisContext(options) {
   return context;
 }
 
+// src/theory_capacity_view.ts
+function formatCapacity(value, digits = 2) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "\u2014";
+  return value.toFixed(digits);
+}
+function formatSeconds3(value, digits = 2) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "\u2014";
+  return value.toFixed(digits);
+}
+function escapeHtml3(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function processSecondsAtPosition(clientX, left, width, first, last) {
+  if (width <= 0 || last <= first) return first;
+  const fraction = Math.max(0, Math.min(1, (clientX - left) / width));
+  return Math.round((first + fraction * (last - first)) * 10) / 10;
+}
+function renderTeachingDerivation(entry, name) {
+  if (entry.model_kind === "cycle-batch") return renderBatchDerivation(entry);
+  if (entry.model_kind === "cycle-periodic") return renderPeriodicDerivation(entry);
+  const facts = entry.facts;
+  const units = facts?.units_per_cycle ?? 0;
+  const period = entry.period_seconds ?? 0;
+  const rounds = facts?.rounds_per_cycle || 1;
+  const chain = entry.critical_chain ?? [];
+  const delay = chain.reduce((sum, edge) => sum + edge.minimum_delay_seconds, 0);
+  const shift = chain.reduce((sum, edge) => sum + edge.cycle_shift, 0);
+  const floor = entry.resource_period_lower_bound_seconds ?? 0;
+  const loads = Object.entries(entry.resource_work_seconds ?? {});
+  const services = entry.services ?? [];
+  const atmosphereStages = {
+    "atm-receive": { label: "\u6536\u6210\u54C1\u5E76\u56DE\u7A0B", seconds: 0 },
+    "atm-home": { label: "\u56DE\u76D2", seconds: 0 },
+    "atm-raw": { label: "\u53D6\u751F\u7247\u5E76\u9001\u9501", seconds: 0 },
+    "atm-feed": { label: "\u8865\u7247\u5E76\u8F6C\u4F4D", seconds: 0 }
+  };
+  for (const edge of entry.edges ?? []) {
+    if (!edge.source.startsWith("ATM_") || !edge.target.startsWith("ATM_")) continue;
+    const stage = atmosphereStages[edge.label.split(":")[0]];
+    if (stage) stage.seconds += edge.minimum_delay_seconds;
+  }
+  const atmosphereTotal = Object.values(atmosphereStages).reduce((sum, stage) => sum + stage.seconds, 0);
+  const atmosphereDetails = atmosphereTotal > 0 ? `<p>ATM\uFF1A${Object.values(atmosphereStages).map((stage) => `${stage.label} ${formatSeconds3(stage.seconds)}`).join(" + ")} = ${formatSeconds3(atmosphereTotal)} \u79D2</p>` : "";
+  const processServices = services.filter((service) => service.key.startsWith("process-cycle:"));
+  const chamberDetails = processServices.map((service) => {
+    const load = entry.resource_work_seconds?.[`\u52A0\u5DE5\u8154 ${service.station}`];
+    if (load == null || service.seconds <= 0) return "";
+    return `<p>${escapeHtml3(service.station)}\uFF1A${formatCapacity(load / service.seconds)} \u6B21 \xD7 (${service.parts.map((part) => `${escapeHtml3(part.label)} ${formatSeconds3(part.seconds)}`).join(" + ")}) = ${formatSeconds3(load)} \u79D2</p>`;
+  }).join("");
+  const serviceDetails = `<details class="theory-timing-details"><summary>\u67E5\u770B\u53D6\u653E\u3001\u5F00\u5173\u95E8\u3001\u8F6C\u4F4D\u4E0E\u5207\u538B\u7684\u65F6\u95F4\u4EE3\u5165</summary>${services.map((service) => `<p>${escapeHtml3(service.detail || service.key)}\uFF1A${service.parts.map((part) => `${escapeHtml3(part.label)} ${formatSeconds3(part.seconds)}`).join(" + ")} = ${formatSeconds3(service.seconds)} \u79D2</p>`).join("")}</details>`;
+  return `<p class="theory-calculation-inputs">${escapeHtml3(name)} \xB7 \u52A0\u5DE5\u65F6\u95F4 ${formatSeconds3(entry.process_seconds?.[0])} \u79D2 \xB7 \u65E0\u6E05\u6D01\u7A33\u6001\u6A21\u578B</p>
+    <div class="theory-formula-step"><span class="theory-step-number">1</span><div><h3>\u786E\u5B9A\u91CD\u590D\u5468\u671F</h3><div class="theory-formula-equation">\u4E00\u6B21\u5927\u6C14\u624B\u4EA4\u66FF\u4EA7\u51FA ${facts?.physical_members_per_unit ?? "\u2014"} \u7247\uFF1B${rounds} \u6B21\u4EA4\u66FF\u7EC4\u6210\u76F8\u4F4D\u5468\u671F</div><p>\u9501\u4E0E\u52A0\u5DE5\u8154\u7684\u8F6E\u8F6C\u76F8\u4F4D\u540C\u65F6\u590D\u4F4D\uFF0C\u624D\u6784\u6210\u5B8C\u6574\u5468\u671F\u3002</p></div></div>
+    <div class="theory-formula-step"><span class="theory-step-number">2</span><div><h3>\u8BA1\u7B97\u5468\u671F\u4E0B\u754C</h3>${atmosphereDetails}${chamberDetails}<details class="theory-timing-details"><summary>\u5404\u8D44\u6E90\u6BCF\u76F8\u4F4D\u5468\u671F\u7684\u5DE5\u4F5C\u91CF</summary><table class="theory-timing-table"><tbody>${loads.map(([resource, seconds2]) => `<tr><th>${escapeHtml3(resource)}</th><td>${formatSeconds3(seconds2)} \u79D2</td></tr>`).join("")}</tbody></table></details><div class="theory-formula-equation">T\u8D44\u6E90 = max(W\u1D63) = ${formatSeconds3(floor)} \u79D2<br>T\u7B49\u5F85 = \u03A3d \xF7 \u03A3\u03BB = ${formatSeconds3(delay)} \xF7 ${shift} = ${shift > 0 ? formatSeconds3(delay / shift) : "\u2014"} \u79D2</div><details class="theory-timing-details"><summary>\u5173\u952E\u7B49\u5F85\u94FE\uFF1A${escapeHtml3(entry.limiting_label || "\u67E5\u770B\u7EA6\u675F")}</summary>${chain.map((edge) => `<p>${escapeHtml3(edge.detail || edge.label)}\uFF1A${formatSeconds3(edge.minimum_delay_seconds)} \u79D2\uFF0C\u8DE8 ${edge.cycle_shift} \u5468\u671F</p>`).join("")}<p>\u6BCF\u6761\u8FB9\u6EE1\u8DB3 x\u2C7C \u2212 x\u1D62 \u2265 d\u1D62\u2C7C \u2212 \u03BB\u1D62\u2C7CT\uFF1B\u6CBF\u95ED\u73AF\u76F8\u52A0\uFF0C\u5F97\u5230 T \u2265 \u03A3d / \u03A3\u03BB\u3002</p></details>${serviceDetails}</div></div>
+    <div class="theory-formula-step"><span class="theory-step-number">3</span><div><h3>\u5468\u671F\u65F6\u95F4\u4E0E\u4EA7\u80FD</h3><strong>T\u76F8\u4F4D = max(${formatSeconds3(floor)}, ${shift > 0 ? formatSeconds3(delay / shift) : "\u2014"}) = ${formatSeconds3(period)} \u79D2</strong><div class="theory-formula-equation">\u4E00\u6B21\u4EA4\u66FF T = ${formatSeconds3(period)} \xF7 ${rounds} = <b>${formatSeconds3(period / rounds)} \u79D2</b><br>\u5E73\u5747\u51FA\u7247\u95F4\u9694 = T\u76F8\u4F4D \xF7 q = ${formatSeconds3(period)} \xF7 ${units} = ${formatSeconds3(entry.seconds_per_unit)} \u79D2 / \u7247<br>\u6BCF\u5C0F\u65F6\u4EA7\u80FD = 3600 \xD7 ${units} \xF7 ${formatSeconds3(period)} = ${formatCapacity(entry.physical_wafers_per_hour)} \u7247 / \u5C0F\u65F6</div><p>1 \u5C0F\u65F6\u6709 3600 \u79D2\uFF1B\u5468\u671F\u7531\u4E8B\u4EF6\u56FE\u9A8C\u8BC1\u53EF\u884C\u76F8\u4F4D\uFF0C\u4E0D\u542B\u542F\u52A8\u4E0E\u6536\u5C3E\u3002</p></div></div>`;
+}
+function renderPeriodicDerivation(entry) {
+  const timing = entry.period_timing;
+  const period = entry.period_seconds ?? 0;
+  const job = timing.basis === "job";
+  const basis = job ? "\u4E00\u4E2A Job \xB7 13 \u7247\u4EA7\u54C1" : `WAC \u91CD\u590D\u5468\u671F \xB7 ${timing.output_wafers} \u7247\u4EA7\u54C1`;
+  return `<p class="theory-calculation-inputs">${basis}</p>
+    <div class="theory-formula-step"><span class="theory-step-number">1</span><div><h3>\u786E\u5B9A\u5468\u671F\u8FB9\u754C</h3><p>${job ? "\u8FDE\u7EED\u751F\u4EA7\u4E2D\uFF0C\u53D6\u76F8\u90BB Job \u7684\u540C\u4E00\u9636\u6BB5\u8FB9\u754C\u3002" : "WAC \u8BA1\u6570\u3001\u8154\u5BA4\u8F6E\u8F6C\u53CA LoadLock \u76F8\u4F4D\u5171\u540C\u590D\u4F4D\u3002"}</p>
+    ${!job && timing.phase_factors ? `<div class="theory-formula-equation">\u8F6E\u6570 r = lcm(${timing.phase_factors.join(", ")}) = ${timing.candidate_rounds}<br>\u5468\u671F\u4EA7\u51FA q = ${timing.candidate_rounds} \xD7 ${timing.physical_members_per_unit} = ${timing.output_wafers} \u7247</div>` : ""}
+    <div class="theory-formula-equation">T = (t\u7ED3\u675F \u2212 t\u5F00\u59CB) \xF7 ${timing.divisor}<br>= (${formatSeconds3(timing.end_seconds)} \u2212 ${formatSeconds3(timing.start_seconds)}) \xF7 ${timing.divisor} = <b>${formatSeconds3(period)} \u79D2</b></div>
+    <details class="theory-timing-details"><summary>\u5468\u671F\u8FB9\u754C\u4E0E\u91CD\u590D\u9A8C\u8BC1</summary><p>\u8FB9\u754C\uFF1A${escapeHtml3(timing.reference)}\u3002\u8FDE\u7EED ${timing.verified_repeats} \u4E2A\u7A97\u53E3\u7684\u52A8\u4F5C\u4E0E\u65F6\u523B\u91CD\u590D\u3002</p><p>${job && timing.phase_count > 1 ? `${timing.phase_count} \u4E2A Job \u540E\u5B8C\u6574\u76F8\u4F4D\u590D\u4F4D\uFF0C${formatSeconds3(timing.full_period_seconds)} \u79D2 \xF7 ${timing.phase_count}\uFF0C\u5F97\u5230\u6BCF Job \u7684\u7B49\u6548\u5468\u671F\u3002` : "\u7EDF\u8BA1\u7A97\u53E3\u4F4D\u4E8E\u65E0\u9650\u8FDE\u7EED\u4F9B\u7247\u6A21\u578B\u4E2D\u6BB5\uFF0C\u4E0D\u542B\u7A7A\u673A\u542F\u52A8\u548C\u6700\u7EC8\u6392\u7A7A\u3002"}</p><p>\u5165\u53E3\u6309\u65E0\u9650\u4F9B\u7247\u7F13\u51B2\u5C55\u5F00\uFF0CPM\u3001LoadLock \u4E0E Dummy \u5E93\u5B58\u6CBF\u7528\u8BBE\u5907\u914D\u7F6E\u3002\u8FD9\u662F Cycle \u91CD\u590D\u6392\u7A0B\u503C\uFF1B\u65E0\u6E05\u6D01\u66F2\u7EBF\u662F\u8BBA\u6587\u4E8B\u4EF6\u56FE\u53C2\u7167\u3002</p></details></div></div>
+    <div class="theory-formula-step"><span class="theory-step-number">2</span><div><h3>\u5468\u671F\u65F6\u95F4\u5982\u4F55\u7EC4\u6210</h3><p>\u6CBF ${escapeHtml3(timing.resource)} \u65F6\u95F4\u7EBF\u5C55\u5F00\uFF0C\u91CD\u53E0\u52A8\u4F5C\u53EA\u8BA1\u4E00\u6B21\u3002</p><table class="theory-timing-table"><tbody>${timing.segments.map((row) => `<tr><th>${escapeHtml3(row.label)}</th><td>${row.terms?.map((term) => `${term.count} \xD7 ${formatSeconds3(term.seconds)}`).join(" + ") || "\u5269\u4F59\u65F6\u95F4"}</td><td>${formatSeconds3(row.seconds)} \u79D2</td></tr>`).join("")}</tbody></table>
+    <div class="theory-formula-equation">T = ${timing.segments.map((row) => formatSeconds3(row.seconds)).join(" + ")} = <b>${formatSeconds3(period)} \u79D2</b></div></div></div>
+    <div class="theory-formula-step"><span class="theory-step-number">3</span><div><h3>\u6362\u7B97\u4EA7\u80FD</h3><strong>Q = 3600 \xD7 ${timing.output_wafers} \xF7 ${formatSeconds3(period)} = ${formatCapacity(entry.physical_wafers_per_hour)} \u7247 / \u5C0F\u65F6</strong></div></div>`;
+}
+function renderBatchDerivation(entry) {
+  const timing = entry.batch_timing;
+  const count = entry.batch_wafers ?? 0;
+  const duration = entry.period_seconds ?? 0;
+  const cleanNames2 = { preclean: "PreClean", postclean: "PostClean", wacclean: "WAC", dummy: "Dummy", dummywac: "DummyWAC" };
+  const cleaning = (entry.cleaning_types ?? []).map((type) => cleanNames2[type] ?? type).join(" + ") || "No Clean";
+  const setting = `<p class="theory-calculation-inputs">${escapeHtml3(cleaning)} \xB7 \u52A0\u5DE5 ${formatSeconds3(entry.process_seconds?.[0])} \u79D2 \xB7 ${entry.job_count} \u4E2A Job \xD7 ${entry.wafers_per_job} \u7247 = ${count} \u7247\u4EA7\u54C1</p>`;
+  const breakdown = timing ? `<table class="theory-timing-table"><tbody>
+    <tr><th>\u9996\u7247\u56DE\u76D2 t\u2081</th><td>${formatSeconds3(timing.first_return_seconds)} \u79D2</td><td>\u4ECE\u7A7A\u673A\u542F\u52A8\u5230\u9996\u7247\u5B8C\u6210\u56DE\u76D2</td></tr>
+    <tr><th>\u540E\u7EED\u51FA\u7247 \u03A3\u0394t</th><td>${formatSeconds3(timing.remaining_returns_seconds)} \u79D2</td><td>\u672B\u7247\u56DE\u76D2 \u2212 \u9996\u7247\u56DE\u76D2</td></tr>
+    <tr><th>\u6536\u5C3E t\u5C3E</th><td>${formatSeconds3(timing.tail_seconds)} \u79D2</td><td>\u5168\u90E8\u52A8\u4F5C\u7ED3\u675F \u2212 \u672B\u7247\u56DE\u76D2</td></tr>
+    </tbody></table><div class="theory-formula-equation">T = (t\u2081 + \u03A3\u0394t + t\u5C3E)${timing.repeat_count > 1 ? ` \xD7 ${timing.repeat_count}` : ""}<br>
+    = (${formatSeconds3(timing.first_return_seconds)} + ${formatSeconds3(timing.remaining_returns_seconds)} + ${formatSeconds3(timing.tail_seconds)})${timing.repeat_count > 1 ? ` \xD7 ${timing.repeat_count}` : ""} = <b>${formatSeconds3(duration)} \u79D2</b></div>
+    <details class="theory-timing-details"><summary>\u51FA\u7247\u95F4\u9694\u660E\u7EC6\uFF08${timing.return_intervals.reduce((sum, row) => sum + row.count, 0)} \u4E2A\u95F4\u9694\uFF09</summary>
+    <p>\u0394t\u1D62 = \u7B2C i \u7247\u56DE\u76D2\u65F6\u523B \u2212 \u4E0A\u4E00\u7247\u56DE\u76D2\u65F6\u523B\uFF1B\u540C\u65F6\u56DE\u76D2\u8BB0 0 \u79D2\u3002</p>
+    <div>${timing.return_intervals.map((row) => `${row.count} \xD7 ${formatSeconds3(row.seconds)}`).join(" + ")} \u2248 ${formatSeconds3(timing.remaining_returns_seconds)} \u79D2</div></details>` : `<div class="theory-formula-equation">T = \u5168\u90E8\u52A8\u4F5C\u6700\u665A\u7ED3\u675F\u65F6\u523B \u2212 0 = ${formatSeconds3(duration)} \u79D2</div><p>\u91CD\u542F\u670D\u52A1\u540E\u53EF\u67E5\u770B\u9996\u7247\u3001\u540E\u7EED\u51FA\u7247\u53CA\u6536\u5C3E\u660E\u7EC6\u3002</p>`;
+  const cleanRows = entry.cleaning_types?.length && entry.cleaning_summary?.length ? `<details class="theory-timing-details"><summary>${escapeHtml3(cleaning)} \u5982\u4F55\u8BA1\u5165\u5468\u671F</summary>${entry.cleaning_summary.map((row) => `<p>${escapeHtml3(row.station)} \xB7 ${escapeHtml3(row.task)}\uFF1A${row.count} \u6B21\uFF0C\u7D2F\u8BA1 ${formatSeconds3(row.seconds)} \u79D2</p>`).join("")}<p>\u6E05\u6D01\u6309\u5B9E\u9645\u6392\u7A0B\u8FDB\u5165\u9996\u7247\u3001\u51FA\u7247\u95F4\u9694\u6216\u6536\u5C3E\uFF1B\u5E76\u884C\u65F6\u95F4\u4E0D\u91CD\u590D\u76F8\u52A0\u3002</p></details>` : "";
+  return `${setting}<div class="theory-formula-step"><span class="theory-step-number">1</span><div><h3>\u8BA1\u7B97\u6279\u6B21\u5468\u671F T</h3>${breakdown}${cleanRows}<p>\u7531 Cycle \u642C\u8FD0\u3001\u52A0\u5DE5\u548C\u538B\u529B\u5207\u6362\u6392\u7A0B\u5F97\u5230\uFF1B\u6B64\u5904\u662F\u5B8C\u6574\u6279\u6B21\u8017\u65F6\u3002</p></div></div>
+    <div class="theory-formula-step"><span class="theory-step-number">2</span><div><h3>\u6362\u7B97\u4EA7\u80FD</h3><div class="theory-formula-equation">Q = 3600 \xD7 \u4EA7\u54C1\u6570 \xF7 T</div><strong>3600 \xD7 ${count} \xF7 ${formatSeconds3(duration)} = ${formatCapacity(entry.physical_wafers_per_hour)} \u7247 / \u5C0F\u65F6</strong></div></div>`;
+}
+var CLEANING_PARAMETER_INPUTS = [
+  "theoryPreSeconds",
+  "theoryPostSeconds",
+  "theoryWacSeconds",
+  "theoryWacInterval",
+  "theoryDummySeconds",
+  "theoryDummyVisits",
+  "theoryDummyInventory"
+];
+var MAX_CLEANING_CONTROL_SECONDS = 200;
+var MAX_CLEANING_CONTROL_COUNT = 3;
+var CAPACITY_AXIS_HEADROOM = 1.1;
+function createTheoryCapacityView(options) {
+  const root = options.root;
+  const select = (id) => root.querySelector(`#${id}`);
+  const device = select("theoryCapacityDevice");
+  const kind = select("theoryCapacityKind");
+  const lock = select("theoryCapacityLock");
+  const button = root.querySelector("#theoryCapacityApply");
+  const notice = root.querySelector("#theoryCapacityNotice");
+  const results = root.querySelector("#theoryCapacityResults");
+  const abort = new AbortController();
+  let generation = 0;
+  let chart = null;
+  let activated = false;
+  let destroyed = false;
+  let dragPointer = null;
+  let previewSamples = [];
+  let baselineSamples = [];
+  let baselineKey = "";
+  let capacityAxisMaximum = 0;
+  function simulate(seconds2) {
+    generation++;
+    root.setAttribute?.("aria-busy", "false");
+    root.setAttribute?.("data-result-stale", "true");
+    button.disabled = false;
+    button.textContent = "\u91CD\u65B0\u8BA1\u7B97";
+    root.querySelector("#theoryCapacityResultState").textContent = "\u5F85\u66F4\u65B0";
+    root.querySelector("#theoryCapacitySlider").value = String(seconds2);
+    root.querySelector("#theoryProcessReadout").textContent = `${formatSeconds3(seconds2)} \u79D2`;
+    if (!chart || !previewSamples.length) return;
+    const upperIndex = previewSamples.findIndex((point) => point.x >= seconds2);
+    const right = previewSamples[upperIndex < 0 ? previewSamples.length - 1 : upperIndex];
+    const left = previewSamples[Math.max(0, upperIndex - 1)];
+    const fraction = right.x > left.x ? Math.max(0, Math.min(1, (seconds2 - left.x) / (right.x - left.x))) : 0;
+    const rate = upperIndex < 0 ? right.y : left.y + fraction * (right.y - left.y);
+    void chart.updateOptions({ annotations: { points: [{
+      x: seconds2,
+      y: rate,
+      marker: { size: 8, fillColor: "#B4F105", strokeColor: "#072F1F" }
+    }] } }, false, false);
+  }
+  function dragTo(event) {
+    const grid = root.querySelector("#theoryCapacityChart .apexcharts-grid");
+    if (!grid) return;
+    const bounds = grid.getBoundingClientRect();
+    const inputs = values4();
+    simulate(processSecondsAtPosition(event.clientX, bounds.left, bounds.width, Number(inputs.first), Number(inputs.last)));
+  }
+  function values4() {
+    const input = (id) => root.querySelector(`#${id}`).value;
+    const clean = select("theoryCleaningType").value || "";
+    const cleaning = {};
+    if (clean === "preclean") cleaning.pre_seconds = input("theoryPreSeconds");
+    if (clean === "postclean") cleaning.post_seconds = input("theoryPostSeconds");
+    if (clean === "wacclean" || clean === "dummywac") cleaning.wac_seconds = input("theoryWacSeconds");
+    if (clean === "wacclean") cleaning.wac_interval = input("theoryWacInterval");
+    if (clean === "dummy" || clean === "dummywac") {
+      cleaning.dummy_seconds = input("theoryDummySeconds");
+      cleaning.dummy_visits = input("theoryDummyVisits");
+      cleaning.dummy_inventory = input("theoryDummyInventory");
+    }
+    return {
+      kind: kind.value,
+      lock: lock.value,
+      first: input("theoryCapacityFirstSeconds"),
+      last: input("theoryCapacityLastSeconds"),
+      step: input("theoryCapacityStepSeconds"),
+      process: input("theoryCapacitySlider"),
+      mode: clean ? "periodic" : "steady",
+      clean,
+      ...cleaning
+    };
+  }
+  function syncCleaningControls() {
+    const clean = select("theoryCleaningType").value || "";
+    root.querySelector(".theory-cleaning-experiment").hidden = !clean;
+    root.querySelector("#theoryPreSettings").hidden = clean !== "preclean";
+    root.querySelector("#theoryPostSettings").hidden = clean !== "postclean";
+    root.querySelector("#theoryDummySettings").hidden = !["dummy", "dummywac"].includes(clean);
+    root.querySelector("#theoryWacSettings").hidden = !["wacclean", "dummywac"].includes(clean);
+    root.querySelector("#theoryWacIntervalLabel").hidden = clean !== "wacclean";
+    for (const id of CLEANING_PARAMETER_INPUTS) {
+      const input = root.querySelector(`#${id}`);
+      const slider = root.querySelector(`#${id}Slider`);
+      input.max = slider.max = String(id.endsWith("Seconds") ? MAX_CLEANING_CONTROL_SECONDS : MAX_CLEANING_CONTROL_COUNT);
+      slider.value = input.value;
+    }
+  }
+  function markChanged() {
+    generation++;
+    root.setAttribute?.("data-result-stale", "true");
+    root.setAttribute?.("aria-busy", "false");
+    button.disabled = false;
+    button.textContent = "\u91CD\u65B0\u8BA1\u7B97";
+    root.querySelector("#theoryCapacityResultState").textContent = "\u5F85\u66F4\u65B0";
+  }
+  function showError(error) {
+    notice.textContent = error instanceof Error ? error.message : String(error);
+    notice.hidden = false;
+  }
+  async function calculate(preserveBaseline = false) {
+    const processInput = root.querySelector("#theoryCapacitySlider");
+    if (processInput?.checkValidity && !processInput.checkValidity()) {
+      showError(new Error("\u52A0\u5DE5\u65F6\u95F4\u5FC5\u987B\u4E3A\u975E\u8D1F\u6570"));
+      return;
+    }
+    const request = ++generation;
+    root.setAttribute?.("aria-busy", "true");
+    root.querySelector("#theoryCapacityResultState").textContent = "\u8BA1\u7B97\u4E2D\u2026";
+    notice.hidden = true;
+    button.disabled = true;
+    button.textContent = "\u8BA1\u7B97\u4E2D\u2026";
+    try {
+      if (!device.value) throw new Error("\u8BF7\u9009\u62E9\u8BBE\u5907");
+      for (const id of CLEANING_PARAMETER_INPUTS) {
+        const input = root.querySelector(`#${id}`);
+        if (input.closest?.("[hidden]")) continue;
+        if (input.checkValidity && !input.checkValidity()) throw new Error("\u6E05\u6D01\u53C2\u6570\u8D85\u51FA\u5141\u8BB8\u8303\u56F4\uFF0C\u8BF7\u68C0\u67E5\u6570\u503C\u6846");
+      }
+      const requestValues = values4();
+      const payload = await options.requestPreset(device.value, requestValues);
+      if (request !== generation || destroyed) return;
+      const entry = payload.derivation;
+      if (requestValues.clean && (entry?.model_kind !== "cycle-periodic" || !payload.baseline_points)) {
+        throw new Error("\u5F53\u524D\u670D\u52A1\u672A\u8FD4\u56DE\u6E05\u6D01\u8BA1\u7B97\u7ED3\u679C\uFF0C\u8BF7\u91CD\u542F\u8C03\u5EA6\u5E73\u53F0\u670D\u52A1\u540E\u91CD\u8BD5");
+      }
+      const q = entry.facts?.units_per_cycle ?? 0;
+      const period = entry.period_seconds ?? 0;
+      const seconds2 = entry.process_seconds?.[0] ?? 0;
+      const chain = entry.critical_chain ?? [];
+      const delay = chain.reduce((sum, edge) => sum + edge.minimum_delay_seconds, 0);
+      const shift = chain.reduce((sum, edge) => sum + edge.cycle_shift, 0);
+      const floor = entry.resource_period_lower_bound_seconds ?? 0;
+      const batch = entry.model_kind === "cycle-batch";
+      root.setAttribute?.("data-result-stale", "false");
+      root.setAttribute?.("data-result-unavailable", "false");
+      root.querySelector("#theoryCapacityChartSection").hidden = false;
+      root.querySelector("#theoryCapacityResultState").textContent = "";
+      root.querySelector("#theoryCapacityComparison").textContent = `\u52A0\u5DE5 ${formatSeconds3(seconds2)} \u79D2 \xB7 ${entry.period_timing ? entry.period_timing.basis === "wac" ? `WAC \u5468\u671F ${entry.period_timing.output_wafers} \u7247` : "\u8FDE\u7EED\u751F\u4EA7 \xB7 13 \u7247 / Job" : "\u5927\u6C14\u624B\u4EA4\u66FF\u5468\u671F"}`;
+      root.querySelector("#theoryCapacityScope").textContent = entry.scope_note ?? "\u8BBA\u6587\u56FA\u5B9A\u5468\u671F\u6A21\u578B\u7684\u7406\u8BBA\u503C\u3002";
+      root.querySelector("#theoryCapacityDerivation").innerHTML = renderTeachingDerivation(entry, payload.name);
+      root.querySelector("#theoryCapacityCurrentRate").textContent = formatCapacity(entry.physical_wafers_per_hour);
+      root.querySelector("#theoryCapacityResources").innerHTML = Object.entries(entry.resource_work_seconds ?? {}).map(([name, seconds3]) => `<div><small>${escapeHtml3(name)}</small><strong>${formatSeconds3(seconds3)} <span>\u79D2 / ${batch ? "\u6279\u6B21" : "\u5468\u671F"}</span></strong><progress max="${period}" value="${Math.min(seconds3, period)}" aria-label="${escapeHtml3(name)}\u5360\u603B\u8017\u65F6\u7684\u6BD4\u4F8B"></progress></div>`).join("");
+      root.querySelector("#theoryCapacityFloor").textContent = `\u6700\u7E41\u5FD9\u8D44\u6E90 ${formatSeconds3(floor)} \u79D2 / ${batch ? "\u6279\u6B21" : "\u5468\u671F"}`;
+      results.hidden = false;
+      const ApexCharts = window.ApexCharts;
+      if (!ApexCharts) throw new Error("\u6A21\u677F\u56FE\u8868\u7EC4\u4EF6\u672A\u52A0\u8F7D\uFF0C\u8BF7\u5237\u65B0\u9875\u9762");
+      previewSamples = payload.points.process_seconds.map((x, index) => ({ x, y: payload.points.physical_wafers_per_hour[index] }));
+      const nextBaselineKey = JSON.stringify([
+        device.value,
+        requestValues.kind,
+        requestValues.lock,
+        requestValues.first,
+        requestValues.last,
+        requestValues.step
+      ]);
+      if (!preserveBaseline || nextBaselineKey !== baselineKey) {
+        baselineKey = nextBaselineKey;
+        baselineSamples = payload.baseline_points?.process_seconds.map((x, index) => ({ x, y: payload.baseline_points.physical_wafers_per_hour[index] })) ?? previewSamples.map((point) => ({ ...point }));
+        capacityAxisMaximum = Math.max(1, ...baselineSamples.map((point) => point.y), ...previewSamples.map((point) => point.y)) * CAPACITY_AXIS_HEADROOM;
+      }
+      const chartOptions = {
+        series: [
+          { name: requestValues.clean ? "\u5E26\u6E05\u6D01 \xB7 Cycle \u5468\u671F" : "\u4E0D\u5E26\u6E05\u6D01 \xB7 \u8BBA\u6587\u6A21\u578B", data: previewSamples },
+          ...requestValues.clean && baselineSamples.length ? [{ name: "\u4E0D\u5E26\u6E05\u6D01 \xB7 \u8BBA\u6587\u6A21\u578B", data: baselineSamples }] : []
+        ],
+        chart: {
+          type: "area",
+          height: "100%",
+          parentHeightOffset: 0,
+          toolbar: { show: false },
+          zoom: { enabled: false },
+          animations: { enabled: false },
+          fontFamily: "Plus Jakarta Sans, sans-serif"
+        },
+        colors: ["#072F1F", "#b4553a"],
+        stroke: { curve: "straight", width: 2, dashArray: [0, 6] },
+        fill: { opacity: 0.1, type: "solid" },
+        dataLabels: { enabled: false },
+        grid: { borderColor: "#E9EFEF", strokeDashArray: 4, xaxis: { lines: { show: false } } },
+        xaxis: {
+          type: "numeric",
+          min: Number(requestValues.first),
+          max: Number(requestValues.last),
+          tickAmount: 4,
+          title: { text: "\u52A0\u5DE5\u65F6\u95F4\uFF08\u79D2\uFF09" },
+          axisBorder: { show: false },
+          axisTicks: { show: false },
+          labels: { formatter: (value) => Number(value).toFixed(0), style: { colors: "#6C7E75", fontSize: "14px" } }
+        },
+        yaxis: { min: 0, max: capacityAxisMaximum, labels: { formatter: (value) => value.toFixed(0), style: { colors: "#6C7E75", fontSize: "14px" } } },
+        tooltip: {
+          theme: "dark",
+          x: { formatter: (value) => `${value} \u79D2` },
+          y: { formatter: (value) => `${value.toFixed(2)} \u7247/h` }
+        },
+        annotations: { points: [
+          {
+            x: seconds2,
+            y: entry.physical_wafers_per_hour,
+            marker: { size: 8, fillColor: "#B4F105", strokeColor: "#072F1F" }
+          },
+          ...requestValues.clean ? [{
+            x: seconds2,
+            y: entry.baseline_wafers_per_hour,
+            marker: { size: 5, fillColor: "#ffffff", strokeColor: "#b4553a" }
+          }] : []
+        ] }
+      };
+      if (chart) await chart.updateOptions(chartOptions, false, false);
+      else {
+        chart = new ApexCharts(root.querySelector("#theoryCapacityChart"), chartOptions);
+        await chart.render();
+      }
+      const slider = root.querySelector("#theoryCapacitySlider");
+      slider.min = requestValues.first;
+      slider.max = requestValues.last;
+      slider.value = String(seconds2);
+      root.querySelector("#theoryProcessReadout").textContent = `${formatSeconds3(seconds2)} \u79D2`;
+    } catch (error) {
+      if (request === generation && !destroyed) {
+        results.hidden = !device.value;
+        chart?.destroy();
+        chart = null;
+        root.setAttribute?.("data-result-unavailable", "true");
+        root.querySelector("#theoryCapacityChartSection").hidden = true;
+        root.querySelector("#theoryCapacityCurrentRate").textContent = "\u2014";
+        root.querySelector("#theoryCapacityComparison").textContent = "\u8BF7\u8C03\u6574\u53C2\u6570\u540E\u91CD\u8BD5";
+        root.querySelector("#theoryCapacityResultState").textContent = "\u8BA1\u7B97\u5931\u8D25";
+        showError(error);
+      }
+    } finally {
+      if (request === generation && !destroyed) {
+        root.setAttribute?.("aria-busy", "false");
+        button.disabled = false;
+        button.textContent = "\u91CD\u65B0\u8BA1\u7B97";
+      }
+    }
+  }
+  async function activate() {
+    if (activated || !root.classList.contains("active")) return;
+    activated = true;
+    try {
+      const devices = await options.listDevices();
+      if (destroyed) return;
+      device.replaceChildren(...devices.map((item) => new Option(item.name, item.id)));
+      options.syncSelect?.(device);
+      await calculate();
+    } catch (error) {
+      showError(error);
+    }
+  }
+  const observer = new MutationObserver(() => {
+    void activate();
+  });
+  return {
+    initialize: () => {
+      syncCleaningControls();
+      for (const id of CLEANING_PARAMETER_INPUTS) {
+        const input = root.querySelector(`#${id}`);
+        const slider = root.querySelector(`#${id}Slider`);
+        let inputEdited = false;
+        slider.addEventListener("input", () => {
+          input.value = slider.value;
+          markChanged();
+        }, { signal: abort.signal });
+        slider.addEventListener("change", () => {
+          void calculate(true);
+        }, { signal: abort.signal });
+        input.addEventListener("input", () => {
+          inputEdited = true;
+          syncCleaningControls();
+          markChanged();
+        }, { signal: abort.signal });
+        input.addEventListener("change", () => {
+          inputEdited = false;
+          void calculate(true);
+        }, { signal: abort.signal });
+        input.addEventListener("blur", () => {
+          if (inputEdited) {
+            inputEdited = false;
+            void calculate(true);
+          }
+        }, { signal: abort.signal });
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" && inputEdited) {
+            event.preventDefault();
+            inputEdited = false;
+            void calculate(true);
+          }
+        }, { signal: abort.signal });
+      }
+      button.addEventListener("click", () => {
+        void calculate();
+      }, { signal: abort.signal });
+      const chartHost = root.querySelector("#theoryCapacityChart");
+      chartHost.addEventListener("pointerdown", (event) => {
+        if (!event.target.closest(".apexcharts-point-annotation-marker")) return;
+        event.preventDefault();
+        dragPointer = event.pointerId;
+        chartHost.setPointerCapture(event.pointerId);
+        dragTo(event);
+      }, { signal: abort.signal });
+      chartHost.addEventListener("pointermove", (event) => {
+        if (event.pointerId === dragPointer) dragTo(event);
+      }, { signal: abort.signal });
+      chartHost.addEventListener("pointerup", (event) => {
+        if (event.pointerId !== dragPointer) return;
+        dragTo(event);
+        dragPointer = null;
+        chartHost.releasePointerCapture(event.pointerId);
+        void calculate(true);
+      }, { signal: abort.signal });
+      chartHost.addEventListener("pointercancel", () => {
+        dragPointer = null;
+      }, { signal: abort.signal });
+      root.querySelector("#theoryCapacitySlider").addEventListener("input", (event) => {
+        simulate(Number(event.target.value));
+      }, { signal: abort.signal });
+      root.querySelector("#theoryCapacitySlider").addEventListener("change", () => {
+        void calculate(true);
+      }, { signal: abort.signal });
+      for (const element of Array.from(root.querySelectorAll("select, .theory-capacity-filters input"))) {
+        element.addEventListener("change", () => {
+          if (element instanceof HTMLSelectElement) options.syncSelect?.(element);
+          syncCleaningControls();
+          markChanged();
+        }, { signal: abort.signal });
+      }
+      observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+      void activate();
+    },
+    destroy: () => {
+      destroyed = true;
+      generation++;
+      abort.abort();
+      observer.disconnect();
+      chart?.destroy();
+    }
+  };
+}
+
 // src/editor_models.ts
 var CJOB_TYPES = ["NormalLot", "HighestLot", "HigherLot"];
 var TASK_MODES = ["Smart", "Pipeline", "Sequential", "Concurrent"];
@@ -7509,7 +7954,7 @@ function normalizeRounds() {
   })));
   state.times = state.rounds.map((round) => Number(round.currentTime));
 }
-function escapeHtml3(value) {
+function escapeHtml4(value) {
   return String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]);
 }
 function readonlyText(value) {
@@ -7517,7 +7962,7 @@ function readonlyText(value) {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 function renderReadonlyField(label, value, wide = false) {
-  return `<div class="readonly-field ${wide ? "wide" : ""}"><span>${escapeHtml3(label)}</span><strong>${escapeHtml3(readonlyText(value))}</strong></div>`;
+  return `<div class="readonly-field ${wide ? "wide" : ""}"><span>${escapeHtml4(label)}</span><strong>${escapeHtml4(readonlyText(value))}</strong></div>`;
 }
 function unwrapDevice(raw) {
   let value = raw;
@@ -7895,12 +8340,12 @@ function configuredExecutionTime(dataset) {
   return dataset["device-timing-target"]?.endsWith("map") ? fields[dataset["timing-field"]]?.[dataset["timing-key"]] ?? 0 : fields[dataset["timing-field"]]?.[Number(dataset["timing-index"])] ?? 0;
 }
 function deviceTimeInput(value, label, dataset) {
-  const attributes = Object.entries(dataset).map(([name, item]) => `data-${name}="${escapeHtml3(item)}"`).join(" ");
+  const attributes = Object.entries(dataset).map(([name, item]) => `data-${name}="${escapeHtml4(item)}"`).join(" ");
   const numericValue = Number(value);
   const executionValue = Number(configuredExecutionTime(dataset));
   const executionDisabled = state.deviceTimingDraft?.execution?.mode === "fluctuation" ? " disabled" : "";
   const executionAttributes = attributes.replaceAll("data-device-timing-target", "data-device-execution-target");
-  return `<span class="device-time-pair"><label><small>\u7406\u8BBA</small><span class="device-time-input"><input type="number" min="0" step="any" inputmode="decimal" required value="${Number.isFinite(numericValue) ? numericValue : 0}" aria-label="${escapeHtml3(label)}\uFF08\u7406\u8BBA\uFF09" ${attributes}><span>s</span></span></label><label><small>\u6267\u884C</small><span class="device-time-input"><input type="number" min="0" step="any" inputmode="decimal" required value="${Number.isFinite(executionValue) ? executionValue : 0}" aria-label="${escapeHtml3(label)}\uFF08\u56FA\u5B9A\u6267\u884C\uFF09" ${executionAttributes}${executionDisabled}><span>s</span></span></label></span>`;
+  return `<span class="device-time-pair"><label><small>\u7406\u8BBA</small><span class="device-time-input"><input type="number" min="0" step="any" inputmode="decimal" required value="${Number.isFinite(numericValue) ? numericValue : 0}" aria-label="${escapeHtml4(label)}\uFF08\u7406\u8BBA\uFF09" ${attributes}><span>s</span></span></label><label><small>\u6267\u884C</small><span class="device-time-input"><input type="number" min="0" step="any" inputmode="decimal" required value="${Number.isFinite(executionValue) ? executionValue : 0}" aria-label="${escapeHtml4(label)}\uFF08\u56FA\u5B9A\u6267\u884C\uFF09" ${executionAttributes}${executionDisabled}><span>s</span></span></label></span>`;
 }
 function renderExecutionTimingConfiguration() {
   const container = document.getElementById("deviceExecutionTimingEditor");
@@ -7943,8 +8388,8 @@ function renderDeviceTimingSelectors() {
   const robotSelect = document.getElementById("deviceRobotSelect");
   if (!state.stationNames.includes(state.deviceStationName)) state.deviceStationName = state.stationNames[0] || "";
   if (!state.robotNames.includes(state.deviceRobotName)) state.deviceRobotName = state.robotNames[0] || "";
-  stationSelect.innerHTML = state.stationNames.length ? state.stationNames.map((name) => `<option value="${escapeHtml3(name)}" ${name === state.deviceStationName ? "selected" : ""}>${escapeHtml3(name)}</option>`).join("") : `<option value="">\u8BF7\u5148\u9009\u62E9\u8BBE\u5907</option>`;
-  robotSelect.innerHTML = state.robotNames.length ? state.robotNames.map((name) => `<option value="${escapeHtml3(name)}" ${name === state.deviceRobotName ? "selected" : ""}>${escapeHtml3(name)}</option>`).join("") : `<option value="">\u8BF7\u5148\u9009\u62E9\u8BBE\u5907</option>`;
+  stationSelect.innerHTML = state.stationNames.length ? state.stationNames.map((name) => `<option value="${escapeHtml4(name)}" ${name === state.deviceStationName ? "selected" : ""}>${escapeHtml4(name)}</option>`).join("") : `<option value="">\u8BF7\u5148\u9009\u62E9\u8BBE\u5907</option>`;
+  robotSelect.innerHTML = state.robotNames.length ? state.robotNames.map((name) => `<option value="${escapeHtml4(name)}" ${name === state.deviceRobotName ? "selected" : ""}>${escapeHtml4(name)}</option>`).join("") : `<option value="">\u8BF7\u5148\u9009\u62E9\u8BBE\u5907</option>`;
   stationSelect.disabled = !state.stationNames.length;
   robotSelect.disabled = !state.robotNames.length;
   const stationIndex = state.stationNames.indexOf(state.deviceStationName);
@@ -7982,7 +8427,7 @@ function renderDeviceStationTiming() {
   ))].sort((left, right) => left.localeCompare(right, void 0, { numeric: true }));
   const actionRows = actionControllers.map((controller) => `
     <tr>
-      <th scope="row"><strong>${escapeHtml3(controller)}</strong></th>
+      <th scope="row"><strong>${escapeHtml4(controller)}</strong></th>
       ${STATION_ACTION_TIME_FIELDS.map(({ key, label }) => {
     if (!Object.prototype.hasOwnProperty.call(timing[key] || {}, controller)) return `<td><span class="device-time-unavailable">\u2014</span></td>`;
     return `<td>${deviceTimeInput(timing[key][controller], `${stationName} ${controller} ${label}`, {
@@ -8000,8 +8445,8 @@ function renderDeviceStationTiming() {
     ...alignmentEntries.map(([slotId, value]) => `
       <div class="device-transition-row">
         <span class="device-transition-kind">AlignmentTime</span>
-        <strong>Slot ${escapeHtml3(slotId)}</strong>
-        <span class="device-transition-route">key=${escapeHtml3(slotId)}</span>
+        <strong>Slot ${escapeHtml4(slotId)}</strong>
+        <span class="device-transition-route">key=${escapeHtml4(slotId)}</span>
         ${deviceTimeInput(value, `${stationName} Slot ${slotId} \u5BF9\u51C6\u65F6\u95F4`, {
       "device-timing-target": "station-map",
       "device-name": stationName,
@@ -8013,8 +8458,8 @@ function renderDeviceStationTiming() {
     ...prePrepareRows.map((row, index) => `
       <div class="device-transition-row">
         <span class="device-transition-kind">PrePrepareTime</span>
-        <strong>${escapeHtml3(row?.LastItem || "\u2014")} <i aria-hidden="true">\u2192</i> ${escapeHtml3(row?.CurrentItem || "\u2014")}</strong>
-        <span class="device-transition-route">${escapeHtml3(row?.PrePrepareType || "PrePrepareType")}</span>
+        <strong>${escapeHtml4(row?.LastItem || "\u2014")} <i aria-hidden="true">\u2192</i> ${escapeHtml4(row?.CurrentItem || "\u2014")}</strong>
+        <span class="device-transition-route">${escapeHtml4(row?.PrePrepareType || "PrePrepareType")}</span>
         ${deviceTimeInput(timing.PrePrepareTime?.[index] ?? row?.Time ?? 0, `${stationName} ${row?.PrePrepareType || "\u72B6\u6001\u5207\u6362"}`, {
       "device-timing-target": "station-sequence",
       "device-name": stationName,
@@ -8047,7 +8492,7 @@ function renderDeviceRobotTiming() {
     ({ key }) => Object.keys(timing[key] || {})
   ))].sort((left, right) => left.localeCompare(right, void 0, { numeric: true }));
   const actionRows = actionStations.map((stationName) => `
-    <tr><th scope="row"><strong>${escapeHtml3(stationName)}</strong></th>${ROBOT_ACTION_TIME_FIELDS.map(({ key, label }) => {
+    <tr><th scope="row"><strong>${escapeHtml4(stationName)}</strong></th>${ROBOT_ACTION_TIME_FIELDS.map(({ key, label }) => {
     if (!Object.prototype.hasOwnProperty.call(timing[key] || {}, stationName)) return `<td><span class="device-time-unavailable">\u2014</span></td>`;
     return `<td>${deviceTimeInput(timing[key][stationName], `${robotName} \u5728 ${stationName} \u7684${label}\u65F6\u95F4`, {
       "device-timing-target": "robot-map",
@@ -8076,7 +8521,7 @@ function renderDeviceRobotTiming() {
   });
   const transferMatrixRows = [...transfersByCounterpart.entries()].sort(([left], [right]) => left.localeCompare(right, void 0, { numeric: true })).map(([destination, byType]) => `
       <tr>
-        <th scope="row"><strong>${escapeHtml3(destination || "\u2014")}</strong></th>
+        <th scope="row"><strong>${escapeHtml4(destination || "\u2014")}</strong></th>
         ${[0, 1].map((type) => {
     const entries = byType[type];
     if (!entries.length) return `<td><span class="device-time-unavailable">\u2014</span></td>`;
@@ -8102,8 +8547,8 @@ function renderDeviceRobotTiming() {
       <header class="device-transfer-head">
         <h3 id="robotTransferTimingTitle">PrepTransTime</h3>
         <div class="device-transfer-filters">
-          <label><span>Field</span><select data-robot-transfer-axis="${escapeHtml3(robotName)}"><option value="src" ${selectedAxis === "src" ? "selected" : ""}>SrcStation</option><option value="dest" ${selectedAxis === "dest" ? "selected" : ""}>DestStation</option></select></label>
-          <label><span>Station</span><select data-robot-transfer-station="${escapeHtml3(robotName)}" ${selectableStations.length ? "" : "disabled"}>${selectableStations.length ? selectableStations.map((stationName) => `<option value="${escapeHtml3(stationName)}" ${stationName === selectedStation ? "selected" : ""}>${escapeHtml3(stationName)}</option>`).join("") : `<option>\u65E0\u79FB\u52A8\u89C4\u5219</option>`}</select></label>
+          <label><span>Field</span><select data-robot-transfer-axis="${escapeHtml4(robotName)}"><option value="src" ${selectedAxis === "src" ? "selected" : ""}>SrcStation</option><option value="dest" ${selectedAxis === "dest" ? "selected" : ""}>DestStation</option></select></label>
+          <label><span>Station</span><select data-robot-transfer-station="${escapeHtml4(robotName)}" ${selectableStations.length ? "" : "disabled"}>${selectableStations.length ? selectableStations.map((stationName) => `<option value="${escapeHtml4(stationName)}" ${stationName === selectedStation ? "selected" : ""}>${escapeHtml4(stationName)}</option>`).join("") : `<option>\u65E0\u79FB\u52A8\u89C4\u5219</option>`}</select></label>
         </div>
       </header>
       ${transferMatrixRows ? `
@@ -8333,7 +8778,7 @@ function refreshCompactSelect(select) {
   trigger.disabled = select.disabled;
   trigger.setAttribute("aria-label", `${compactSelectLabel(select)}\uFF1A${selectedOption?.textContent?.trim() || "\u672A\u9009\u62E9"}`);
   trigger.querySelector(".compact-select-value").textContent = selectedOption?.textContent?.trim() || "\u672A\u9009\u62E9";
-  menu.innerHTML = Array.from(select.options).map((option, index) => `<button class="compact-select-option" type="button" role="option" data-option-index="${index}" aria-selected="${option.selected}" ${option.disabled ? "disabled" : ""} ${option.hidden ? "hidden" : ""}>${escapeHtml3(option.textContent?.trim() || "\u672A\u547D\u540D\u9009\u9879")}</button>`).join("");
+  menu.innerHTML = Array.from(select.options).map((option, index) => `<button class="compact-select-option" type="button" role="option" data-option-index="${index}" aria-selected="${option.selected}" ${option.disabled ? "disabled" : ""} ${option.hidden ? "hidden" : ""}>${escapeHtml4(option.textContent?.trim() || "\u672A\u547D\u540D\u9009\u9879")}</button>`).join("");
 }
 function initializeCompactSelects() {
   compactSelectTargets().forEach((select) => {
@@ -8345,7 +8790,7 @@ function initializeCompactSelects() {
     trigger.className = "compact-select-trigger";
     trigger.type = "button";
     trigger.setAttribute("aria-expanded", "false");
-    trigger.innerHTML = `<span class="compact-select-label">${escapeHtml3(compactSelectLabel(select))}</span><span class="compact-select-value"></span><i class="compact-select-chevron" aria-hidden="true"></i>`;
+    trigger.innerHTML = `<span class="compact-select-label">${escapeHtml4(compactSelectLabel(select))}</span><span class="compact-select-value"></span><i class="compact-select-chevron" aria-hidden="true"></i>`;
     menu.className = "compact-select-menu";
     menu.setAttribute("role", "listbox");
     menu.setAttribute("aria-label", compactSelectLabel(select));
@@ -8415,7 +8860,7 @@ function displayDeviceName(name) {
 }
 function renderWorkspaceControls() {
   const deviceSelect = document.getElementById("deviceSelect"), tests = state.workspaceDevice?.tests || [];
-  deviceSelect.innerHTML = state.workspaceDevices.length ? state.workspaceDevices.map((device) => `<option value="${escapeHtml3(device.id)}" ${device.id === state.workspaceDeviceId ? "selected" : ""}>${escapeHtml3(displayDeviceName(device.name))}</option>`).join("") : `<option value="">\u5C1A\u672A\u5BFC\u5165\u8BBE\u5907</option>`;
+  deviceSelect.innerHTML = state.workspaceDevices.length ? state.workspaceDevices.map((device) => `<option value="${escapeHtml4(device.id)}" ${device.id === state.workspaceDeviceId ? "selected" : ""}>${escapeHtml4(displayDeviceName(device.name))}</option>`).join("") : `<option value="">\u5C1A\u672A\u5BFC\u5165\u8BBE\u5907</option>`;
   const natural = (left, right) => left.localeCompare(right, void 0, { numeric: true });
   const ungroupedTests = tests.some((test) => !String(test.group || "").trim());
   const groups = [.../* @__PURE__ */ new Set([
@@ -8426,12 +8871,12 @@ function renderWorkspaceControls() {
   const selectedGroup = groups.includes(state.activeTestGroup) ? state.activeTestGroup : groups[0] || "";
   state.activeTestGroup = selectedGroup;
   const groupSelect = document.getElementById("testGroupSelect");
-  groupSelect.innerHTML = groups.length ? groups.map((group) => `<option value="${escapeHtml3(group)}" title="${escapeHtml3(group || "\u672A\u5206\u7EC4")}" ${group === selectedGroup ? "selected" : ""}>${escapeHtml3(group || "\u672A\u5206\u7EC4")}</option>`).join("") : `<option value="">\u5C1A\u65E0\u6D4B\u8BD5\u7EC4</option>`;
+  groupSelect.innerHTML = groups.length ? groups.map((group) => `<option value="${escapeHtml4(group)}" title="${escapeHtml4(group || "\u672A\u5206\u7EC4")}" ${group === selectedGroup ? "selected" : ""}>${escapeHtml4(group || "\u672A\u5206\u7EC4")}</option>`).join("") : `<option value="">\u5C1A\u65E0\u6D4B\u8BD5\u7EC4</option>`;
   groupSelect.title = selectedGroup || (groups.length ? "\u672A\u5206\u7EC4" : "\u5C1A\u65E0\u6D4B\u8BD5\u7EC4");
   groupSelect.disabled = !state.workspaceDeviceId || !groups.length;
   const testSelect = document.getElementById("testCaseSelect");
   const visibleTests = tests.filter((test) => String(test.group || "").trim() === selectedGroup).sort((left, right) => natural(left.name, right.name));
-  testSelect.innerHTML = visibleTests.length ? visibleTests.map((test) => `<option value="${escapeHtml3(test.id)}" title="${escapeHtml3(test.name)}" ${test.id === state.testCaseId ? "selected" : ""}>${escapeHtml3(test.name)}</option>`).join("") : `<option value="">\u8BE5\u7EC4\u6682\u65E0\u6D4B\u8BD5</option>`;
+  testSelect.innerHTML = visibleTests.length ? visibleTests.map((test) => `<option value="${escapeHtml4(test.id)}" title="${escapeHtml4(test.name)}" ${test.id === state.testCaseId ? "selected" : ""}>${escapeHtml4(test.name)}</option>`).join("") : `<option value="">\u8BE5\u7EC4\u6682\u65E0\u6D4B\u8BD5</option>`;
   testSelect.title = visibleTests.find((test) => test.id === state.testCaseId)?.name || "\u8BE5\u7EC4\u6682\u65E0\u6D4B\u8BD5";
   testSelect.disabled = !visibleTests.length;
   const hasTest = Boolean(state.testCaseId);
@@ -8463,7 +8908,7 @@ function renderWorkspaceControls() {
     dual: "\u53CC\u8154\u975E\u7EA7\u8054",
     cascade: "\u7EA7\u8054"
   }[detectDeviceTopologyLayout(state.device)];
-  document.getElementById("deviceSummary").innerHTML = state.device ? `<span class="chip good">${escapeHtml3(deviceType)}</span>` : `<span class="chip">\u5C1A\u672A\u9009\u62E9\u8BBE\u5907</span>`;
+  document.getElementById("deviceSummary").innerHTML = state.device ? `<span class="chip good">${escapeHtml4(deviceType)}</span>` : `<span class="chip">\u5C1A\u672A\u9009\u62E9\u8BBE\u5907</span>`;
   const busy = runPreparationActive || state.batchRunning;
   document.getElementById("runStrategyFields").disabled = busy;
   document.getElementById("openRunSettingsButton").disabled = busy;
@@ -8501,14 +8946,14 @@ function renderTestCatalog(tests) {
     const copyLabel = pending?.mode === "copy" && pending.sourceTestId === test.id ? "\u590D\u5236\u4E2D\u2026" : "\u590D\u5236";
     const baseline = companyCapacityBaselineFor(state.workspaceDevice?.name, test.name);
     const baselineLabel = Number.isFinite(baseline) ? `<span class="test-list-baseline">Baseline ${baseline.toFixed(1)} \u7247/h</span>` : "";
-    return `<div class="test-list-row" data-test-row="${escapeHtml3(test.id)}" role="listitem">
-      <div class="test-list-name"><strong>${escapeHtml3(test.name || "\u672A\u547D\u540D\u6D4B\u8BD5")}</strong>${baselineLabel}</div>
-      <div class="test-row-actions"><button class="btn small primary" type="button" data-test-action="edit" data-test-id="${escapeHtml3(test.id)}" ${disabled}>\u7F16\u8F91</button><button class="btn small" type="button" data-test-action="copy" data-test-id="${escapeHtml3(test.id)}" ${disabled}>${copyLabel}</button><button class="btn small danger" type="button" data-test-action="delete" data-test-id="${escapeHtml3(test.id)}" ${state.workspaceDevice?.tests?.length <= 1 || pending ? "disabled" : ""}>\u5220\u9664</button></div>
+    return `<div class="test-list-row" data-test-row="${escapeHtml4(test.id)}" role="listitem">
+      <div class="test-list-name"><strong>${escapeHtml4(test.name || "\u672A\u547D\u540D\u6D4B\u8BD5")}</strong>${baselineLabel}</div>
+      <div class="test-row-actions"><button class="btn small primary" type="button" data-test-action="edit" data-test-id="${escapeHtml4(test.id)}" ${disabled}>\u7F16\u8F91</button><button class="btn small" type="button" data-test-action="copy" data-test-id="${escapeHtml4(test.id)}" ${disabled}>${copyLabel}</button><button class="btn small danger" type="button" data-test-action="delete" data-test-id="${escapeHtml4(test.id)}" ${state.workspaceDevice?.tests?.length <= 1 || pending ? "disabled" : ""}>\u5220\u9664</button></div>
     </div>`;
   }).join("");
   const pendingRow = pending ? `<div class="test-list-row test-list-row-pending" role="status">
     <span class="test-creation-spinner" aria-hidden="true"></span>
-    <strong>${pending.mode === "copy" ? `\u6B63\u5728\u590D\u5236\u201C${escapeHtml3(pending.sourceName)}\u201D` : "\u6B63\u5728\u65B0\u5EFA\u6D4B\u8BD5"}\uFF0C\u8BF7\u7A0D\u5019\u2026</strong>
+    <strong>${pending.mode === "copy" ? `\u6B63\u5728\u590D\u5236\u201C${escapeHtml4(pending.sourceName)}\u201D` : "\u6B63\u5728\u65B0\u5EFA\u6D4B\u8BD5"}\uFF0C\u8BF7\u7A0D\u5019\u2026</strong>
   </div>` : "";
   body.innerHTML = rows + pendingRow;
   body.setAttribute("aria-busy", String(Boolean(pending)));
@@ -9127,7 +9572,7 @@ async function switchTab(name, managementSection = null) {
     if (requestedManagementSection) await switchManagementSection(requestedManagementSection);
     return;
   }
-  if ((runPreparationActive || state.batchRunning) && !["schedule", "analysis", "playback", "gantt"].includes(name)) return;
+  if ((runPreparationActive || state.batchRunning) && !["schedule", "analysis", "playback", "gantt", "theory-capacity"].includes(name)) return;
   navigationPending = true;
   try {
     if (!await settleTestDraft()) return;
@@ -9264,10 +9709,10 @@ function renderContextCleans(scope, routeIndex, stageIndex = -1) {
     const modules = stringList(clean?.modules);
     const moduleSummary = modules.length ? modules.join(" / ") : "\u672A\u9009\u62E9\u8154\u5BA4";
     return `<div class="context-clean-item">
-      <div><strong>${escapeHtml3(cleanName)}</strong><small>${escapeHtml3(placement.label)} \xB7 ${escapeHtml3(moduleSummary)}</small></div>
+      <div><strong>${escapeHtml4(cleanName)}</strong><small>${escapeHtml4(placement.label)} \xB7 ${escapeHtml4(moduleSummary)}</small></div>
       <div class="context-clean-actions">
-        <button class="btn small" type="button" data-action="edit-context-clean" data-clean-scope="${scope}" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-placement="${placement.key}" data-clean-name="${escapeHtml3(cleanName)}">\u7F16\u8F91</button>
-        <button class="btn danger small" type="button" data-action="remove-context-clean" data-clean-scope="${scope}" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-placement="${placement.key}" data-clean-name="${escapeHtml3(cleanName)}">\u79FB\u9664</button>
+        <button class="btn small" type="button" data-action="edit-context-clean" data-clean-scope="${scope}" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-placement="${placement.key}" data-clean-name="${escapeHtml4(cleanName)}">\u7F16\u8F91</button>
+        <button class="btn danger small" type="button" data-action="remove-context-clean" data-clean-scope="${scope}" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-placement="${placement.key}" data-clean-name="${escapeHtml4(cleanName)}">\u79FB\u9664</button>
       </div>
     </div>`;
   }).join("")}</div>`;
@@ -9279,7 +9724,7 @@ function updateCleanDialogFields() {
   const definition = cleanPlacementDefinitions(context.scope).find((item) => item.key === placement);
   const typeSelect = document.getElementById("cleanType");
   const currentType = typeSelect.value || context.draft.cleanType;
-  typeSelect.innerHTML = CLEAN_TYPE_DEFINITIONS.filter((item) => definition?.types.includes(item.key)).map((item) => `<option value="${item.key}">${escapeHtml3(item.label)}</option>`).join("");
+  typeSelect.innerHTML = CLEAN_TYPE_DEFINITIONS.filter((item) => definition?.types.includes(item.key)).map((item) => `<option value="${item.key}">${escapeHtml4(item.label)}</option>`).join("");
   typeSelect.value = definition?.types.includes(currentType) ? currentType : definition?.types[0] || "";
   const isDummyClean = ["dummy", "dummywac"].includes(typeSelect.value);
   document.getElementById("cleanTriggerField").hidden = typeSelect.value !== "wacclean" && !isDummyClean;
@@ -9305,9 +9750,9 @@ function openCleanDialog(scope, routeIndex, stageIndex = -1, cleanName = "", pla
   document.getElementById("cleanDialogTitle").textContent = `${cleanName ? "\u7F16\u8F91" : "\u65B0\u589E"} ${scope === "route" ? "Job" : "RouteStep"} Clean`;
   document.getElementById("cleanDialogDescription").textContent = scope === "route" ? "Clean \u53EA\u4F5C\u7528\u4E8E\u5F53\u524D PJob \u7684\u6240\u9009\u8DEF\u5F84\uFF0C\u4E0D\u4F1A\u4FEE\u6539\u8DEF\u5F84\u6A21\u677F\u6216\u5176\u4ED6 PJob\u3002" : "Clean \u53EA\u4F5C\u7528\u4E8E\u5F53\u524D PJob \u7684\u8FD9\u4E2A Step\uFF0C\u4E0D\u4F1A\u4FEE\u6539\u8DEF\u5F84\u6A21\u677F\u6216\u5176\u4ED6 PJob\u3002";
   const placementSelect = document.getElementById("cleanPlacement");
-  placementSelect.innerHTML = definitions.map((item) => `<option value="${item.key}">${escapeHtml3(item.label)}</option>`).join("");
+  placementSelect.innerHTML = definitions.map((item) => `<option value="${item.key}">${escapeHtml4(item.label)}</option>`).join("");
   placementSelect.value = selectedPlacement;
-  document.getElementById("cleanType").innerHTML = `<option value="${draft.cleanType}">${escapeHtml3(draft.cleanType)}</option>`;
+  document.getElementById("cleanType").innerHTML = `<option value="${draft.cleanType}">${escapeHtml4(draft.cleanType)}</option>`;
   document.getElementById("cleanRecipeTime").value = String(draft.recipeTime);
   document.getElementById("cleanTriggerCount").value = String(draft.triggerCount);
   document.getElementById("cleanDummyWaferCount").value = String(draft.dummyWaferCount || DEFAULT_DUMMY_WAFER_COUNT);
@@ -9315,7 +9760,7 @@ function openCleanDialog(scope, routeIndex, stageIndex = -1, cleanName = "", pla
   const selectedModules = new Set(stringList(draft.modules));
   const moduleHost = document.getElementById("cleanModuleOptions");
   const modules = cleanContextModules(scope, routeIndex, stageIndex);
-  moduleHost.innerHTML = modules.length ? modules.map((module) => `<label class="clean-module-option"><input type="checkbox" name="cleanModule" value="${escapeHtml3(module)}" ${selectedModules.has(module) ? "checked" : ""}><span>${escapeHtml3(module)}</span></label>`).join("") : `<span class="clean-dialog-empty">\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u53EF\u914D\u7F6E\u7684\u52A0\u5DE5\u8154\u5BA4</span>`;
+  moduleHost.innerHTML = modules.length ? modules.map((module) => `<label class="clean-module-option"><input type="checkbox" name="cleanModule" value="${escapeHtml4(module)}" ${selectedModules.has(module) ? "checked" : ""}><span>${escapeHtml4(module)}</span></label>`).join("") : `<span class="clean-dialog-empty">\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u53EF\u914D\u7F6E\u7684\u52A0\u5DE5\u8154\u5BA4</span>`;
   document.getElementById("cleanDialogError").textContent = "";
   document.getElementById("deleteCleanBindingButton").hidden = !cleanName;
   updateCleanDialogFields();
@@ -9391,8 +9836,8 @@ function removeContextClean(scope, routeIndex, stageIndex, placement, cleanName)
 }
 function renderCandidatePicker(routeIndex, stageIndex, allowed, candidates) {
   const selected = new Set(candidates);
-  const summary = candidates.length ? candidates.map((name) => `<span class="chip">${escapeHtml3(name)}</span>`).join("") : `<span class="candidate-picker-empty">\u9009\u62E9\u8BBE\u5907</span>`;
-  return `<details class="candidate-picker" onclick="event.stopPropagation()"><summary>${summary}</summary><div class="candidate-picker-menu">${allowed.map((name) => `<label class="candidate-option"><input type="checkbox" data-scope="stage-candidate-toggle" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-candidate="${escapeHtml3(name)}" ${selected.has(name) ? "checked" : ""}><span>${escapeHtml3(name)}</span></label>`).join("")}</div></details>`;
+  const summary = candidates.length ? candidates.map((name) => `<span class="chip">${escapeHtml4(name)}</span>`).join("") : `<span class="candidate-picker-empty">\u9009\u62E9\u8BBE\u5907</span>`;
+  return `<details class="candidate-picker" onclick="event.stopPropagation()"><summary>${summary}</summary><div class="candidate-picker-menu">${allowed.map((name) => `<label class="candidate-option"><input type="checkbox" data-scope="stage-candidate-toggle" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-candidate="${escapeHtml4(name)}" ${selected.has(name) ? "checked" : ""}><span>${escapeHtml4(name)}</span></label>`).join("")}</div></details>`;
 }
 function refreshCandidatePicker(control) {
   const picker = control.closest(".candidate-picker");
@@ -9405,7 +9850,7 @@ function refreshCandidatePicker(control) {
   const candidates = [...new Set((stage.visits || []).map((visit) => visit.stationName).filter(Boolean))];
   const summary = picker.querySelector("summary");
   if (summary) {
-    summary.innerHTML = candidates.length ? candidates.map((name) => `<span class="chip">${escapeHtml3(name)}</span>`).join("") : `<span class="candidate-picker-empty">\u9009\u62E9\u8BBE\u5907</span>`;
+    summary.innerHTML = candidates.length ? candidates.map((name) => `<span class="chip">${escapeHtml4(name)}</span>`).join("") : `<span class="candidate-picker-empty">\u9009\u62E9\u8BBE\u5907</span>`;
   }
   const row = control.closest("[data-step-card]");
   if (row) {
@@ -9420,7 +9865,7 @@ function refreshCandidatePicker(control) {
 }
 function renderReadonlyCandidates(stage) {
   const candidates = [...new Set((stage?.visits || []).map((visit) => visit.stationName).filter(Boolean))];
-  return candidates.length ? candidates.map((name) => `<span class="chip">${escapeHtml3(name)}</span>`).join("") : `<span class="candidate-picker-empty">\u672A\u9009\u62E9</span>`;
+  return candidates.length ? candidates.map((name) => `<span class="chip">${escapeHtml4(name)}</span>`).join("") : `<span class="candidate-picker-empty">\u672A\u9009\u62E9</span>`;
 }
 function renderSteps(route, routeIndex) {
   return route.stages.map((stage, stageIndex) => {
@@ -9525,10 +9970,10 @@ function renderRoutes() {
   state.routeProcessFilter = selectedProcess?.key || "";
   const selectedStructure = selectedProcess?.structures.find((structure) => structure.key === state.routeParallelFilter) || selectedProcess?.structures[0];
   state.routeParallelFilter = selectedStructure?.key || "";
-  processSelect.innerHTML = processGroups.map((group) => `<option value="${escapeHtml3(group.key)}">${escapeHtml3(group.label)}</option>`).join("");
+  processSelect.innerHTML = processGroups.map((group) => `<option value="${escapeHtml4(group.key)}">${escapeHtml4(group.label)}</option>`).join("");
   processSelect.value = state.routeProcessFilter;
   processSelect.disabled = !processGroups.length;
-  parallelSelect.innerHTML = (selectedProcess?.structures || []).map((structure) => `<option value="${escapeHtml3(structure.key)}">${escapeHtml3(structure.label)}</option>`).join("");
+  parallelSelect.innerHTML = (selectedProcess?.structures || []).map((structure) => `<option value="${escapeHtml4(structure.key)}">${escapeHtml4(structure.label)}</option>`).join("");
   parallelSelect.value = state.routeParallelFilter;
   parallelSelect.disabled = !selectedProcess?.structures.length;
   initializeCompactSelects();
@@ -9544,7 +9989,7 @@ function renderRoutes() {
     const compactPath = routePickerCompactPath(route, false);
     const actions = routeOpen ? `<button class="btn small" type="button" disabled>\u7F16\u8F91</button><button class="btn primary small" type="button" data-action="save-route" data-route-index="${routeIndex}">\u4FDD\u5B58</button><button class="btn small" type="button" data-action="cancel-route-edit" data-route-index="${routeIndex}">\u53D6\u6D88</button>` : `<button class="btn small" type="button" data-action="edit-route" data-route-index="${routeIndex}" ${anotherRouteEditing ? "disabled" : ""}>\u7F16\u8F91</button><button class="btn small" type="button" data-action="copy-route" data-route-index="${routeIndex}" ${anotherRouteEditing ? "disabled" : ""}>\u590D\u5236</button><button class="btn danger small" type="button" data-action="remove-route" data-index="${routeIndex}" ${anotherRouteEditing ? "disabled" : ""}>\u5220\u9664</button>`;
     return `<article class="route-summary-card ${routeOpen ? "is-editing" : ""}"><div class="route-summary-head"><div class="route-summary-toggle">
-      <span class="route-summary-content"><span class="route-summary-primary"><span class="route-summary-id">${routePickerShortId(route)}</span><strong title="${escapeHtml3(compactPath)}">${escapeHtml3(compactPath)}</strong></span></span></div>
+      <span class="route-summary-content"><span class="route-summary-primary"><span class="route-summary-id">${routePickerShortId(route)}</span><strong title="${escapeHtml4(compactPath)}">${escapeHtml4(compactPath)}</strong></span></span></div>
       <div class="route-summary-actions">${actions}</div>
     </div>${routeOpen ? renderRouteDetails(route, routeIndex) : ""}</article>`;
   }).join("");
@@ -9618,17 +10063,17 @@ function renderRoutePropertyTags(route) {
   const hasResidency = routeHasTimeConstraint(route, "residencyConstraint");
   const hasQTime = routeHasTimeConstraint(route, "qTimeLimit");
   const tags = [];
-  if (cleanSummary !== "\u65E0") tags.push(`<span class="route-property-tag clean-active" title="\u6E05\u6D01\uFF1A${escapeHtml3(cleanSummary)}">${escapeHtml3(cleanSummary)}</span>`);
+  if (cleanSummary !== "\u65E0") tags.push(`<span class="route-property-tag clean-active" title="\u6E05\u6D01\uFF1A${escapeHtml4(cleanSummary)}">${escapeHtml4(cleanSummary)}</span>`);
   if (hasResidency) tags.push(`<span class="route-property-tag constraint-active" title="\u9A7B\u7559\u65F6\u95F4\u7EA6\u675F\uFF1A\u5DF2\u914D\u7F6E">\u9A7B\u7559\u7EA6\u675F</span>`);
-  if (buffer.index > 0) tags.push(`<span class="route-property-tag buffer-${buffer.tone}" title="Buffer \u4F7F\u7528\u6A21\u5F0F ${buffer.index}\uFF1A${escapeHtml3(buffer.label)}">${escapeHtml3(buffer.label)}</span>`);
+  if (buffer.index > 0) tags.push(`<span class="route-property-tag buffer-${buffer.tone}" title="Buffer \u4F7F\u7528\u6A21\u5F0F ${buffer.index}\uFF1A${escapeHtml4(buffer.label)}">${escapeHtml4(buffer.label)}</span>`);
   if (hasQTime) tags.push(`<span class="route-property-tag qtime-active" title="QTime\uFF1A\u5DF2\u914D\u7F6E">QTime</span>`);
   return tags.length ? `<span class="route-property-tags">${tags.join("")}</span>` : "";
 }
 function renderPJobRouteCard(route, baseline) {
   const routeIndex = state.routes.indexOf(route), selected = route === baseline;
   const compactPath = routePickerCompactPath(route, false);
-  return `<button type="button" class="pjob-route-card ${selected ? "selected" : ""}" data-action="select-pjob-route" data-route-index="${routeIndex}" aria-pressed="${selected}" title="${escapeHtml3(compactPath)}">
-    <span class="pjob-route-card-head"><span class="pjob-route-card-id">${routePickerShortId(route)}</span><strong class="pjob-route-card-path">${escapeHtml3(compactPath)}</strong>${selected ? `<span class="pjob-route-card-current">\u5F53\u524D\u9009\u62E9</span>` : ""}</span>
+  return `<button type="button" class="pjob-route-card ${selected ? "selected" : ""}" data-action="select-pjob-route" data-route-index="${routeIndex}" aria-pressed="${selected}" title="${escapeHtml4(compactPath)}">
+    <span class="pjob-route-card-head"><span class="pjob-route-card-id">${routePickerShortId(route)}</span><strong class="pjob-route-card-path">${escapeHtml4(compactPath)}</strong>${selected ? `<span class="pjob-route-card-current">\u5F53\u524D\u9009\u62E9</span>` : ""}</span>
   </button>`;
 }
 function renderRouteInstanceSteps(route, pjob, loadPort = "") {
@@ -9659,7 +10104,7 @@ function renderRouteBufferEditor(routeIndex, context) {
   const bufferModes = ["No Buffer", "\u5F3A\u5236 Buffer Out", "\u5F3A\u5236 Buffer In", "\u975E\u5F3A\u5236 Buffer Out", "\u975E\u5F3A\u5236 Buffer In"];
   return `<section class="route-instance-buffer">
     <label for="route-${routeIndex}-buffer-option">Buffer Option</label>
-    <select id="route-${routeIndex}-buffer-option" data-compact-label="Buffer Option" data-scope="test-route" data-route-index="${routeIndex}" data-round-index="${context.roundIndex}" data-cjob-index="${context.cjobIndex}" data-pjob-index="${context.pjobIndex}" data-key="bufferOption">${bufferModes.map((label, value) => `<option value="${value}" ${value === current ? "selected" : ""}>${value} \xB7 ${escapeHtml3(label)}</option>`).join("")}</select>
+    <select id="route-${routeIndex}-buffer-option" data-compact-label="Buffer Option" data-scope="test-route" data-route-index="${routeIndex}" data-round-index="${context.roundIndex}" data-cjob-index="${context.cjobIndex}" data-pjob-index="${context.pjobIndex}" data-key="bufferOption">${bufferModes.map((label, value) => `<option value="${value}" ${value === current ? "selected" : ""}>${value} \xB7 ${escapeHtml4(label)}</option>`).join("")}</select>
   </section>`;
 }
 function renderPJobRouteDialogGroup(processKey, structureKey) {
@@ -9697,7 +10142,7 @@ function renderPJobRouteDialogGroup(processKey, structureKey) {
   detailHost.hidden = true;
   detailHost.innerHTML = "";
   const parallelSelect = document.getElementById("pjobRouteParallel");
-  parallelSelect.innerHTML = (selectedProcess?.structures || []).map((structure) => `<option value="${escapeHtml3(structure.key)}" ${structure.key === context.structureKey ? "selected" : ""}>${escapeHtml3(structure.label)}</option>`).join("") || `<option value="">\u6682\u65E0\u7ED3\u6784</option>`;
+  parallelSelect.innerHTML = (selectedProcess?.structures || []).map((structure) => `<option value="${escapeHtml4(structure.key)}" ${structure.key === context.structureKey ? "selected" : ""}>${escapeHtml4(structure.label)}</option>`).join("") || `<option value="">\u6682\u65E0\u7ED3\u6784</option>`;
   document.getElementById("pjobRouteDialogContext").textContent = selectedStructure ? `${selectedProcess.label} \xB7 ${selectedStructure.label} \xB7 ${selectedStructure.routes.length} \u6761\u5019\u9009\u8DEF\u5F84` : "\u5F53\u524D\u5DE5\u5E8F\u6CA1\u6709\u53EF\u7528\u8DEF\u5F84";
   cardList.innerHTML = (selectedStructure?.routes || []).length ? selectedStructure.routes.map(({ route }) => renderPJobRouteCard(route, selectedRoute)).join("") : `<div class="pjob-route-dialog-empty">\u5F53\u524D\u5DE5\u5E8F\u6CA1\u6709\u53EF\u9009\u62E9\u7684\u8DEF\u5F84</div>`;
 }
@@ -9722,7 +10167,7 @@ function openPJobRoutePicker(button) {
   };
   document.getElementById("pjobRouteDialogTitle").textContent = `\u9009\u62E9 ${pjob.jobName} \u7684\u8DEF\u5F84`;
   const processSelect = document.getElementById("pjobRouteProcess");
-  processSelect.innerHTML = groups.length ? groups.map((group) => `<option value="${escapeHtml3(group.key)}" ${group.key === pjobRoutePickerContext.processKey ? "selected" : ""}>${escapeHtml3(group.label)}</option>`).join("") : `<option value="">\u6682\u65E0\u5DE5\u5E8F</option>`;
+  processSelect.innerHTML = groups.length ? groups.map((group) => `<option value="${escapeHtml4(group.key)}" ${group.key === pjobRoutePickerContext.processKey ? "selected" : ""}>${escapeHtml4(group.label)}</option>`).join("") : `<option value="">\u6682\u65E0\u5DE5\u5E8F</option>`;
   renderPJobRouteDialogGroup(pjobRoutePickerContext.processKey, pjobRoutePickerContext.structureKey);
   button.setAttribute("aria-expanded", "true");
   const dialog = document.getElementById("pjobRouteDialog");
@@ -9758,7 +10203,7 @@ function renderPJobRoutePicker(pjob, roundIndex, cjobIndex, pjobIndex) {
   const compactPath = runtimeRoute ? routePickerCompactPath(runtimeRoute, true, pjob.loadPort) : "\u672A\u9009\u62E9\u8DEF\u5F84";
   const common = `data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-pjob-index="${pjobIndex}"`;
   return `<div class="pjob-route-picker">
-    <div class="pjob-route-current" title="${escapeHtml3(compactPath)}"><span class="pjob-route-current-path">${escapeHtml3(compactPath)}</span>${runtimeRoute ? renderRoutePropertyTags(runtimeRoute) : ""}</div>
+    <div class="pjob-route-current" title="${escapeHtml4(compactPath)}"><span class="pjob-route-current-path">${escapeHtml4(compactPath)}</span>${runtimeRoute ? renderRoutePropertyTags(runtimeRoute) : ""}</div>
     <button type="button" class="pjob-route-open" data-action="open-pjob-route-picker" aria-label="\u9009\u62E9\u5177\u4F53\u8DEF\u5F84" aria-haspopup="dialog" aria-controls="pjobRouteDialog" aria-expanded="false" ${common}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
   </div>`;
 }
@@ -9778,20 +10223,20 @@ function renderRounds() {
       const occupiedLoadPorts = new Set(
         round.cjobs.filter((_item, index) => index !== cjobIndex).map((item) => item.loadPort)
       );
-      const loadPortOptions = state.loadPorts.map((loadPort) => `<option value="${escapeHtml3(loadPort)}" ${loadPort === cjob.loadPort ? "selected" : ""} ${occupiedLoadPorts.has(loadPort) ? "disabled" : ""}>${escapeHtml3(loadPort)}</option>`).join("");
+      const loadPortOptions = state.loadPorts.map((loadPort) => `<option value="${escapeHtml4(loadPort)}" ${loadPort === cjob.loadPort ? "selected" : ""} ${occupiedLoadPorts.has(loadPort) ? "disabled" : ""}>${escapeHtml4(loadPort)}</option>`).join("");
       const pjobRows = cjob.pjobs.map((pjob, pjobIndex) => {
         const pjobFieldPrefix = `${fieldPrefix}-pjob-${pjobIndex}`;
         return `<div class="pjob-row">
-          <div class="pjob-identity"><span>PJob</span><strong>${escapeHtml3(pjob.jobName)}</strong></div>
+          <div class="pjob-identity"><span>PJob</span><strong>${escapeHtml4(pjob.jobName)}</strong></div>
           <label class="pjob-field pjob-material" for="${pjobFieldPrefix}-wafer-count"><span>Material</span><input id="${pjobFieldPrefix}-wafer-count" class="pjob-number" type="number" min="1" max="25" inputmode="numeric" data-scope="pjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-pjob-index="${pjobIndex}" data-key="waferCount" value="${Number(pjob.waferCount)}"></label>
           <label class="pjob-field pjob-priority" for="${pjobFieldPrefix}-priority"><span>Priority</span><input id="${pjobFieldPrefix}-priority" class="pjob-number" type="number" min="1" inputmode="numeric" data-scope="pjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-pjob-index="${pjobIndex}" data-key="priority" value="${Number(pjob.priority)}"></label>
           <div class="pjob-field pjob-origin-route"><span>OriginRoute</span>${renderPJobRoutePicker(pjob, roundIndex, cjobIndex, pjobIndex)}</div>
-          <button class="btn danger icon pjob-remove" type="button" aria-label="\u5220\u9664 ${escapeHtml3(pjob.jobName)}" title="\u5220\u9664 ${escapeHtml3(pjob.jobName)}" data-action="remove-pjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-pjob-index="${pjobIndex}" ${cjob.pjobs.length <= 1 ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6m4-6v6M9 7l1-2h4l1 2M7 7l1 13h8l1-13"/></svg></button>
+          <button class="btn danger icon pjob-remove" type="button" aria-label="\u5220\u9664 ${escapeHtml4(pjob.jobName)}" title="\u5220\u9664 ${escapeHtml4(pjob.jobName)}" data-action="remove-pjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-pjob-index="${pjobIndex}" ${cjob.pjobs.length <= 1 ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6m4-6v6M9 7l1-2h4l1 2M7 7l1 13h8l1-13"/></svg></button>
         </div>`;
       }).join("");
       return `<section class="cjob-card">
         <header class="cjob-head">
-          <div class="cjob-title"><strong>CJob ${cjobIndex + 1}</strong><span class="cjob-task-id">TaskID ${escapeHtml3(cjob.taskId)}</span></div>
+          <div class="cjob-title"><strong>CJob ${cjobIndex + 1}</strong><span class="cjob-task-id">TaskID ${escapeHtml4(cjob.taskId)}</span></div>
           <div class="cjob-controls">
             <div class="field cjob-job-type"><label for="${fieldPrefix}-job-type">JobType</label><select id="${fieldPrefix}-job-type" data-scope="cjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-key="jobType">${CJOB_TYPES.map((value) => `<option ${value === cjob.jobType ? "selected" : ""}>${value}</option>`).join("")}</select></div>
             <div class="field cjob-load-port"><label for="${fieldPrefix}-load-port">LoadPort</label><select id="${fieldPrefix}-load-port" data-scope="cjob" data-round-index="${roundIndex}" data-cjob-index="${cjobIndex}" data-key="loadPort" aria-label="CJob ${cjobIndex + 1} LoadPort">${loadPortOptions}</select></div>
@@ -9813,12 +10258,12 @@ function renderRounds() {
 }
 function renderStepNumberField(label, key, value, routeIndex, stageIndex, options = {}) {
   const inputId = `step-${routeIndex}-${stageIndex}-${key}`;
-  const helper = options.helper ? `<small class="field-help">${escapeHtml3(options.helper)}</small>` : "";
+  const helper = options.helper ? `<small class="field-help">${escapeHtml4(options.helper)}</small>` : "";
   const minimum = options.minimum === void 0 ? "" : ` min="${options.minimum}"`;
   return `<div class="step-edit-field">
-    <label for="${inputId}">${escapeHtml3(label)}</label>
+    <label for="${inputId}">${escapeHtml4(label)}</label>
     <div class="step-number-control">
-      <input id="${inputId}" type="number" inputmode="decimal" step="${options.step || "0.1"}"${minimum} data-scope="test-step" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-round-index="${state.drawer?.roundIndex}" data-cjob-index="${state.drawer?.cjobIndex}" data-pjob-index="${state.drawer?.pjobIndex}" data-key="${key}" value="${escapeHtml3(value)}">
+      <input id="${inputId}" type="number" inputmode="decimal" step="${options.step || "0.1"}"${minimum} data-scope="test-step" data-route-index="${routeIndex}" data-stage-index="${stageIndex}" data-round-index="${state.drawer?.roundIndex}" data-cjob-index="${state.drawer?.cjobIndex}" data-pjob-index="${state.drawer?.pjobIndex}" data-key="${key}" value="${escapeHtml4(value)}">
       <span aria-hidden="true">s</span>
     </div>
     ${helper}
@@ -9927,28 +10372,28 @@ function renderRobotSlots() {
     ).size;
     const tokens = armGroups.map((group) => group.slotIds.map((slotId) => `
       <span class="robot-slot-token ${selected.includes(slotId) ? "is-active" : ""}">
-        ${escapeHtml3(group.armName)} \xB7 Slot ${slotId}
+        ${escapeHtml4(group.armName)} \xB7 Slot ${slotId}
       </span>
     `).join("")).join("");
     return `
-      <article class="robot-slot-card" data-robot-slot-card="${escapeHtml3(robotName)}">
+      <article class="robot-slot-card" data-robot-slot-card="${escapeHtml4(robotName)}">
         <header class="robot-slot-card-head">
           <div class="robot-slot-card-title">
             <span class="robot-slot-card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="11" rx="3"/><path d="M12 3v4M8 12h.01M16 12h.01M8 18v3m8-3v3"/></svg>
             </span>
             <div>
-              <h3>${escapeHtml3(robotName)}</h3>
-              <p>${escapeHtml3(robot.Type || "Robot")} \xB7 \u53EF\u8FBE ${accessibleStationCount} \u4E2A\u7AD9\u70B9</p>
+              <h3>${escapeHtml4(robotName)}</h3>
+              <p>${escapeHtml4(robot.Type || "Robot")} \xB7 \u53EF\u8FBE ${accessibleStationCount} \u4E2A\u7AD9\u70B9</p>
             </div>
           </div>
           <span class="robot-slot-mode">${isSaving ? "\u4FDD\u5B58\u4E2D\u2026" : isDualArm ? "\u53CC\u81C2" : "\u5355\u81C2"}</span>
         </header>
-        <div class="robot-slot-visual" aria-label="${escapeHtml3(robotName)} \u53EF\u7528\u69FD\u4F4D">${tokens}</div>
-        <div class="robot-slot-controls" role="group" aria-label="${escapeHtml3(robotName)} \u5DE5\u4F5C\u6A21\u5F0F">
-          <button class="robot-slot-choice" type="button" data-robot-slot-name="${escapeHtml3(robotName)}" data-robot-arm-count="1" aria-pressed="${String(!isDualArm)}" ${isSaving ? "disabled" : ""}>\u5355\u81C2</button>
-          <button class="robot-slot-choice" type="button" data-robot-slot-name="${escapeHtml3(robotName)}" data-robot-arm-count="2" aria-pressed="${String(isDualArm)}" ${!supportsDualArm || isSaving ? "disabled" : ""}>\u53CC\u81C2</button>
-          <button class="robot-slot-choice robot-slot-default" type="button" data-robot-slot-default="${escapeHtml3(robotName)}" ${isDefault || isSaving ? "disabled" : ""}>\u6062\u590D\u9ED8\u8BA4</button>
+        <div class="robot-slot-visual" aria-label="${escapeHtml4(robotName)} \u53EF\u7528\u69FD\u4F4D">${tokens}</div>
+        <div class="robot-slot-controls" role="group" aria-label="${escapeHtml4(robotName)} \u5DE5\u4F5C\u6A21\u5F0F">
+          <button class="robot-slot-choice" type="button" data-robot-slot-name="${escapeHtml4(robotName)}" data-robot-arm-count="1" aria-pressed="${String(!isDualArm)}" ${isSaving ? "disabled" : ""}>\u5355\u81C2</button>
+          <button class="robot-slot-choice" type="button" data-robot-slot-name="${escapeHtml4(robotName)}" data-robot-arm-count="2" aria-pressed="${String(isDualArm)}" ${!supportsDualArm || isSaving ? "disabled" : ""}>\u53CC\u81C2</button>
+          <button class="robot-slot-choice robot-slot-default" type="button" data-robot-slot-default="${escapeHtml4(robotName)}" ${isDefault || isSaving ? "disabled" : ""}>\u6062\u590D\u9ED8\u8BA4</button>
         </div>
         <p class="robot-slot-card-note">${supportsDualArm ? "\u6309\u7269\u7406 Arm \u5207\u6362\uFF1B\u6BCF\u4E2A Arm \u58F0\u660E\u7684\u591A\u4E2A\u69FD\u4F4D\u4F1A\u4E00\u8D77\u4FDD\u7559\u3002" : `\u8BBE\u5907\u6587\u4EF6\u58F0\u660E 1 \u4E2A Arm\u3001${available.length} \u4E2A\u624B\u69FD\u3002`}</p>
       </article>
@@ -10622,9 +11067,9 @@ function renderOtherAlgorithmOptions(algorithms) {
   state.availableAlgorithms = Array.isArray(algorithms) ? algorithms : [];
   const container = document.getElementById("otherAlgorithmOptions");
   container.innerHTML = state.availableAlgorithms.map((algorithm) => `
-    <label class="strategy-card" data-strategy-card="${escapeHtml3(algorithm.strategy)}" ${algorithm.unavailableReason ? `title="${escapeHtml3(algorithm.unavailableReason)}"` : ""}>
-      <input type="radio" name="strategy" value="${escapeHtml3(algorithm.strategy)}" ${algorithm.strategy === state.strategy ? "checked" : ""} ${algorithm.available === false ? "disabled" : ""}>
-      <b>${escapeHtml3(algorithm.name)}</b>
+    <label class="strategy-card" data-strategy-card="${escapeHtml4(algorithm.strategy)}" ${algorithm.unavailableReason ? `title="${escapeHtml4(algorithm.unavailableReason)}"` : ""}>
+      <input type="radio" name="strategy" value="${escapeHtml4(algorithm.strategy)}" ${algorithm.strategy === state.strategy ? "checked" : ""} ${algorithm.available === false ? "disabled" : ""}>
+      <b>${escapeHtml4(algorithm.name)}</b>
     </label>
   `).join("");
   updateStrategyOptionVisibility();
@@ -10758,10 +11203,10 @@ function openBatchTestSelectionDialog(mode = "run") {
   document.getElementById("batchTestSelectionDialogTitle").textContent = mode === "filter" ? "\u9009\u62E9\u663E\u793A\u7684\u6D4B\u8BD5" : "\u9009\u62E9\u8981\u8FD0\u884C\u7684\u6D4B\u8BD5";
   document.getElementById("batchTestSelectionDialogContext").textContent = mode === "filter" ? `${state.activeTestGroup || "\u672A\u5206\u7EC4"} \xB7 \u5171 ${tests.length} \u9879 \xB7 \u4EC5\u66F4\u65B0\u7ED3\u679C\u533A\u663E\u793A\uFF0C\u4E0D\u4F1A\u5F00\u59CB\u8FD0\u884C` : `${state.activeTestGroup || "\u672A\u5206\u7EC4"} \xB7 \u5171 ${tests.length} \u9879 \xB7 \u5C06\u6309\u4E0B\u5217\u987A\u5E8F\u6267\u884C\u5E76\u5C55\u793A`;
   document.getElementById("batchSelectionList").innerHTML = tests.map((test, index) => `
-    <label class="batch-selection-item" title="${escapeHtml3(`${test.id || ""} \xB7 ${test.name || ""}`)}">
-      <input type="checkbox" value="${escapeHtml3(test.id || "")}" data-batch-test-selection ${mode === "run" || resultTestFilterIds?.has(String(test.id || "")) ? "checked" : ""}>
+    <label class="batch-selection-item" title="${escapeHtml4(`${test.id || ""} \xB7 ${test.name || ""}`)}">
+      <input type="checkbox" value="${escapeHtml4(test.id || "")}" data-batch-test-selection ${mode === "run" || resultTestFilterIds?.has(String(test.id || "")) ? "checked" : ""}>
       <span class="batch-selection-index">t${index + 1}</span>
-      <span class="batch-selection-name">${escapeHtml3(test.name || `\u6D4B\u8BD5 ${index + 1}`)}</span>
+      <span class="batch-selection-name">${escapeHtml4(test.name || `\u6D4B\u8BD5 ${index + 1}`)}</span>
     </label>
   `).join("");
   const rangeStart = document.getElementById("batchSelectionRangeStart");
@@ -11042,8 +11487,8 @@ function openGroupAnalysisOptions() {
   const analyzable = result.items.filter((item) => hasBatchResultMetrics(item) && item.resultUrl);
   const options = document.getElementById("analysisTestOptions");
   options.innerHTML = analyzable.map((item, index) => `
-    <label><input type="checkbox" checked value="${escapeHtml3(String(item.testId || `index-${index}`))}" data-analysis-test>
-      <span><strong>${escapeHtml3(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}</strong><small>${escapeHtml3(validationDisplay(item.validation))}</small></span>
+    <label><input type="checkbox" checked value="${escapeHtml4(String(item.testId || `index-${index}`))}" data-analysis-test>
+      <span><strong>${escapeHtml4(item.testName || `\u6D4B\u8BD5 ${index + 1}`)}</strong><small>${escapeHtml4(validationDisplay(item.validation))}</small></span>
     </label>`).join("");
   document.getElementById("analysisToggleAllTests").textContent = "\u53D6\u6D88\u5168\u9009";
   document.getElementById("analysisDialogProgress").innerHTML = "";
@@ -11059,9 +11504,9 @@ function renderGroupAnalysisProgress(job) {
   const elapsed = Number(job.elapsedSeconds) || 0;
   document.getElementById("analysisDialogProgress").innerHTML = `
     <section class="group-analysis-progress" aria-live="polite">
-      <header><div><small>\u6D4B\u8BD5\u7EC4\u7ED3\u679C\u5206\u6790</small><strong>${escapeHtml3(job.message || "\u6B63\u5728\u5206\u6790")}</strong></div><b>${percent}%</b></header>
+      <header><div><small>\u6D4B\u8BD5\u7EC4\u7ED3\u679C\u5206\u6790</small><strong>${escapeHtml4(job.message || "\u6B63\u5728\u5206\u6790")}</strong></div><b>${percent}%</b></header>
       <div class="group-analysis-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="width:${percent}%"></i></div>
-      <p>${escapeHtml3(job.currentCaseName || "\u6B63\u5728\u51C6\u5907")} \xB7 \u5DF2\u5B8C\u6210 ${Number(job.completedCases) || 0}/${Number(job.totalCases) || 0} \u4E2A\u6D4B\u8BD5 \xB7 \u5DF2\u7528 ${elapsed.toFixed(1)} \u79D2 / ${Number(job.timeBudgetSeconds) || 0} \u79D2</p>
+      <p>${escapeHtml4(job.currentCaseName || "\u6B63\u5728\u51C6\u5907")} \xB7 \u5DF2\u5B8C\u6210 ${Number(job.completedCases) || 0}/${Number(job.totalCases) || 0} \u4E2A\u6D4B\u8BD5 \xB7 \u5DF2\u7528 ${elapsed.toFixed(1)} \u79D2 / ${Number(job.timeBudgetSeconds) || 0} \u79D2</p>
     </section>`;
   showAnalysisWizardStep(3);
 }
@@ -11319,7 +11764,7 @@ function closeBatchTestDetails() {
 }
 function renderBatchTestDetailField(label, value) {
   const text = readonlyText(value);
-  return `<div class="batch-test-detail-field"><span>${escapeHtml3(label)}</span><strong title="${escapeHtml3(text)}">${escapeHtml3(text)}</strong></div>`;
+  return `<div class="batch-test-detail-field"><span>${escapeHtml4(label)}</span><strong title="${escapeHtml4(text)}">${escapeHtml4(text)}</strong></div>`;
 }
 function batchTestDetailRouteSummary(testCase, pjob) {
   const routeName = String(pjob?.routeRef || "");
@@ -11335,7 +11780,7 @@ function renderBatchTestDetails(testCase) {
     const cjobMarkup = cjobs.map((cjob, cjobIndex) => {
       const pjobs = Array.isArray(cjob?.pjobs) ? cjob.pjobs : [];
       const pjobMarkup = pjobs.map((pjob, pjobIndex) => `<div class="batch-test-detail-pjob">
-        <div class="batch-test-detail-pjob-name"><span>PJob</span><strong>${escapeHtml3(pjob?.jobName || `P${pjobIndex + 1}`)}</strong></div>
+        <div class="batch-test-detail-pjob-name"><span>PJob</span><strong>${escapeHtml4(pjob?.jobName || `P${pjobIndex + 1}`)}</strong></div>
         <div class="batch-test-detail-pjob-fields">
           ${renderBatchTestDetailField("Material", pjob?.waferCount)}
           ${renderBatchTestDetailField("Priority", pjob?.priority)}
@@ -11344,7 +11789,7 @@ function renderBatchTestDetails(testCase) {
       </div>`).join("") || '<span class="hint">\u6B64 CJob \u6CA1\u6709 PJob\u3002</span>';
       return `<section class="batch-test-detail-cjob">
         <div class="batch-test-detail-fields">
-          <header class="batch-test-detail-cjob-head"><strong>CJob ${cjobIndex + 1}</strong><span>TaskID ${escapeHtml3(cjob?.taskId)}</span></header>
+          <header class="batch-test-detail-cjob-head"><strong>CJob ${cjobIndex + 1}</strong><span>TaskID ${escapeHtml4(cjob?.taskId)}</span></header>
           ${renderBatchTestDetailField("JobType", cjob?.jobType)}
           ${renderBatchTestDetailField("LoadPort", cjob?.loadPort)}
           ${renderBatchTestDetailField("Priority", cjob?.priority)}
@@ -11355,7 +11800,7 @@ function renderBatchTestDetails(testCase) {
       </section>`;
     }).join("") || '<span class="hint">\u6B64\u8F6E\u6CA1\u6709 CJob\u3002</span>';
     return `<section class="batch-test-detail-round">
-      <header class="batch-test-detail-round-head"><span class="batch-test-detail-round-number">${roundIndex + 1}</span><strong>${roundIndex ? `\u7B2C ${roundIndex + 1} \u8F6E\u91CD\u7B97` : "\u9996\u6B21\u6392\u7A0B"}</strong><span>${roundIndex ? "\u91CD\u7B97\u65F6\u95F4" : "\u6392\u7A0B\u65F6\u95F4"} ${escapeHtml3(formatCleanSeconds(round?.currentTime ?? 0))}</span></header>
+      <header class="batch-test-detail-round-head"><span class="batch-test-detail-round-number">${roundIndex + 1}</span><strong>${roundIndex ? `\u7B2C ${roundIndex + 1} \u8F6E\u91CD\u7B97` : "\u9996\u6B21\u6392\u7A0B"}</strong><span>${roundIndex ? "\u91CD\u7B97\u65F6\u95F4" : "\u6392\u7A0B\u65F6\u95F4"} ${escapeHtml4(formatCleanSeconds(round?.currentTime ?? 0))}</span></header>
       <div class="batch-test-detail-cjobs">${cjobMarkup}</div>
     </section>`;
   }).join("") || '<p class="hint">\u8BE5\u6D4B\u8BD5\u6CA1\u6709\u53EF\u663E\u793A\u7684\u4EFB\u52A1\u914D\u7F6E\u3002</p>';
@@ -11380,7 +11825,7 @@ async function toggleBatchTestDetails(testId) {
     panel.innerHTML = renderBatchTestDetails(result.test);
   } catch (error) {
     if (requestVersion !== batchTestDetailsRequestVersion || expandedBatchTestId !== testId) return;
-    panel.innerHTML = `<div class="batch-test-details-body"><p class="hint">\u8BFB\u53D6\u6D4B\u8BD5\u8BE6\u60C5\u5931\u8D25\uFF1A${escapeHtml3(error?.message || "\u672A\u77E5\u9519\u8BEF")}</p></div>`;
+    panel.innerHTML = `<div class="batch-test-details-body"><p class="hint">\u8BFB\u53D6\u6D4B\u8BD5\u8BE6\u60C5\u5931\u8D25\uFF1A${escapeHtml4(error?.message || "\u672A\u77E5\u9519\u8BEF")}</p></div>`;
   }
 }
 function openBatchErrorDialog(testId) {
@@ -11906,11 +12351,11 @@ document.getElementById("analysisOptionsForm").addEventListener("submit", (event
     document.getElementById("analysisOptionsCancel").disabled = false;
     document.getElementById("analysisOptionsClose").disabled = false;
     document.getElementById("analysisOptionsCancel").textContent = "\u5173\u95ED";
-    document.getElementById("analysisDialogProgress").innerHTML = `<section class="group-analysis-warning"><strong>\u7ED3\u679C\u5206\u6790\u5931\u8D25</strong><br>${escapeHtml3(error.message || "\u672A\u77E5\u9519\u8BEF")}</section>`;
+    document.getElementById("analysisDialogProgress").innerHTML = `<section class="group-analysis-warning"><strong>\u7ED3\u679C\u5206\u6790\u5931\u8D25</strong><br>${escapeHtml4(error.message || "\u672A\u77E5\u9519\u8BEF")}</section>`;
     if (analysisWizardStep !== 3) {
       document.getElementById("analysisOptionsCancel").textContent = "\u53D6\u6D88";
     } else {
-      visualizationWorkspace.showGroupAnalysis(`<section class="group-analysis-warning"><strong>\u7ED3\u679C\u5206\u6790\u5931\u8D25</strong><br>${escapeHtml3(error.message || "\u672A\u77E5\u9519\u8BEF")}</section>`);
+      visualizationWorkspace.showGroupAnalysis(`<section class="group-analysis-warning"><strong>\u7ED3\u679C\u5206\u6790\u5931\u8D25</strong><br>${escapeHtml4(error.message || "\u672A\u77E5\u9519\u8BEF")}</section>`);
       void switchTab("analysis");
     }
     writeTerminal(`$ \u6D4B\u8BD5\u7EC4\u7ED3\u679C\u5206\u6790\u5931\u8D25
@@ -12142,12 +12587,29 @@ window.addEventListener("pagehide", () => {
     });
   }
 });
+function initializeTheoryCapacityView() {
+  const root = document.getElementById("theoryCapacityView");
+  if (!root) return;
+  createTheoryCapacityView({
+    root,
+    listDevices: async () => {
+      if (!state.workspaceDevices?.length) await loadWorkspaceCatalog();
+      return (state.workspaceDevices || []).map((device) => ({
+        id: String(device.id),
+        name: String(device.name || "\u672A\u547D\u540D\u8BBE\u5907")
+      }));
+    },
+    requestPreset: (deviceId, values4) => requestTheoryCapacityPreset(deviceId, values4),
+    syncSelect: (select) => refreshCompactSelect(select)
+  }).initialize();
+}
 var managementSections = document.getElementById("testManagementSections");
 for (const id of ["routeManagementSection", "deviceManagementSection"]) managementSections.append(document.getElementById(id));
 initializeCompactSelects();
 initializeConsoleShell();
 initializeConsoleReplayToolbar();
 initializeConsoleGanttToolbar();
+initializeTheoryCapacityView();
 renderAll();
 renderWorkspaceControls();
 renderDeviceTimingConfiguration();

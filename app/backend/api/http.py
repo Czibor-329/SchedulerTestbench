@@ -19,6 +19,12 @@ from app.backend.company_capacity_baselines import *
 from app.backend.artifacts.repository import *
 from app.backend.artifacts.deadlock_diagnostic import *
 from app.backend.schedule_analysis_service import analyze_schedule_request
+from app.backend.theory_capacity_presets import read_theory_capacity_preset
+from app.backend.theory_capacity_service import (
+    read_theory_capacity_derivation,
+    read_theory_capacity_route_index,
+    read_theory_capacity_scan,
+)
 from app.backend.analysis_jobs import (
     cancel_test_group_analysis_job,
     create_test_group_analysis_job,
@@ -290,6 +296,105 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": True, "baselines": read_company_capacity_baselines()})
             except Exception as error:  # noqa: BLE001
                 self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path == "/api/theory-capacity/preset":
+            if not BUILTIN_ALGORITHM_AVAILABLE:
+                self._send_json({"ok": False, "error": "本地算法仓库未加载，无法计算理论产能"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                return
+            try:
+                query = parse_qs(parsed_url.query)
+                self._send_json(read_theory_capacity_preset(
+                    (query.get("device") or [""])[0],
+                    kind=(query.get("kind") or ["single-node"])[0],
+                    lock=(query.get("lock") or ["shared-bidirectional"])[0],
+                    first_seconds=(query.get("first") or [None])[0],
+                    last_seconds=(query.get("last") or [None])[0],
+                    step_seconds=(query.get("step") or [None])[0],
+                    process_seconds=(query.get("process") or [None])[0],
+                    cleaning_values={key: query[key][0] for key in (
+                        "mode", "clean", "wafers", "jobs", "alternation", "pre_seconds", "post_seconds",
+                        "wac_seconds", "wac_interval", "dummy_seconds", "dummy_visits", "dummy_inventory"
+                    ) if key in query},
+                ))
+            except ValueError as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+        if path == "/api/theory-capacity/route-index":
+            if not BUILTIN_ALGORITHM_AVAILABLE:
+                self._send_json(
+                    {"ok": False, "error": "本地算法仓库未加载，无法计算理论产能"},
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
+                return
+            try:
+                query = parse_qs(parsed_url.query)
+                device_id = str((query.get("device") or [""])[0]).strip()
+                if not device_id:
+                    raise ValueError("必须指定设备")
+                self._send_json(read_theory_capacity_route_index(device_id))
+            except ValueError as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/theory-capacity/scan":
+            if not BUILTIN_ALGORITHM_AVAILABLE:
+                self._send_json(
+                    {"ok": False, "error": "本地算法仓库未加载，无法计算理论产能"},
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
+                return
+            try:
+                query = parse_qs(parsed_url.query)
+                device_id = str((query.get("device") or [""])[0]).strip()
+                if not device_id:
+                    raise ValueError("必须指定设备")
+                self._send_json(read_theory_capacity_scan(
+                    device_id,
+                    kinds=(query.get("kinds") or [""])[0],
+                    locks=(query.get("locks") or [""])[0],
+                    cleans=(query.get("cleans") or [""])[0],
+                    first_seconds=(query.get("first") or [None])[0],
+                    last_seconds=(query.get("last") or [None])[0],
+                    step_seconds=(query.get("step") or [None])[0],
+                ))
+            except ValueError as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/theory-capacity/derivation":
+            if not BUILTIN_ALGORITHM_AVAILABLE:
+                self._send_json(
+                    {"ok": False, "error": "本地算法仓库未加载，无法计算理论产能"},
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
+                return
+            try:
+                query = parse_qs(parsed_url.query)
+                device_id = str((query.get("device") or [""])[0]).strip()
+                test_id = str((query.get("test") or [""])[0]).strip()
+                route_name = str((query.get("route") or [""])[0]).strip()
+                if not device_id or not (test_id or route_name):
+                    raise ValueError("必须指定设备，以及测试或路径模板")
+                self._send_json(read_theory_capacity_derivation(
+                    device_id, test_id=test_id, route_name=route_name,
+                ))
+            except ValueError as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
             return
         if path.startswith("/api/workspaces/"):
             parts = [part for part in path.split("/") if part]

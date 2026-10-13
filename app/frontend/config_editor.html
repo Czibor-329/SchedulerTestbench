@@ -7,16 +7,18 @@
   <title>调度平台</title>
   <link rel="stylesheet" href="/assets/tabler.min.css">
   <link rel="stylesheet" href="/assets/katex.min.css?v=1.4.4">
-  <link rel="stylesheet" href="/assets/fonts.css?v=1.6.20">
-  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.20">
-  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.20">
-  <link rel="stylesheet" href="/assets/console_shell.css?v=1.6.20">
-  <link rel="stylesheet" href="/assets/console_components.css?v=1.6.20">
-  <link rel="stylesheet" href="/assets/spark_table.css?v=1.6.20">
-  <link rel="stylesheet" href="/assets/result_table.css?v=1.6.20">
-  <link rel="stylesheet" href="/assets/analysis_report.css?v=1.6.20">
-  <link rel="stylesheet" href="/assets/console_replay_toolbar.css?v=1.6.20">
-  <link rel="stylesheet" href="/assets/console_gantt_toolbar.css?v=1.6.20">
+  <link rel="stylesheet" href="/assets/fonts.css?v=1.6.21">
+  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.21">
+  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.21">
+  <link rel="stylesheet" href="/assets/console_shell.css?v=1.6.21">
+  <link rel="stylesheet" href="/assets/console_components.css?v=1.6.21">
+  <link rel="stylesheet" href="/assets/spark_table.css?v=1.6.21">
+  <link rel="stylesheet" href="/assets/result_table.css?v=1.6.21">
+  <link rel="stylesheet" href="/assets/analysis_report.css?v=1.6.21">
+  <link rel="stylesheet" href="/assets/console_replay_toolbar.css?v=1.6.21">
+  <link rel="stylesheet" href="/assets/console_gantt_toolbar.css?v=1.6.21">
+  <link rel="stylesheet" href="/assets/theory_capacity.css?v=1.6.21">
+  <script src="/assets/vendor/apexcharts.min.js"></script>
 </head>
 <body class="theme-light" data-bs-theme="light">
   <a class="skip-link" href="#mainContent">跳到主要内容</a>
@@ -55,11 +57,14 @@
         <button class="tab" data-tab-target="gantt" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v14h16M8 15v-3m4 3V8m4 7v-5"/></svg><span>甘特图</span>
         </button>
+        <button class="tab" data-tab-target="theory-capacity" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M6 15c2-6 4-9 6-9s4 3 6 9"/><path d="M4 5h16"/></svg><span>理论产能</span>
+        </button>
         </div>
       </nav>
       <div class="sidebar-footer">
         <span class="sidebar-footer-label">本地调度工作台</span>
-        <span class="frontend-version">V1.6.20</span>
+        <span class="frontend-version">V1.6.21</span>
       </div>
     </aside>
     <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="关闭导航" tabindex="-1" hidden></button>
@@ -280,6 +285,41 @@
 
         <div class="tab-view" data-tab-view="gantt">
           <iframe class="gantt-frame" id="ganttFrame" title="MoveList 甘特图查看器"></iframe>
+        </div>
+
+        <div class="tab-view" data-tab-view="theory-capacity" id="theoryCapacityView">
+          <div class="theory-capacity-workbench">
+            <article class="panel theory-capacity-panel">
+              <div class="theory-capacity-filters">
+                <select id="theoryCapacityDevice" data-compact-label="设备" aria-label="设备"><option value="">尚未选择设备</option></select>
+                <select id="theoryCapacityKind" data-compact-label="路径" aria-label="路径"><option value="single-node">单节点</option><option value="serial">串行</option><option value="parallel">并行</option><option value="mixed">混合</option></select>
+                <select id="theoryCapacityLock" data-compact-label="LoadLock" aria-label="LoadLock"><option value="shared-bidirectional">双向双通道</option><option value="dedicated-entry-exit">单向双通道</option><option value="single-bidirectional">双向单通道</option></select>
+                <select id="theoryCleaningType" data-compact-label="清洁类型" aria-label="清洁类型"><option value="" selected>No Clean</option><option value="preclean">PreClean</option><option value="postclean">PostClean</option><option value="wacclean">WAC</option><option value="dummy">Dummy</option><option value="dummywac">DummyWAC</option></select>
+                <label class="theory-capacity-number" for="theoryCapacityFirstSeconds"><span>起点（秒）</span><input class="form-control-custom" id="theoryCapacityFirstSeconds" type="number" min="0" step="1" value="0"></label>
+                <label class="theory-capacity-number" for="theoryCapacityLastSeconds"><span>终点（秒）</span><input class="form-control-custom" id="theoryCapacityLastSeconds" type="number" min="1" step="1" value="300"></label>
+                <label class="theory-capacity-number" for="theoryCapacityStepSeconds"><span>步长（秒）</span><input class="form-control-custom" id="theoryCapacityStepSeconds" type="number" min="1" step="1" value="10"></label>
+                <button class="btn primary theory-capacity-apply" id="theoryCapacityApply" type="button">重新计算</button>
+              </div>
+              <p class="theory-capacity-notice" id="theoryCapacityNotice" role="alert" hidden></p>
+            </article>
+            <div class="theory-capacity-columns" id="theoryCapacityResults" hidden>
+              <div class="theory-capacity-result-stack">
+              <section class="card theory-chart-card" aria-label="产能曲线"><div class="card-header"><h2 class="card-title" title="连续生产周期产能">产能与清洁影响</h2><span id="theoryCapacityResultState" role="status"></span></div><div class="theory-current-result"><div><strong class="stat-value" id="theoryCapacityCurrentRate">—</strong><span>片 / 小时</span></div><p id="theoryCapacityComparison" class="theory-scope-note"></p></div>
+                <div id="theoryCapacityChartSection">
+                <div class="theory-chart-space"><div id="theoryCapacityChart"></div></div>
+                </div>
+                <div class="theory-cleaning-experiment" aria-label="清洁参数调节">
+                <div class="theory-cleaning-parameters" id="theoryPreSettings" hidden><div class="theory-cleaning-control" ><label for="theoryPreSeconds">PreClean（秒）</label><span class="theory-cleaning-track"><input id="theoryPreSecondsSlider" type="range" min="0" max="200" step="1" value="30" aria-label="调节PreClean（秒）"></span><input class="form-control-custom" id="theoryPreSeconds" type="number" min="0" max="200" step="0.1" value="30"></div></div>
+                <div class="theory-cleaning-parameters" id="theoryPostSettings" hidden><div class="theory-cleaning-control" ><label for="theoryPostSeconds">PostClean（秒）</label><span class="theory-cleaning-track"><input id="theoryPostSecondsSlider" type="range" min="0" max="200" step="1" value="30" aria-label="调节PostClean（秒）"></span><input class="form-control-custom" id="theoryPostSeconds" type="number" min="0" max="200" step="0.1" value="30"></div></div>
+                <div class="theory-cleaning-parameters" id="theoryDummySettings" hidden><div class="theory-cleaning-control" ><label for="theoryDummySeconds">Dummy（秒）</label><span class="theory-cleaning-track"><input id="theoryDummySecondsSlider" type="range" min="0" max="200" step="1" value="30" aria-label="调节Dummy（秒）"></span><input class="form-control-custom" id="theoryDummySeconds" type="number" min="0" max="200" step="0.1" value="30"></div><div class="theory-cleaning-control" ><label for="theoryDummyVisits">趟数</label><span class="theory-cleaning-track theory-cleaning-discrete"><input id="theoryDummyVisitsSlider" type="range" min="1" max="3" step="1" value="1" aria-label="调节趟数"><span class="theory-cleaning-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span></span></span><input class="form-control-custom" id="theoryDummyVisits" type="number" min="1" max="3" step="1" value="1"></div><div class="theory-cleaning-control" ><label for="theoryDummyInventory">库存</label><span class="theory-cleaning-track theory-cleaning-discrete"><input id="theoryDummyInventorySlider" type="range" min="1" max="3" step="1" value="3" aria-label="调节库存"><span class="theory-cleaning-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span></span></span><input class="form-control-custom" id="theoryDummyInventory" type="number" min="1" max="3" step="1" value="3"></div></div>
+                <div class="theory-cleaning-parameters" id="theoryWacSettings" hidden><div class="theory-cleaning-control" ><label for="theoryWacSeconds">WAC（秒）</label><span class="theory-cleaning-track"><input id="theoryWacSecondsSlider" type="range" min="0" max="200" step="1" value="30" aria-label="调节WAC（秒）"></span><input class="form-control-custom" id="theoryWacSeconds" type="number" min="0" max="200" step="0.1" value="30"></div><div class="theory-cleaning-control" id="theoryWacIntervalLabel" ><label for="theoryWacInterval">WAC 次数</label><span class="theory-cleaning-track theory-cleaning-discrete"><input id="theoryWacIntervalSlider" type="range" min="1" max="3" step="1" value="2" aria-label="调节WAC 次数"><span class="theory-cleaning-ticks" aria-hidden="true"><span>1</span><span>2</span><span>3</span></span></span><input class="form-control-custom" id="theoryWacInterval" type="number" min="1" max="3" step="1" value="2"></div></div>
+                </div>
+                <div class="theory-simulation-control"><label for="theoryCapacitySlider">加工时间（秒）</label><input id="theoryCapacitySlider" type="range" min="0" max="300" step="0.1" value="20" aria-label="模拟加工时间"><output id="theoryProcessReadout">20 秒</output></div><p id="theoryCapacityScope" class="theory-scope-note visually-hidden"></p></section>
+              <section class="card theory-resource-card theory-result-details" aria-label="资源负荷下界"><div class="card-header"><h2 class="card-title">资源负荷下界</h2><span id="theoryCapacityFloor" class="theory-unit"></span></div><div class="card-body theory-resource-grid" id="theoryCapacityResources"></div></section>
+              </div>
+              <section class="card theory-result-details" aria-label="计算过程"><div class="card-header"><h2 class="card-title">计算过程</h2></div><div class="card-body" id="theoryCapacityDerivation" aria-live="polite"></div></section>
+            </div>
+          </div>
         </div>
 
         <div class="management-section detached-management-section" id="routeManagementSection" data-management-view="routes" hidden>
@@ -841,7 +881,7 @@
     </aside>
   </dialog>
 
-  <script type="module" src="/assets/config_editor.js?v=1.6.20"></script>
+  <script type="module" src="/assets/config_editor.js?v=1.6.21"></script>
   <dialog id="testDraftDialog" aria-labelledby="testDraftTitle">
     <h2 id="testDraftTitle">测试有未保存的修改</h2><p>保存后再离开，或放弃本次修改。</p>
     <form method="dialog" class="editor-save-actions"><button class="btn" value="cancel" autofocus>继续编辑</button><button class="btn" value="discard">放弃修改</button><button class="btn primary" value="save">保存并继续</button></form>

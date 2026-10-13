@@ -1,0 +1,197 @@
+/* 理论产能：spark-admin-v1.0.0.zip / assets/css/main.css 卡片规则及 dashboard.js 图表的局部版面适配。 */
+#theoryCapacityView .card {
+    background-color: var(--card-background);
+    border: none;
+    border-radius: var(--radius-xxl);
+    padding: 1.75rem;
+    box-shadow: var(--shadow-md);
+    margin-bottom: 1.5rem;
+    position: relative;
+    overflow: hidden;
+}
+#theoryCapacityView .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+}
+#theoryCapacityView .card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 0;
+}
+#theoryCapacityView { --text-main: #0B130F; --text-muted-green: #6C7E75; }
+.theory-capacity-workbench { display:grid; gap:20px; min-width:0; }
+.theory-capacity-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; padding:20px; }
+.theory-capacity-filters .compact-select { width:190px; }
+.theory-capacity-number { display:grid; gap:5px; font-size:12px; color:#6C7E75; }
+.theory-capacity-number input { width:90px; min-height:38px; }
+.theory-capacity-columns { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:20px; align-items:start; }
+/* 曲线与明细在左列连续排列，右侧推导高度不会在曲线下方留下空行。 */
+.theory-capacity-result-stack { display:grid; gap:20px; min-width:0; align-content:start; }
+.theory-capacity-columns[hidden] { display:none; }
+#theoryCapacityView .card { min-width:0; margin:0; }
+#theoryCapacityView .card-header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+#theoryCapacityView .card-header p, .theory-unit { margin:6px 0 0; color:#6C7E75; font-size:12px; }
+/* 图表填满同排计算卡片留下的高度；绝对定位避免图表自身尺寸反向撑高网格。 */
+.theory-chart-card { display:flex; flex-direction:column; }
+.theory-chart-space { position:relative; flex:1; min-height:320px; }
+#theoryCapacityChart { position:absolute; inset:0; padding:0; }
+.theory-resource-card { grid-column:1 / -1; }
+.theory-resource-grid { display:flex; gap:12px 28px; flex-wrap:wrap; }
+.theory-resource-grid div { min-width:110px; }
+.theory-resource-grid small { display:block; color:#6C7E75; margin-bottom:4px; }
+.theory-capacity-notice { color:#b4553a; margin:0 20px 16px; }
+@media(max-width:1280px) { .theory-capacity-columns { grid-template-columns:minmax(0,1fr); } }
+
+#theoryCapacityView { --card-background: #FFFFFF; --radius-xxl: 24px; --shadow-md: 0 10px 30px rgba(11, 19, 15, 0.04); }
+
+#theoryCapacityView .form-control-custom {
+    display: block;
+    width: 100%;
+    padding: 0.6rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--text-main);
+    background-color: #FFFFFF;
+    background-clip: padding-box;
+    border: 1px solid rgba(11, 19, 15, 0.12);
+    border-radius: var(--radius-lg);
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+#theoryCapacityView .form-control-custom:focus {
+    color: var(--text-main);
+    background-color: #FFFFFF;
+    border-color: var(--brand-forest-medium);
+    outline: 0;
+    box-shadow: 0 0 0 3px rgba(7, 47, 31, 0.08);
+}
+#theoryCapacityView { --radius-lg:14px; --brand-forest-medium:#072F1F; }
+#theoryCapacityView .theory-capacity-number input { width:100px; }
+#theoryCapacityView .card-body { padding:0; }
+
+#theoryCapacityView .stat-label {
+    font-size: 0.875rem;
+    color: var(--text-muted-green);
+    margin-bottom: 0.75rem;
+    font-weight: 500;
+}
+#theoryCapacityView .stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--text-main);
+    margin-bottom: 0.75rem;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+}
+/* 教学排版沿用 Spark 的指标字阶、浅色进度条和卡片；正文使用完整中文量名。 */
+#theoryCapacityView { --theory-ink:#072F1F; --theory-muted:#586e62; --theory-lime:#B4F105; --theory-line:#E9EFEF; }
+#theoryCapacityView .theory-current-result { margin:0 0 8px; }
+#theoryCapacityView .theory-current-result .stat-label { display:block; margin-bottom:8px; }
+#theoryCapacityView .theory-current-result .stat-value { font-size:36px; font-variant-numeric:tabular-nums; }
+.theory-current-result div { display:flex; align-items:baseline; gap:10px; }
+.theory-current-result div > span { font-size:13px; color:var(--theory-muted); }
+.theory-simulation-control { padding-top:12px; border-top:1px solid var(--theory-line); }
+.theory-simulation-control label { display:block; color:var(--theory-muted); font-size:13px; line-height:1.6; }
+#theoryCapacitySlider { width:100%; min-height:36px; margin:4px 0; accent-color:var(--theory-ink); cursor:ew-resize; }
+.theory-range-labels { display:flex; justify-content:space-between; font-size:12px; color:var(--theory-muted); gap:8px; }
+.theory-range-labels output { color:var(--theory-ink); font-weight:700; }
+#theoryCapacityChart .apexcharts-point-annotation-marker { cursor:ew-resize; touch-action:none; stroke-width:3px; }
+.theory-formula-step { display:flex; align-items:flex-start; gap:14px; padding:17px 0; border-bottom:1px solid var(--theory-line); }
+.theory-formula-step:first-child { padding-top:0; }
+.theory-formula-step:last-child { border-bottom:0; padding-bottom:0; }
+.theory-step-number { display:grid; place-items:center; flex:none; width:28px; height:28px; border-radius:50%; background:var(--theory-line); color:var(--theory-ink); font-size:12px; font-weight:700; }
+.theory-formula-step h3 { margin:2px 0 9px; font-size:14px; font-weight:600; color:var(--theory-ink); }
+.theory-formula-step strong { display:block; font-size:17px; line-height:1.6; font-weight:700; color:var(--theory-ink); font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.theory-formula-step p { margin:7px 0 0; font-size:13px; line-height:1.7; color:var(--theory-muted); }
+.theory-formula-step:last-child .theory-step-number { background:var(--theory-lime); }
+.theory-formula-step:last-child strong { font-size:19px; }
+.theory-resource-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:16px 24px; }
+.theory-resource-grid strong { font-variant-numeric:tabular-nums; font-size:15px; }
+.theory-resource-grid strong span { font-size:11px; color:var(--theory-muted); font-weight:400; }
+.theory-resource-grid progress { display:block; width:100%; height:5px; margin-top:10px; border:0; border-radius:50rem; overflow:hidden; background:var(--theory-line); accent-color:var(--theory-ink); }
+.theory-resource-grid progress::-webkit-progress-bar { background:var(--theory-line); }
+.theory-resource-grid progress::-webkit-progress-value { background:var(--theory-ink); border-radius:50rem; }
+#theoryCapacityView[aria-busy=true] #theoryCapacityDerivation { opacity:.55; }
+#theoryCapacitySlider:focus-visible { outline:2px solid var(--theory-ink); outline-offset:3px; }
+@media(max-width:1280px) { .theory-capacity-columns { grid-template-columns:minmax(0,1fr); } }
+@media(prefers-reduced-motion:reduce) { #theoryCapacityView * { transition:none !important; } }
+
+/* 教学阅读字号：仅作用于本页签，沿用 Spark 字重与层级。 */
+#theoryCapacityView { font-size:16px; }
+#theoryCapacityView .card-title { font-size:22px; }
+#theoryCapacityView .compact-select-trigger, #theoryCapacityView .form-control-custom,
+#theoryCapacityView .btn { font-size:16px; }
+#theoryCapacityView .theory-capacity-number, #theoryCapacityView .theory-unit { font-size:15px; }
+#theoryCapacityView .theory-formula-step h3 { font-size:17px; }
+#theoryCapacityView .theory-formula-step strong { font-size:20px; }
+#theoryCapacityView .theory-formula-step p { font-size:16px; }
+#theoryCapacityView .theory-formula-step:last-child strong { font-size:22px; }
+#theoryCapacityView .theory-step-number { font-size:15px; width:32px; height:32px; }
+#theoryCapacityView .theory-resource-grid small { font-size:15px; }
+#theoryCapacityView .theory-resource-grid strong { font-size:18px; }
+#theoryCapacityView .theory-resource-grid strong span { font-size:14px; }
+#theoryCapacityView .theory-current-result div > span { font-size:16px; }
+.theory-process-actions { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+.theory-process-actions .btn { min-height:44px; }
+#theoryCapacityView .card-header { flex-wrap:wrap; }
+
+/* 紧凑参数栏：仅展开当前清洁类型，窄屏自动换行。 */
+#theoryCapacityView [hidden] { display:none !important; }
+#theoryCapacityView .theory-capacity-filters { padding:12px 16px; gap:10px; }
+#theoryCapacityView .theory-capacity-filters .compact-select { width:170px; }
+#theoryCapacityView .theory-capacity-filters .compact-select-trigger,
+#theoryCapacityView .theory-capacity-filters .form-control-custom,
+#theoryCapacityView .theory-capacity-filters .btn { min-height:38px; height:38px; padding:6px 10px; font-size:14px; }
+#theoryCapacityView .theory-capacity-filters .theory-capacity-number { font-size:12px; gap:4px; }
+#theoryCapacityView .theory-capacity-filters input { width:88px; }
+.theory-cleaning-experiment { display:flex; flex-wrap:wrap; gap:8px 16px; margin:0; padding:8px 0; border-top:1px solid var(--theory-line); }
+.theory-cleaning-parameters { display:contents; }
+.theory-cleaning-control { display:flex; align-items:center; gap:8px; min-height:30px; font-size:12px; color:var(--theory-muted); }
+.theory-cleaning-control label { white-space:nowrap; }
+.theory-cleaning-track { display:block; width:130px; flex:none; }
+.theory-cleaning-discrete { position:relative; width:64px; padding-bottom:9px; }
+.theory-cleaning-ticks { position:absolute; left:5px; right:5px; bottom:-2px; display:flex; justify-content:space-between; font-size:10px; line-height:10px; }
+#theoryCapacityView .theory-cleaning-control .form-control-custom { width:48px; min-height:28px; height:28px; padding:3px 4px; font-size:12px; }
+.theory-cleaning-control input[type=range] { display:block; width:100%; height:20px; min-height:20px; margin:0; accent-color:var(--theory-ink); }
+.theory-cleaning-control input[type=range]:focus-visible { outline:2px solid var(--theory-ink); outline-offset:3px; }
+#theoryCapacityView .theory-chart-card { align-self:start; padding:20px; }
+#theoryCapacityView .theory-chart-card .card-header { margin-bottom:8px; }
+#theoryCapacityResultState { font-size:12px; color:var(--theory-muted); }
+#theoryCapacityComparison { font-size:12px; margin:4px 0; }
+#theoryCapacityChartSection { display:block; flex:none; }
+.theory-chart-card .theory-chart-space { height:320px; min-height:320px; flex:none; }
+.theory-simulation-control { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding-top:8px; }
+.theory-simulation-control label { margin:0; font-size:12px; }
+#theoryCapacitySlider { width:130px; min-height:24px; height:24px; margin:0; }
+#theoryProcessReadout { font-size:12px; }
+#theoryProcessReadout { color:var(--theory-ink); font-variant-numeric:tabular-nums; }
+.theory-scope-note { margin:8px 0; font-size:14px; line-height:1.7; color:var(--theory-muted); }
+/* 求解中保留基线可见，只有旧读数和解释变淡；失败仍允许调整清洁参数。 */
+#theoryCapacityView[aria-busy=true] .theory-current-result,
+#theoryCapacityView[data-result-stale=true] .theory-current-result,
+#theoryCapacityView[aria-busy=true] .theory-result-details,
+#theoryCapacityView[data-result-stale=true] .theory-result-details { opacity:.6; }
+#theoryCapacityView[data-result-unavailable=true] .theory-result-details { display:none; }
+@media(max-width:600px) { #theoryCapacityView .card { padding:18px; } .theory-capacity-filters .compact-select { width:100%; } }
+
+/* 每步先给量纲明确的公式，再展示当前数值代入。 */
+.theory-formula-equation { padding:10px 12px; margin:8px 0; border-radius:8px; background:#F3F6F4; color:var(--theory-ink); font-size:14px; line-height:1.7; overflow-wrap:anywhere; }
+
+/* 周期拆解优先，明细按需展开，保持计算卡片紧凑。 */
+.theory-calculation-inputs { margin:0 0 12px; color:var(--theory-muted); font-size:14px; }
+.theory-timing-table { width:100%; font-size:13px; border-collapse:collapse; }
+.theory-timing-table th,.theory-timing-table td { padding:7px 5px; border-bottom:1px solid var(--theory-line); text-align:left; }
+.theory-timing-table td:nth-child(2) { font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.theory-timing-table td:last-child { color:var(--theory-muted); white-space:nowrap; }
+.theory-timing-details { font-size:13px; margin:8px 0; }
+.theory-timing-details summary { cursor:pointer; color:var(--theory-ink); }
+#theoryCapacityDerivation .theory-timing-details p { font-size:13px; }
+#theoryCapacityDerivation .theory-formula-step { padding:12px 0; }
+#theoryCapacityDerivation .theory-formula-step p { font-size:13px; line-height:1.5; }
+#theoryCapacityDerivation .theory-formula-step > div { min-width:0; width:100%; }

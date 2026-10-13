@@ -7,6 +7,7 @@
  */
 
 // @ts-nocheck
+import { requestTheoryCapacityPreset } from "./api_client";
 import { createDraftChoiceDialog, resolveTestDraft } from "./test_draft_navigation";
 import { initializeConsoleShell } from "./console_shell";
 import { initializeConsoleReplayToolbar } from "./console_replay_toolbar";
@@ -20,6 +21,9 @@ import {
   requestScheduleAnalysis,
   requestSearchControl,
   requestSearchTelemetry,
+  requestTheoryCapacityDerivation,
+  requestTheoryCapacityRouteIndex,
+  requestTheoryCapacityScan,
 } from "./api_client";
 import { createVisualizationWorkspace, detectDeviceTopologyLayout, updateThroughputChartRange } from "./workspace_visualizer";
 import { renderTestGroupAnalysis, testGroupSummaryCsv } from "./group_analysis_view";
@@ -27,6 +31,7 @@ import { createResultCardRunQueue } from "./result_card_run_queue";
 import { createResultTable } from "./result_table";
 import { createTestCreationCoordinator } from "./test_creation_coordinator";
 import { createBatchAnalysisContext } from "./batch_analysis_context";
+import { createTheoryCapacityView } from "./theory_capacity_view";
 import {
   CJOB_TYPES,
   TASK_MODES,
@@ -2691,7 +2696,7 @@ async function switchTab(name, managementSection = null) {
     if (requestedManagementSection) await switchManagementSection(requestedManagementSection);
     return;
   }
-  if ((runPreparationActive || state.batchRunning) && !["schedule", "analysis", "playback", "gantt"].includes(name)) return;
+  if ((runPreparationActive || state.batchRunning) && !["schedule", "analysis", "playback", "gantt", "theory-capacity"].includes(name)) return;
   navigationPending = true;
   try {
     if (!await settleTestDraft()) return;
@@ -5985,12 +5990,36 @@ window.addEventListener("pagehide", () => {
 
 });
 
+/**
+ * 安装「理论产能」页签控制器。
+ *
+ * 目录直接复用当前工作空间缓存；路径分类索引与扫描曲线都交给理论产能接口。筛选下拉框
+ * 使用首页同一套紧凑下拉，程序化改值后由本模块回调 ``refreshCompactSelect`` 刷新显示。
+ */
+function initializeTheoryCapacityView() {
+  const root = document.getElementById("theoryCapacityView");
+  if (!root) return;
+  createTheoryCapacityView({
+    root,
+    listDevices: async () => {
+      if (!state.workspaceDevices?.length) await loadWorkspaceCatalog();
+      return (state.workspaceDevices || []).map(device => ({
+        id: String(device.id),
+        name: String(device.name || "未命名设备"),
+      }));
+    },
+    requestPreset: (deviceId, values) => requestTheoryCapacityPreset(deviceId, values),
+    syncSelect: select => refreshCompactSelect(select),
+  }).initialize();
+}
+
 const managementSections = document.getElementById("testManagementSections");
 for (const id of ["routeManagementSection", "deviceManagementSection"]) managementSections.append(document.getElementById(id));
 initializeCompactSelects();
 initializeConsoleShell();
 initializeConsoleReplayToolbar();
 initializeConsoleGanttToolbar();
+initializeTheoryCapacityView();
 renderAll(); renderWorkspaceControls(); renderDeviceTimingConfiguration(); checkService();
 loadRunSettingsPreferences().catch(error => writeTerminal(`$ 运行设置读取失败\n  ${error.message || "未知错误"}`, true));
 loadAnalysisSettingsPreferences().catch(error => writeTerminal(`$ 分析设置读取失败\n  ${error.message || "未知错误"}`, true));
