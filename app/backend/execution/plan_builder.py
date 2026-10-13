@@ -33,6 +33,9 @@ CJOB_TYPE_VALUES = {"NormalLot": 0, "HighestLot": 2, "HigherLot": 3}
 TASK_MODE_VALUES = {"Smart": 0, "Pipeline": 1, "Sequential": 2, "Concurrent": 3}
 # Aligner RouteStep 必须通过 NeedProcess 触发 AlignMove 规划。
 ALIGNER_NAME_MARKER = "aligner"
+# 需要按任务请求补齐全量站点的标准 Station.Type 名称。
+DUMMY_PORT_STATION_TYPE = "dummyport"
+BUFFER_STATION_TYPE = "buffer"
 
 
 @dataclass
@@ -159,13 +162,55 @@ def _filtered_arm_station_map(raw_map: Any, station_names: set[str]) -> Dict[str
     return result
 
 
+def _station_type_name(station: Mapping[str, Any]) -> str:
+    """返回标准接口 Station.Type 的归一化名称。"""
+    return str(station.get("Type") or "").strip().casefold()
+
+
+def _station_names_of_type(
+    stations: Mapping[str, Any],
+    station_type: str,
+) -> set[str]:
+    """返回设备中指定 ``Type`` 的全部 Station 名称。"""
+    return {
+        str(name)
+        for name, station in stations.items()
+        if isinstance(station, Mapping)
+        and _station_type_name(station) == station_type
+    }
+
+
+def _task_requests_buffer(routes: Sequence[Mapping[str, Any]]) -> bool:
+    """判断任务内是否有 Route 通过 ``BufferOption`` 请求占用 Buffer。
+
+    ``BufferOption`` 是 Route 级枚举，不能仅依赖 Visit 的 ``StationName``
+    汇总来发现共享 Buffer 资源，因此这里独立判断 Route 级请求。
+    非法取值交给 ``build_route`` 统一报错，这里只判断是否声明了非零模式。
+    """
+    for route in routes:
+        raw_option = route.get("bufferOption", route.get("BufferOption"))
+        if raw_option is None or raw_option == "":
+            continue
+        try:
+            option = float(raw_option)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(option) and option != 0:
+            return True
+    return False
+
+
 def build_task_alg_init(
     device: Mapping[str, Any],
     routes: Sequence[Mapping[str, Any]],
     rounds: Sequence[Mapping[str, Any]],
     cleans: Sequence[Mapping[str, Any]] = (),
 ) -> Dict[str, Any]:
-    """构造仅包含当前任务所用模块及其 Robot 引用的 AlgInit 副本。"""
+    """构造仅包含当前任务所用模块及其 Robot 引用的 AlgInit 副本。
+
+    Route 未命名但由 ``BufferOption`` 请求的 Buffer 属于任务级共享资源，必须按
+    类型保留，不能与其它未引用模块一起裁剪。
+    """
     result = extract_init_data(device)
     stations = result.get("Stations") or {}
     robots = result.get("Robots") or {}
@@ -189,12 +234,12 @@ def build_task_alg_init(
                             if isinstance(candidate, Mapping) and candidate.get("Key")
                         )
     if "DummyPort" in requested_names:
-        requested_names.update(
-            str(name)
-            for name, station in stations.items()
-            if isinstance(station, Mapping)
-            and str(station.get("Type") or "").casefold() == "dummyport"
-        )
+        requested_names.update(_station_names_of_type(stations, DUMMY_PORT_STATION_TYPE))
+    # 标准算法在 ``BufferOption≠0`` 时要求拓扑中存在显式 ``Type=Buffer`` 站点，
+    # 并据此决定强制或可选 Buffer 工步。任务级裁剪按 Visit 命名收敛模块，看不到
+    # 这个 Route 级共享资源请求，必须按类型补齐设备声明的全部 Buffer。
+    if _task_requests_buffer(routes):
+        requested_names.update(_station_names_of_type(stations, BUFFER_STATION_TYPE))
 
     used_stations = requested_names & {str(name) for name in stations}
     used_robots = requested_names & {str(name) for name in robots}
