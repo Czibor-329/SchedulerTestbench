@@ -815,8 +815,8 @@ export function createTheoryCapacityView(options: TheoryCapacityViewOptions): Th
         capacityAxisMaximum = Math.max(1, ...baselineSamples.map(point => point.y), ...previewSamples.map(point => point.y)) * CAPACITY_AXIS_HEADROOM;
       }
       const chartOptions = {
-        series: [{ name: requestValues.clean ? "带清洁 · Cycle 周期" : "不带清洁 · 论文模型", data: previewSamples },
-          ...(requestValues.clean && baselineSamples.length ? [{name: "不带清洁 · 论文模型", data: baselineSamples}] : [])],
+        series: [{ name: requestValues.clean ? "带清洁" : "不带清洁", data: previewSamples },
+          ...(requestValues.clean && baselineSamples.length ? [{name: "不带清洁", data: baselineSamples}] : [])],
         chart: {type: "area", height: "100%", parentHeightOffset: 0, toolbar: {show: false}, zoom: {enabled: false},
           animations: {enabled: false}, fontFamily: "Plus Jakarta Sans, sans-serif"},
         colors: ["#072F1F", "#b4553a"], stroke: {curve: "straight", width: 2, dashArray: [0, 6]},

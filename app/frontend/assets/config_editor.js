@@ -7091,8 +7091,8 @@ function createTheoryCapacityView(options) {
       }
       const chartOptions = {
         series: [
-          { name: requestValues.clean ? "\u5E26\u6E05\u6D01 \xB7 Cycle \u5468\u671F" : "\u4E0D\u5E26\u6E05\u6D01 \xB7 \u8BBA\u6587\u6A21\u578B", data: previewSamples },
-          ...requestValues.clean && baselineSamples.length ? [{ name: "\u4E0D\u5E26\u6E05\u6D01 \xB7 \u8BBA\u6587\u6A21\u578B", data: baselineSamples }] : []
+          { name: requestValues.clean ? "\u5E26\u6E05\u6D01" : "\u4E0D\u5E26\u6E05\u6D01", data: previewSamples },
+          ...requestValues.clean && baselineSamples.length ? [{ name: "\u4E0D\u5E26\u6E05\u6D01", data: baselineSamples }] : []
         ],
         chart: {
           type: "area",

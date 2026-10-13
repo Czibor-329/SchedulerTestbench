@@ -485,7 +485,7 @@ test("单选清洁选择周期口径，仅提交相关参数并保持论文基�
   view.initialize();await new Promise(resolve=>setImmediate(resolve));
   assert.equal(calls[0].clean,"dummywac");assert.equal(calls[0].mode,"periodic");assert.equal(calls[0].wafers,undefined);
   assert.equal(calls[0].jobs,undefined);assert.equal(calls[0].dummy_inventory,"3");
-  assert.deepEqual(dom.charts[0].options.series.map(row=>row.name),["带清洁 · Cycle 周期","不带清洁 · 论文模型"]);
+  assert.deepEqual(dom.charts[0].options.series.map(row=>row.name),["带清洁","不带清洁"]);
   assert.match(dom.root.querySelector("#theoryCapacityComparison").textContent,/13 片 \/ Job/);
   for(const id of ["theoryPreSeconds","theoryPostSeconds","theoryWacSeconds","theoryDummySeconds"]) {
    assert.equal(dom.root.querySelector(`#${id}`).max,"200");
@@ -511,7 +511,7 @@ test("单选清洁选择周期口径，仅提交相关参数并保持论文基�
    assert.equal(sent.mode, type ? "periodic" : "steady");
    assert.deepEqual(allKeys.filter(key => key in sent).sort(), [...keys].sort());
    assert.equal(dom.root.querySelector("#theoryPreSettings").hidden, type !== "preclean");
-   assert.deepEqual(dom.charts[0].options.series.map(row => row.name), type ? ["带清洁 · Cycle 周期", "不带清洁 · 论文模型"] : ["不带清洁 · 论文模型"]);
+   assert.deepEqual(dom.charts[0].options.series.map(row => row.name), type ? ["带清洁", "不带清洁"] : ["不带清洁"]);
    assert.equal(dom.root.querySelector("#theoryPostSettings").hidden, type !== "postclean");
    assert.equal(dom.root.querySelector("#theoryDummySettings").hidden, !type.startsWith("dummy"));
    assert.equal(dom.root.querySelector("#theoryWacIntervalLabel").hidden, type !== "wacclean");
