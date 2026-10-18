@@ -298,9 +298,6 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
             return
         if path == "/api/theory-capacity/preset":
-            if not BUILTIN_ALGORITHM_AVAILABLE:
-                self._send_json({"ok": False, "error": "本地算法仓库未加载，无法计算理论产能"}, HTTPStatus.SERVICE_UNAVAILABLE)
-                return
             try:
                 query = parse_qs(parsed_url.query)
                 self._send_json(read_theory_capacity_preset(
@@ -322,12 +319,6 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
         if path == "/api/theory-capacity/route-index":
-            if not BUILTIN_ALGORITHM_AVAILABLE:
-                self._send_json(
-                    {"ok": False, "error": "本地算法仓库未加载，无法计算理论产能"},
-                    HTTPStatus.SERVICE_UNAVAILABLE,
-                )
-                return
             try:
                 query = parse_qs(parsed_url.query)
                 device_id = str((query.get("device") or [""])[0]).strip()
@@ -343,12 +334,6 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                 )
             return
         if path == "/api/theory-capacity/scan":
-            if not BUILTIN_ALGORITHM_AVAILABLE:
-                self._send_json(
-                    {"ok": False, "error": "本地算法仓库未加载，无法计算理论产能"},
-                    HTTPStatus.SERVICE_UNAVAILABLE,
-                )
-                return
             try:
                 query = parse_qs(parsed_url.query)
                 device_id = str((query.get("device") or [""])[0]).strip()
@@ -372,12 +357,6 @@ class ConfigEditorHandler(BaseHTTPRequestHandler):
                 )
             return
         if path == "/api/theory-capacity/derivation":
-            if not BUILTIN_ALGORITHM_AVAILABLE:
-                self._send_json(
-                    {"ok": False, "error": "本地算法仓库未加载，无法计算理论产能"},
-                    HTTPStatus.SERVICE_UNAVAILABLE,
-                )
-                return
             try:
                 query = parse_qs(parsed_url.query)
                 device_id = str((query.get("device") or [""])[0]).strip()

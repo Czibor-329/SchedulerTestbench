@@ -197,3 +197,109 @@
 #theoryCapacityDerivation .theory-formula-step { padding:12px 0; }
 #theoryCapacityDerivation .theory-formula-step p { font-size:13px; line-height:1.5; }
 #theoryCapacityDerivation .theory-formula-step > div { min-width:0; width:100%; }
+
+/* 循环图为筛选区下方的通栏工作画布，曲线和推导在后续网格中展示。 */
+#theoryCapacityCycleDiagram { min-width: 0; }
+.cycle-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.cycle-toolbar label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.cycle-toolbar select, .cycle-toolbar button { border: 1px solid #cad7d0; border-radius: 6px; background: #fff; color: #163e2d; padding: 7px 10px; }
+.cycle-toolbar > span, .cycle-caption { color: #65786d; font-size: 13px; }
+.cycle-caption { margin: 14px 0 4px; line-height: 1.7; }
+.cycle-scroll { overflow: auto; max-width: 100%; height: 490px; background: radial-gradient(circle, #cad8ce 1px, transparent 1px) 0 0 / 20px 20px; border-block: 1px solid #dbe5de; cursor: grab; touch-action: none; }
+.cycle-scroll svg { margin-inline:auto; display: block; max-width: none; min-height: 0; }
+.cycle-scroll:active { cursor: grabbing; }
+/* 色彩表达关系，粗细表达跨期；高亮不能覆盖这两个语义通道。 */
+.cycle-edge { fill:none; stroke:var(--cycle-edge-color, #607080); stroke-width:1.5; }
+.cycle-edge-next { stroke-width:3.5; }
+.cycle-edge-vacuum, .cycle-key-vacuum { --cycle-edge-color:#3277b3; }
+.cycle-edge-atmosphere, .cycle-key-atmosphere { --cycle-edge-color:#23877a; }
+.cycle-edge-lock, .cycle-key-lock { --cycle-edge-color:#bd7824; }
+.cycle-edge-process, .cycle-key-process { --cycle-edge-color:#8660b4; }
+.cycle-edge-preparation, .cycle-key-preparation { --cycle-edge-color:#a39a20; }
+.cycle-edge-handoff, .cycle-key-handoff { --cycle-edge-color:#bc587c; }
+.cycle-edge-port, .cycle-key-port { --cycle-edge-color:#657381; }
+.cycle-node { cursor: pointer; outline: none; }
+.cycle-node rect { fill: #eff6f1; stroke: #6f9380; stroke-width: 1.3; }
+.cycle-node.atmosphere rect { fill: #f4f7fb; stroke: #8d9cba; }
+.cycle-node text { fill: #183e2d; font-size: 13px; pointer-events: none; }
+.cycle-node text.cycle-node-time { fill: #66796e; font-size: 11px; }
+.cycle-node.selected rect, .cycle-node:focus rect { stroke: #194c34; stroke-width: 3; fill: #e1f5c6; }
+.cycle-round { fill: #65786d; font-size: 12px; }
+.cycle-edge-label { fill: #806039; font-size: 11px; paint-order: stroke; stroke: #fbfdfb; stroke-width: 4px; stroke-linejoin: round; }
+.cycle-selection { background: #edf5ef; padding: 12px; border-radius: 6px; margin-top: 12px; }
+.cycle-edge-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 10px; margin-top: 12px; }
+.cycle-edge-list > button { text-align:left; background:transparent; color:inherit; cursor:pointer; font:inherit; border: 1px solid #e4ece7; border-radius: 6px; padding: 10px 12px; }
+.cycle-edge-list strong, .cycle-edge-list span, .cycle-edge-list small { display: block; line-height: 1.8; }
+.cycle-edge-list span, .cycle-edge-list small { color: #65786d; }
+
+/* 画布不套卡片；节点与关系使用一致的可聚焦选择状态。 */
+.theory-cycle-stage { grid-column:1 / -1; min-width:0; padding:8px 0 24px; border-bottom:1px solid #dbe5de; }
+.theory-cycle-heading { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin:0 0 16px; }
+.theory-cycle-heading h2 { margin:0; }
+.cycle-zoom-controls { display:flex; align-items:center; gap:6px; }
+.cycle-zoom-controls output { min-width:45px; text-align:center; font-size:12px; }
+.cycle-edge-hit { fill:none; stroke:transparent; stroke-width:14px; pointer-events:stroke; }
+.cycle-relationship { cursor:pointer; outline:none; }
+.cycle-relationship .cycle-edge { pointer-events:none; }
+.cycle-relationship:hover .cycle-edge, .cycle-relationship:focus-visible .cycle-edge, .cycle-relationship.selected .cycle-edge { filter:drop-shadow(0 0 2px var(--cycle-edge-color)); }
+.cycle-relationship.muted, .cycle-node.muted { opacity:.2; }
+.cycle-relationship.muted:hover, .cycle-relationship.muted:focus-visible { opacity:1; }
+.cycle-node.connected rect, .cycle-node:hover rect { stroke:#21633e; stroke-width:2.5; fill:#e4f4ce; }
+/* 选边说明默认紧凑展示来源与公式，完整相位验算由用户展开。 */
+.cycle-inspector { margin:0; min-width:0; max-height:490px; overflow:auto; padding:12px 16px; background:#fff; border:1px solid #dbe5de; border-left:3px solid #508768; border-radius:8px; color:#385445; font-size:13px; }
+.cycle-inspector-heading { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; align-items:center; }
+.cycle-inspector-route { display:flex; gap:12px; align-items:center; }
+.cycle-inspector-route em { font-style:normal; color:#6b7e72; font-size:12px; margin-right:8px; }
+.cycle-inspector-route strong { font-size:15px; color:#173d29; }
+.cycle-inspector-arrow { font-size:18px; color:#739681; }
+.cycle-inspector-badge { padding:3px 9px; border-radius:12px; background:#edf5ef; color:#356447; font-size:12px; }
+.cycle-inspector-reason { margin:6px 0 10px; line-height:1.5; }
+.cycle-inspector-content { display:grid; grid-template-columns:minmax(0, 1fr); gap:12px; }
+.cycle-inspector-content h3 { font-size:12px; font-weight:600; margin:0 0 5px; color:#486153; }
+.cycle-delay-parts { display:grid; gap:6px; }
+.cycle-delay-part { display:flex; justify-content:space-between; align-items:baseline; gap:10px; line-height:1.6; }
+.cycle-delay-part b { font-size:13px; font-variant-numeric:tabular-nums; color:#214a33; white-space:nowrap; }
+.cycle-delay-part b span, .cycle-inspector-values dd span { font-size:12px; font-weight:400; }
+.cycle-delay-part.deduction b { color:#97682d; }
+.cycle-delay-equation { margin-top:6px; font-size:14px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.cycle-phase-evidence { border-top:1px solid #e3ebe6; padding-top:10px; }
+.cycle-inspector-values { display:flex; flex-wrap:wrap; gap:8px 20px; margin:0 0 5px; }
+.cycle-inspector-values > div { display:flex; align-items:baseline; gap:8px; }
+.cycle-inspector-values dt { font-size:12px; font-weight:400; }
+.cycle-inspector-values dd { margin:0; font-size:17px; font-weight:600; color:#214a33; font-variant-numeric:tabular-nums; }
+.cycle-phase-details summary { cursor:pointer; color:#52705e; font-size:12px; }
+.cycle-phase-formula { margin-top:6px; background:#eef4ef; border-radius:6px; padding:8px 10px; line-height:1.7; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+@media(max-width:900px) { .cycle-inspector-content { grid-template-columns:1fr; gap:10px; } .cycle-phase-evidence { padding:8px 0 0; border-left:0; border-top:1px solid #e3ebe6; } .cycle-inspector-route em { display:block; } }
+.cycle-edge-list > button:hover, .cycle-edge-list > button[aria-pressed=true] { background:#eaf3df; border-color:#5f8154; }
+.cycle-edge-list > button:focus-visible, .cycle-toolbar button:focus-visible { outline:2px solid #21633e; outline-offset:2px; }
+@media(max-width:600px) { .cycle-zoom-controls { margin-left:0; } .cycle-scroll { height:420px; } }
+
+/* 桌面选边计算放在画布右侧，小屏保持正常阅读顺序。 */
+.cycle-workspace { display:grid; grid-template-columns:minmax(0,1fr) 330px; gap:16px; align-items:start; }
+.cycle-inspector-empty { min-height:120px; display:grid; place-items:center; color:#76867d; font-size:13px; }
+.cycle-workspace .cycle-scroll { min-width:0; }
+.cycle-inspector-route em { display:block; margin:0 0 3px; }
+.cycle-legend { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; padding:9px 0; font-size:12px; color:#65786d; }
+.cycle-legend > span { display:inline-flex; align-items:center; gap:6px; }
+.cycle-legend i { display:block; width:16px; height:3px; background:var(--cycle-edge-color,#657381); }
+.cycle-period-key { margin-left:auto; }
+.cycle-period-key i { height:1.5px; }
+.cycle-period-key.next { margin-left:0; }
+.cycle-period-key.next i { height:3.5px; }
+@media(max-width:800px) { .cycle-workspace { grid-template-columns:minmax(0,1fr); } .cycle-inspector { max-height:none; } .cycle-period-key { margin-left:0; } }
+
+/* 箭头独立填充，线身止于箭头底边；交叉处留白区分经过与连接。 */
+.cycle-arrow { fill:var(--cycle-edge-color); stroke:none; pointer-events:none; }
+.cycle-edge { stroke-linecap:butt; stroke-linejoin:round; }
+.cycle-edge-clearance { fill:none; stroke:#f5f8f6; stroke-width:7px; pointer-events:none; stroke-linejoin:round; }
+
+/* 循环约束图使用统一卡片与选择器；默认按全量图比例展开，无内部滚动条。 */
+#theoryCapacityView .theory-cycle-stage { margin-bottom:0; overflow:visible; }
+.cycle-toolbar { gap:12px; }
+.cycle-toolbar h2 { white-space:nowrap; margin-right:8px; }
+.cycle-toolbar .compact-select { width:180px; flex-shrink:0; }
+.cycle-toolbar .compact-select-trigger { border-radius:12px; font-weight:400; }
+.cycle-toolbar .theory-simulation-control { margin-left:auto; }
+.cycle-workspace .cycle-scroll { height:auto; overflow:hidden; border-radius:10px; }
+.cycle-scroll svg { width:100%; height:auto; }
+.cycle-inspector { max-height:none; overflow:visible; }

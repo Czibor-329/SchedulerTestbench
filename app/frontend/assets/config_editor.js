@@ -1165,7 +1165,7 @@ function robotArmGeometry(reach, index, count, progress, targetSeparation = 0) {
     elbowY: (shoulder + tipY) / 2 + side * reach * bend
   };
 }
-function renderParallelRobotArms(arms, distance, renderWafer, escape3, targetGeometry, occlusions = [], maskPrefix = "robot", mechanism = "articulated", stackedArms = false) {
+function renderParallelRobotArms(arms, distance, renderWafer, escape4, targetGeometry, occlusions = [], maskPrefix = "robot", mechanism = "articulated", stackedArms = false) {
   const waferLayers = [];
   const moving = arms.some((arm) => extensionFraction(arm.progress) > 0);
   const markup = arms.map((arm, index) => {
@@ -1221,7 +1221,7 @@ function renderParallelRobotArms(arms, distance, renderWafer, escape3, targetGeo
     const maskId = `robot-mask-${Array.from(maskPrefix).map((character) => character.codePointAt(0)).join("-")}-${index}`;
     const radians = localAngle * Math.PI / 180;
     const holes = occlusions.map((point) => `<circle cx="${point.x * Math.cos(radians) + point.y * Math.sin(radians)}" cy="${-point.x * Math.sin(radians) + point.y * Math.cos(radians)}" r="${point.radius}" fill="black"/>`).join("");
-    return `<div class="parallel-robot-arm${arm.progress === null ? "" : " is-transferring"}${arm.enabled ? "" : " is-disabled"}" data-arm="${escape3(arm.name)}" style="--robot-reach:${reach.toFixed(2)}px;--robot-arm-local-angle:${localAngle}deg;${hidden ? "visibility:hidden;" : faded ? "opacity:.3;" : ""}">
+    return `<div class="parallel-robot-arm${arm.progress === null ? "" : " is-transferring"}${arm.enabled ? "" : " is-disabled"}" data-arm="${escape4(arm.name)}" style="--robot-reach:${reach.toFixed(2)}px;--robot-arm-local-angle:${localAngle}deg;${hidden ? "visibility:hidden;" : faded ? "opacity:.3;" : ""}">
       <svg class="parallel-robot-arms" overflow="visible" aria-hidden="true">
         <defs><mask id="${maskId}" maskUnits="userSpaceOnUse" x="-2000" y="-2000" width="4000" height="4000"><rect x="-2000" y="-2000" width="4000" height="4000" fill="white"/>${holes}</mask></defs>
         <g mask="url(#${maskId})"><path class="parallel-robot-link" d="${linkPath}${wristPath}"/>
@@ -1411,7 +1411,7 @@ function atmosphereRailMotion(moves, robot, time) {
 }
 
 // src/topology_robot_slots.ts
-function renderRobotSlotRow(robot, dual, renderSlots, escape3) {
+function renderRobotSlotRow(robot, dual, renderSlots, escape4) {
   const arms = robot.arms ?? configuredRobotArms({ Capacity: robot.capacity });
   const combined = dual && robot.environment === "vacuum";
   const slots = (ids) => ids.map((slot) => ({
@@ -1419,8 +1419,8 @@ function renderRobotSlotRow(robot, dual, renderSlots, escape3) {
     wafer: robot.slotWafers?.[slot] ?? "",
     processed: robot.processedWafers.includes(robot.slotWafers?.[slot] ?? "")
   }));
-  const boards = combined ? `<div class="front-module front-robot-combined"><strong>${escape3(robot.name)}</strong><div class="front-slot-board front-robot-combined-board" style="--front-slot-count:${arms.length}">${arms.map((arm) => `<div class="front-robot-arm-pair" role="group" aria-label="${escape3(arm.name)}">${renderSlots(slots(arm.slots))}</div>`).join("")}</div></div>` : arms.map((arm) => `<div class="front-module"><strong>${escape3(robot.name)}${dual ? "" : ` \xB7 ${escape3(arm.name)}`}</strong><div class="front-slot-board" style="--front-slot-count:${arm.slots.length}" role="group" aria-label="${escape3(robot.name + " " + arm.name)}">${renderSlots(slots(arm.slots))}</div></div>`).join("");
-  return `<div class="front-slot-row front-slot-row-robot" data-robot="${escape3(robot.name)}">${boards}</div>`;
+  const boards = combined ? `<div class="front-module front-robot-combined"><strong>${escape4(robot.name)}</strong><div class="front-slot-board front-robot-combined-board" style="--front-slot-count:${arms.length}">${arms.map((arm) => `<div class="front-robot-arm-pair" role="group" aria-label="${escape4(arm.name)}">${renderSlots(slots(arm.slots))}</div>`).join("")}</div></div>` : arms.map((arm) => `<div class="front-module"><strong>${escape4(robot.name)}${dual ? "" : ` \xB7 ${escape4(arm.name)}`}</strong><div class="front-slot-board" style="--front-slot-count:${arm.slots.length}" role="group" aria-label="${escape4(robot.name + " " + arm.name)}">${renderSlots(slots(arm.slots))}</div></div>`).join("");
+  return `<div class="front-slot-row front-slot-row-robot" data-robot="${escape4(robot.name)}">${boards}</div>`;
 }
 
 // src/gantt_execution_compare.ts
@@ -2324,8 +2324,8 @@ function waferPositionSignature(snapshot) {
 }
 function photographyFileName(index, time) {
   const sequence = Math.max(1, Math.trunc(finiteNumber2(index, 1)));
-  const seconds2 = Math.max(0, finiteNumber2(time));
-  return `topology-${String(sequence).padStart(PHOTO_SEQUENCE_MINIMUM_DIGITS, "0")}-t${seconds2}s.png`;
+  const seconds3 = Math.max(0, finiteNumber2(time));
+  return `topology-${String(sequence).padStart(PHOTO_SEQUENCE_MINIMUM_DIGITS, "0")}-t${seconds3}s.png`;
 }
 function crc32Table() {
   const table = new Uint32Array(256);
@@ -5089,10 +5089,10 @@ function renderResidenceMetricChart(samples, kind) {
   const scaleMaximum = maximumSeconds * 1.08;
   const meanHeight = Math.min(meanSeconds / scaleMaximum * plotHeight, plotHeight);
   const bars = samples.map((sample) => {
-    const seconds2 = metric.value(sample);
-    const height = Math.max(seconds2 / scaleMaximum * plotHeight, 2);
+    const seconds3 = metric.value(sample);
+    const height = Math.max(seconds3 / scaleMaximum * plotHeight, 2);
     const wafer = escapeHtml(String(sample.wafer));
-    const duration = formatSeconds2(seconds2);
+    const duration = formatSeconds2(seconds3);
     return `
       <li class="residence-metric-bar-item" role="img" aria-label="\u6676\u5706 ${wafer}\uFF0C${metric.label} ${duration} \u79D2">
         <strong>${duration}</strong>
@@ -6828,6 +6828,290 @@ function createBatchAnalysisContext(options) {
   return context;
 }
 
+// src/theory_capacity_cycle_layout.ts
+var NODE_WIDTH = 144;
+var NODE_HEIGHT = 52;
+var PADDING = 28;
+var STEP = 176;
+var TRACK_GAP = 18;
+var PORT_MARGIN = 12;
+var ARROW_GAP = 3;
+var MIN_LANE_GAP = 160;
+var MIN_OUTER_BAND = 76;
+var BRIDGE_RADIUS = 5;
+function cycleDiagramLayout(diagram) {
+  const rounds = Math.max(1, ...diagram.events.map((event) => event.round));
+  const columns = Math.max(4, ...Array.from({ length: rounds }, (_, index) => Math.max(...["vacuum", "atmosphere"].map((lane) => diagram.events.filter((event) => event.round === index + 1 && event.lane === lane).length))));
+  const roundWidth = columns * STEP + PADDING;
+  const counters = /* @__PURE__ */ new Map();
+  const nodes = diagram.events.map((event) => {
+    const key = `${event.round}:${event.lane}`, column = counters.get(key) ?? 0;
+    counters.set(key, column + 1);
+    return { ...event, x: PADDING + (event.round - 1) * roundWidth + column * STEP, y: 0 };
+  });
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const bands = /* @__PURE__ */ new Map();
+  const ports = /* @__PURE__ */ new Map();
+  const routes = diagram.edges.map((edge) => {
+    const source = byId.get(edge.source), target = byId.get(edge.target);
+    const direct = source.lane === target.lane && !edge.cycle_shift && target.x > source.x && ["vacuum", "atmosphere"].includes(edge.category);
+    const cross = source.lane !== target.lane;
+    const band = direct ? "direct" : cross ? "middle" : source.lane === "vacuum" ? "top" : "bottom";
+    const sourceSide = direct ? "right" : cross ? source.lane === "vacuum" ? "bottom" : "top" : band === "top" ? "top" : "bottom";
+    const targetSide = direct ? "left" : cross ? target.lane === "vacuum" ? "bottom" : "top" : sourceSide;
+    const interval = [Math.min(source.x, target.x), Math.max(source.x, target.x) + NODE_WIDTH];
+    const tracks = bands.get(band) ?? [];
+    let track = tracks.findIndex((intervals) => intervals.every(([start, end]) => interval[1] + PORT_MARGIN < start || interval[0] > end + PORT_MARGIN));
+    if (track < 0) {
+      track = tracks.length;
+      tracks.push([]);
+    }
+    tracks[track].push(interval);
+    bands.set(band, tracks);
+    const route = { edge, source, target, sourceSide, targetSide, band, track, points: [] };
+    for (const isSource of [true, false]) {
+      const node = isSource ? source : target, side = isSource ? sourceSide : targetSide;
+      const key = `${node.id}:${side}`, entries = ports.get(key) ?? [];
+      entries.push({ route, source: isSource, otherX: isSource ? target.x : source.x });
+      ports.set(key, entries);
+    }
+    return route;
+  });
+  const vacuumY = Math.max(MIN_OUTER_BAND, (bands.get("top")?.length ?? 0) * TRACK_GAP + PADDING + 24);
+  const atmosphereY = vacuumY + NODE_HEIGHT + Math.max(MIN_LANE_GAP, ((bands.get("middle")?.length ?? 0) + 2) * TRACK_GAP);
+  const height = atmosphereY + NODE_HEIGHT + Math.max(MIN_OUTER_BAND, ((bands.get("bottom")?.length ?? 0) + 2) * TRACK_GAP);
+  nodes.forEach((node) => {
+    node.y = node.lane === "vacuum" ? vacuumY : atmosphereY;
+  });
+  for (const entries of ports.values()) entries.sort((a, b) => a.otherX - b.otherX || a.route.edge.id.localeCompare(b.route.edge.id) || Number(a.source) - Number(b.source));
+  const columnPorts = /* @__PURE__ */ new Map();
+  for (const entries of ports.values()) for (const entry of entries) {
+    const side = entry.source ? entry.route.sourceSide : entry.route.targetSide;
+    if (side !== "top" && side !== "bottom") continue;
+    const x = (entry.source ? entry.route.source : entry.route.target).x;
+    const column = columnPorts.get(x) ?? [];
+    column.push(entry);
+    columnPorts.set(x, column);
+  }
+  const port = (route, source) => {
+    const node = source ? route.source : route.target, side = source ? route.sourceSide : route.targetSide;
+    const horizontal = side === "top" || side === "bottom";
+    const entries = horizontal ? columnPorts.get(node.x) : ports.get(`${node.id}:${side}`);
+    const index = entries.findIndex((entry) => entry.route === route && entry.source === source);
+    const ratio = (index + 1) / (entries.length + 1);
+    return horizontal ? { x: node.x + PORT_MARGIN + ratio * (NODE_WIDTH - 2 * PORT_MARGIN), y: node.y + (side === "top" ? -ARROW_GAP : NODE_HEIGHT + ARROW_GAP) } : { x: node.x + (side === "left" ? -ARROW_GAP : NODE_WIDTH + ARROW_GAP), y: node.y + NODE_HEIGHT * ratio };
+  };
+  for (const route of routes) {
+    const source = port(route, true), target = port(route, false);
+    const y = route.band === "top" ? vacuumY - (route.track + 1) * TRACK_GAP - PORT_MARGIN : route.band === "bottom" ? atmosphereY + NODE_HEIGHT + (route.track + 1) * TRACK_GAP + PORT_MARGIN : vacuumY + NODE_HEIGHT + (route.track + 1) * TRACK_GAP + PORT_MARGIN;
+    route.points = route.band === "direct" ? [source, target] : [source, { x: source.x, y }, { x: target.x, y }, target];
+  }
+  return { nodes, rounds, roundWidth, width: rounds * roundWidth + PADDING, height, routes };
+}
+function cycleEdgeGeometry(route, routes) {
+  const points = route.points.map((point) => ({ ...point }));
+  const tip = points[points.length - 1], previous = points[points.length - 2];
+  const dx = tip.x - previous.x, dy = tip.y - previous.y, distance = Math.hypot(dx, dy);
+  const ux = dx / distance, uy = dy / distance;
+  const arrowLength = route.edge.cycle_shift ? 12 : 10, halfWidth = route.edge.cycle_shift ? 5.5 : 4.5;
+  const base = { x: tip.x - ux * arrowLength, y: tip.y - uy * arrowLength };
+  points[points.length - 1] = base;
+  let path = `M${points[0].x},${points[0].y}`;
+  for (let index = 1; index < points.length; index++) {
+    const left = points[index - 1], right = points[index];
+    const crossings = [];
+    if (left.y === right.y) {
+      for (const other of routes) {
+        if (other === route) continue;
+        for (let segment = 1; segment < other.points.length; segment++) {
+          const a = other.points[segment - 1], b = other.points[segment];
+          if (a.x === b.x && a.x > Math.min(left.x, right.x) + 2 * BRIDGE_RADIUS && a.x < Math.max(left.x, right.x) - 2 * BRIDGE_RADIUS && left.y > Math.min(a.y, b.y) && left.y < Math.max(a.y, b.y)) crossings.push(a.x);
+        }
+      }
+      const direction = right.x > left.x ? 1 : -1;
+      const ordered = [...new Set(crossings)].sort((a, b) => direction * (a - b));
+      for (let crossing = 0; crossing < ordered.length; crossing++) {
+        const first = ordered[crossing];
+        let last = first;
+        while (crossing + 1 < ordered.length && Math.abs(ordered[crossing + 1] - last) < 2 * BRIDGE_RADIUS) last = ordered[++crossing];
+        path += ` L${first - direction * BRIDGE_RADIUS},${left.y} Q${(first + last) / 2},${left.y - 2 * BRIDGE_RADIUS} ${last + direction * BRIDGE_RADIUS},${left.y}`;
+      }
+    }
+    path += ` L${right.x},${right.y}`;
+  }
+  const arrow = `${tip.x},${tip.y} ${base.x - uy * halfWidth},${base.y + ux * halfWidth} ${base.x + uy * halfWidth},${base.y - ux * halfWidth}`;
+  const hit = route.points.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
+  return { path, arrow, hit };
+}
+
+// src/theory_capacity_cycle_diagram.ts
+var CATEGORIES = {
+  overview: "\u4E3B\u5FAA\u73AF\u4E0E\u9501\u6062\u590D",
+  all: "\u5168\u90E8\u5173\u7CFB",
+  vacuum: "VAC \u987A\u5E8F",
+  atmosphere: "ATM \u987A\u5E8F",
+  lock: "\u9501\u6062\u590D\u4E0E\u4EA4\u63A5",
+  process: "PM \u52A0\u5DE5\u4E0E\u590D\u7528",
+  preparation: "\u5F00\u95E8\u51C6\u5907",
+  handoff: "\u51C6\u65F6\u4EA4\u63A5",
+  port: "LoadPort \u590D\u7528"
+};
+var MAX_DEFAULT_GRAPH_HEIGHT = 560;
+var RELATION_LEGEND = { vacuum: "VAC", atmosphere: "ATM", lock: "\u9501\u6062\u590D", process: "PM \u590D\u7528", preparation: "\u5F00\u95E8", handoff: "\u4EA4\u63A5", port: "LP \u590D\u7528" };
+function escape3(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+}
+function seconds2(value = 0) {
+  return Number(value.toFixed(3)).toString();
+}
+function cycleDiagramEdges(diagram, category = "overview", selected = "") {
+  return diagram.edges.filter((edge) => (category === "all" || (category === "overview" ? ["vacuum", "atmosphere", "lock"].includes(edge.category) : edge.category === category)) && (!selected || edge.source === selected || edge.target === selected));
+}
+function delayFormula(parts) {
+  return parts.map((part, index) => `${part.seconds < 0 ? " \u2212 " : index ? " + " : ""}${seconds2(Math.abs(part.seconds))}`).join("");
+}
+function renderEdgeInspector(diagram, edge, period) {
+  const source = diagram.events.find((event) => event.id === edge.source);
+  const target = diagram.events.find((event) => event.id === edge.target);
+  const elapsed = period === void 0 ? void 0 : target.phase_seconds - source.phase_seconds + edge.cycle_shift * period;
+  return `<div class="cycle-inspector-heading"><div class="cycle-inspector-route"><span><em>\u7B2C ${source.round} \u8F6E</em><strong>${escape3(`${source.lane === "vacuum" ? "VAC" : "ATM"} \u5728 ${source.label}`)}</strong></span><span class="cycle-inspector-arrow" aria-hidden="true">\u2192</span><span><em>\u7B2C ${target.round} \u8F6E${edge.cycle_shift ? ` \xB7 \u8DE8 ${edge.cycle_shift} \u5468\u671F` : ""}</em><strong>${escape3(`${target.lane === "vacuum" ? "VAC" : "ATM"} \u5728 ${target.label}`)}</strong></span></div><span class="cycle-inspector-badge">${escape3(edge.label)}</span></div>
+    <p class="cycle-inspector-reason">${escape3(edge.detail || edge.label)}</p>
+    <div class="cycle-inspector-content"><section class="cycle-delay-evidence" aria-label="\u7B49\u5F85\u65F6\u957F\u6765\u6E90"><h3>\u7B49\u5F85\u65F6\u957F\u6765\u6E90</h3><div class="cycle-delay-parts">${edge.parts.map((part) => `<div class="cycle-delay-part ${part.seconds < 0 ? "deduction" : ""}"><span>${escape3(part.label)}</span><b>${part.seconds < 0 ? "\u2212" : ""}${seconds2(Math.abs(part.seconds))}<span> \u79D2</span></b></div>`).join("") || "\u672A\u63D0\u4F9B\u5206\u9879"}</div><div class="cycle-delay-equation">d = ${edge.parts.length ? `${delayFormula(edge.parts)} = ` : ""}<strong>${seconds2(edge.minimum_delay_seconds)} \u79D2</strong></div></section>
+    <section class="cycle-phase-evidence" aria-label="\u7EA6\u675F\u9A8C\u7B97"><h3>\u7EA6\u675F\u9A8C\u7B97</h3><dl class="cycle-inspector-values"><div><dt>\u6700\u5C0F\u5F00\u59CB\u95F4\u9694 d</dt><dd>${seconds2(edge.minimum_delay_seconds)}<span> \u79D2</span></dd></div><div><dt>\u53EF\u884C\u89E3\u4F59\u91CF</dt><dd>${seconds2(edge.slack_seconds)}<span> \u79D2</span></dd></div></dl><details class="cycle-phase-details"><summary>\u67E5\u770B\u76F8\u4F4D\u4EE3\u5165\u9A8C\u7B97</summary><div class="cycle-phase-formula">x\u76EE\u6807 \u2212 x\u6765\u6E90 + \u03BBT \u2265 d${elapsed === void 0 ? "" : `<br>${seconds2(target.phase_seconds)} \u2212 ${seconds2(source.phase_seconds)} + ${edge.cycle_shift} \xD7 ${seconds2(period)} = ${seconds2(elapsed)} \u2265 ${seconds2(edge.minimum_delay_seconds)} \u79D2<br>\u4F59\u91CF = ${seconds2(elapsed)} \u2212 ${seconds2(edge.minimum_delay_seconds)} = ${seconds2(edge.slack_seconds)} \u79D2`}</div></details></section></div>`;
+}
+function renderCycleDiagram(diagram, category = "all", selected = "", selectedEdge = "", period) {
+  const layout = cycleDiagramLayout(diagram);
+  const nodes = new Map(layout.nodes.map((node) => [node.id, node]));
+  const edges = cycleDiagramEdges(diagram, category);
+  const activeEdge = edges.find((edge) => edge.id === selectedEdge);
+  const paths = edges.map((edge) => {
+    const related = selected && (edge.source === selected || edge.target === selected);
+    const source = nodes.get(edge.source), target = nodes.get(edge.target);
+    const route = layout.routes.find((route2) => route2.edge.id === edge.id);
+    const geometry = cycleEdgeGeometry(route, layout.routes);
+    return `<g class="cycle-relationship ${edge.id === selectedEdge || related ? "selected" : ""} ${activeEdge && edge.id !== selectedEdge || selected && !related ? "muted" : ""}" data-cycle-edge="${escape3(edge.id)}" role="button" tabindex="0" aria-pressed="${edge.id === selectedEdge}" aria-label="${escape3(source.label)} \u2192 ${escape3(target.label)}\uFF0C${escape3(edge.label)}\uFF0C\u81F3\u5C11 ${seconds2(edge.minimum_delay_seconds)} \u79D2"><path class="cycle-edge-hit" d="${geometry.hit}"/><path class="cycle-edge-clearance" d="${geometry.path}"/><path class="cycle-edge cycle-edge-${escape3(edge.category)} ${edge.cycle_shift ? "cycle-edge-next" : "cycle-edge-current"}" d="${geometry.path}"><title>${escape3(edge.detail)}\uFF1B${escape3(edge.label)} \u2265 ${seconds2(edge.minimum_delay_seconds)} \u79D2\uFF1B\u8DE8 ${edge.cycle_shift} \u5468\u671F</title></path><polygon class="cycle-arrow cycle-edge-${escape3(edge.category)}" points="${geometry.arrow}"/></g>`;
+  }).join("");
+  const boxes = layout.nodes.map((node) => `<g role="button" tabindex="0" data-cycle-node="${escape3(node.id)}" aria-label="\u7B2C ${node.round} \u8F6E ${escape3(`${node.lane === "vacuum" ? "VAC" : "ATM"} \u5728 ${node.label}`)}\uFF0C\u67E5\u770B\u5173\u8054\u7EA6\u675F" aria-pressed="${node.id === selected}" class="cycle-node ${node.lane} ${node.id === selected ? "selected" : ""} ${activeEdge ? [activeEdge.source, activeEdge.target].includes(node.id) ? "connected" : "muted" : ""}">
+    <rect x="${node.x}" y="${node.y}" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="7"/>
+    <text x="${node.x + NODE_WIDTH / 2}" y="${node.y + 22}" text-anchor="middle">${escape3(`${node.lane === "vacuum" ? "VAC" : "ATM"} \u5728 ${node.label}`)}</text>
+    <text class="cycle-node-time" x="${node.x + NODE_WIDTH / 2}" y="${node.y + 40}" text-anchor="middle">\u52A8\u4F5C ${seconds2(node.body_seconds)} s</text></g>`).join("");
+  const roundLabels = Array.from({ length: layout.rounds }, (_, index) => `<text class="cycle-round" x="${PADDING + index * layout.roundWidth}" y="24">\u7B2C ${index + 1} \u8F6E</text>`).join("");
+  return `<div class="cycle-toolbar"><h2 class="card-title">\u5FAA\u73AF\u7EA6\u675F\u56FE</h2><select data-cycle-category data-compact-label="\u5173\u7CFB\u7C7B\u578B" aria-label="\u5FAA\u73AF\u56FE\u5173\u7CFB\u7C7B\u578B">${Object.entries(CATEGORIES).map(([value, label]) => `<option value="${value}" ${value === category ? "selected" : ""}>${label}</option>`).join("")}</select><div class="cycle-zoom-controls" role="group" aria-label="\u753B\u5E03\u7F29\u653E"><button type="button" data-cycle-zoom="out" aria-label="\u7F29\u5C0F\u5FAA\u73AF\u56FE">\u2212</button><output data-cycle-scale>100%</output><button type="button" data-cycle-zoom="in" aria-label="\u653E\u5927\u5FAA\u73AF\u56FE">+</button><button type="button" data-cycle-reset>\u91CD\u7F6E\u89C6\u56FE</button></div><span>${layout.rounds} \u8F6E \xB7 ${edges.length} \u6761\u5173\u7CFB</span></div>
+
+    <div class="cycle-legend" aria-label="\u5173\u7CFB\u989C\u8272\u4E0E\u8DE8\u671F\u7EBF\u5BBD\u56FE\u4F8B">${Object.entries(RELATION_LEGEND).map(([key, label]) => `<span><i class="cycle-key-${key}" aria-hidden="true"></i>${label}</span>`).join("")}<span class="cycle-period-key"><i aria-hidden="true"></i>\u672C\u5468\u671F</span><span class="cycle-period-key next"><i aria-hidden="true"></i>\u4E0B\u4E00\u5468\u671F</span></div>
+    <div class="cycle-workspace"><div class="cycle-scroll" tabindex="0" role="region" aria-label="\u5FAA\u73AF\u7EA6\u675F\u56FE"><svg viewBox="0 0 ${layout.width} ${layout.height}" style="width:100%;height:auto;max-width:${Math.min(layout.width, layout.width * MAX_DEFAULT_GRAPH_HEIGHT / layout.height)}px" role="group" aria-label="\u5B8C\u6574\u76F8\u4F4D\u5468\u671F\u7684\u52A8\u4F5C\u4EA4\u4E92\u56FE">${roundLabels}${paths}${boxes}</svg></div>
+    <div class="cycle-inspector" aria-live="polite">${activeEdge ? renderEdgeInspector(diagram, activeEdge, period) : '<div class="cycle-inspector-empty">\u9009\u62E9\u8FDE\u7EBF\u67E5\u770B\u8BA1\u7B97\u4F9D\u636E</div>'}</div></div>
+    `;
+}
+function mountCycleDiagram(container, diagram, period, syncSelect) {
+  const simulation = container.parentElement?.querySelector(".theory-simulation-control");
+  container.hidden = !diagram;
+  if (!diagram) {
+    if (simulation) container.before(simulation);
+    container.innerHTML = "";
+    return;
+  }
+  let category = "all", selected = "", selectedEdge = "", zoom = 1;
+  const MIN_ZOOM = 0.25, MAX_ZOOM = 2, ZOOM_STEP = 1.25;
+  const layout = cycleDiagramLayout(diagram);
+  let panX = 0, panY = 0;
+  const applyZoom = () => {
+    const svg = container.querySelector(".cycle-scroll svg");
+    if (svg) svg.setAttribute("viewBox", `${panX + layout.width * (1 - 1 / zoom) / 2} ${panY + layout.height * (1 - 1 / zoom) / 2} ${layout.width / zoom} ${layout.height / zoom}`);
+    const output = container.querySelector("[data-cycle-scale]");
+    if (output) output.textContent = `${Math.round(zoom * 100)}%`;
+  };
+  const render = () => {
+    const previous = container.querySelector(".cycle-scroll");
+    const left = previous?.scrollLeft ?? 0, top = previous?.scrollTop ?? 0;
+    container.innerHTML = renderCycleDiagram(diagram, category, selected, selectedEdge, period);
+    if (simulation) container.querySelector(".cycle-toolbar")?.append(simulation);
+    const select = container.querySelector("[data-cycle-category]");
+    if (select) syncSelect?.(select);
+    applyZoom();
+    const viewport = container.querySelector(".cycle-scroll");
+    viewport.scrollLeft = left;
+    viewport.scrollTop = top;
+  };
+  container.onchange = (event) => {
+    const target = event.target;
+    if (target.matches("[data-cycle-category]")) {
+      category = target.value;
+      selected = "";
+      selectedEdge = "";
+      render();
+      container.querySelector(".compact-select-trigger, select")?.focus();
+    }
+  };
+  container.onclick = (event) => {
+    const target = event.target.closest("[data-cycle-node], [data-cycle-edge], [data-cycle-reset], [data-cycle-zoom]");
+    if (!target) return;
+    const zoomAction = target.dataset.cycleZoom;
+    if (zoomAction) {
+      zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * (zoomAction === "in" ? ZOOM_STEP : 1 / ZOOM_STEP)));
+      applyZoom();
+      return;
+    }
+    const node = target.dataset.cycleNode, edge = target.dataset.cycleEdge;
+    if (node !== void 0) {
+      selected = selected === node ? "" : node;
+      selectedEdge = "";
+    } else if (edge !== void 0) {
+      selectedEdge = selectedEdge === edge ? "" : edge;
+      selected = "";
+    } else {
+      selected = "";
+      selectedEdge = "";
+      category = "all";
+      zoom = 1;
+      panX = 0;
+      panY = 0;
+    }
+    const attribute = node !== void 0 ? "data-cycle-node" : edge !== void 0 ? "data-cycle-edge" : "data-cycle-reset";
+    const value = target.getAttribute(attribute);
+    render();
+    Array.from(container.querySelectorAll(`[${attribute}]`)).find((element) => element.getAttribute(attribute) === value)?.focus({ preventScroll: true });
+  };
+  container.onkeydown = (event) => {
+    if (event.key === "Escape") {
+      selected = "";
+      selectedEdge = "";
+      render();
+      container.querySelector("[data-cycle-reset]")?.focus({ preventScroll: true });
+    }
+    if ((event.key === "Enter" || event.key === " ") && event.target.matches("g[data-cycle-node], g[data-cycle-edge]")) {
+      event.preventDefault();
+      event.target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }
+  };
+  let drag;
+  container.onpointerdown = (event) => {
+    const target = event.target;
+    const viewport = target.closest(".cycle-scroll");
+    if (event.button !== 0 || !viewport || target.closest("[data-cycle-node], [data-cycle-edge]")) return;
+    drag = { x: event.clientX, y: event.clientY, left: panX, top: panY, viewport };
+    viewport.setPointerCapture(event.pointerId);
+  };
+  container.onpointermove = (event) => {
+    if (!drag) return;
+    const ratio = layout.width / drag.viewport.querySelector("svg").getBoundingClientRect().width / zoom;
+    panX = drag.left + (drag.x - event.clientX) * ratio;
+    panY = drag.top + (drag.y - event.clientY) * ratio;
+    applyZoom();
+  };
+  container.onpointerup = container.onpointercancel = () => {
+    drag = void 0;
+  };
+  render();
+}
+function renderCompactDerivation(entry) {
+  const facts = entry.facts, period = entry.period_seconds, floor = entry.resource_period_lower_bound_seconds;
+  return `<p class="theory-calculation-inputs">${escape3(entry.route_name)} \xB7 \u52A0\u5DE5 ${seconds2(entry.process_seconds?.[0])} \u79D2 \xB7 \u7CBE\u7B80\u5468\u671F\u6838</p>
+    <div class="theory-formula-step"><span class="theory-step-number">1</span><div><h3>\u8D44\u6E90\u8D1F\u8377\u4E0B\u754C</h3><p>${facts.rounds_per_cycle} \u8F6E\u7EC4\u6210\u5B8C\u6574\u5468\u671F\uFF0C\u4EA7\u51FA q = ${facts.units_per_cycle} \u7247\u3002</p><div class="theory-formula-equation">T\u8D44\u6E90 = max(W\u1D63) = ${seconds2(floor)} \u79D2</div></div></div>
+    <div class="theory-formula-step"><span class="theory-step-number">2</span><div><h3>\u52A0\u5165\u4EA4\u63A5\u7EA6\u675F\uFF0C\u6C42\u6700\u77ED\u53EF\u884C\u5468\u671F</h3><p>\u5BF9\u8BD5\u63A2\u5468\u671F T \u68C0\u67E5\u5168\u90E8 ${entry.cycle_diagram.edges.length} \u6761\u52A8\u4F5C\u7EA6\u675F\u53CA\u8D44\u6E90\u4E0B\u754C\uFF0C\u4E8C\u5206\u6536\u655B\u5230\u6700\u5C0F\u53EF\u884C\u503C\u3002\u56FE\u4E2D\u53EF\u67E5\u770B\u6BCF\u6761\u7EA6\u675F\u548C\u4E00\u7EC4\u53EF\u884C\u76F8\u4F4D\u3002</p><div class="theory-formula-equation">x\u76EE\u6807 \u2212 x\u6765\u6E90 + \u03BBT \u2265 d<br>T\u76F8\u4F4D = ${seconds2(period)} \u79D2</div><p>\u5468\u671F\u6BD4\u8D44\u6E90\u4E0B\u754C\u591A ${seconds2(Math.max(0, period - floor))} \u79D2\uFF1B\u8FD9\u4E2A\u5DEE\u4E0D\u662F\u5404\u52A8\u4F5C\u7B49\u5F85\u65F6\u95F4\u4E4B\u548C\u3002</p></div></div>
+    <div class="theory-formula-step"><span class="theory-step-number">3</span><div><h3>\u6362\u7B97\u4EA7\u80FD</h3><div class="theory-formula-equation">\u4E00\u6B21\u4EA4\u66FF = ${seconds2(period)} \xF7 ${facts.rounds_per_cycle} = ${seconds2(period / facts.rounds_per_cycle)} \u79D2<br>\u5E73\u5747\u7247\u95F4\u9694 = T\u76F8\u4F4D \xF7 q = ${seconds2(entry.seconds_per_unit)} \u79D2 / \u7247<br>\u4EA7\u80FD = 3600 \xD7 ${facts.units_per_cycle} \xF7 ${seconds2(period)} = ${seconds2(entry.physical_wafers_per_hour)} \u7247 / \u5C0F\u65F6</div></div></div>`;
+}
+
 // src/theory_capacity_view.ts
 function formatCapacity(value, digits = 2) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "\u2014";
@@ -6846,6 +7130,7 @@ function processSecondsAtPosition(clientX, left, width, first, last) {
   return Math.round((first + fraction * (last - first)) * 10) / 10;
 }
 function renderTeachingDerivation(entry, name) {
+  if (entry.model_name === "compact-period" && entry.cycle_diagram) return renderCompactDerivation(entry);
   if (entry.model_kind === "cycle-batch") return renderBatchDerivation(entry);
   if (entry.model_kind === "cycle-periodic") return renderPeriodicDerivation(entry);
   const facts = entry.facts;
@@ -6880,7 +7165,7 @@ function renderTeachingDerivation(entry, name) {
   const serviceDetails = `<details class="theory-timing-details"><summary>\u67E5\u770B\u53D6\u653E\u3001\u5F00\u5173\u95E8\u3001\u8F6C\u4F4D\u4E0E\u5207\u538B\u7684\u65F6\u95F4\u4EE3\u5165</summary>${services.map((service) => `<p>${escapeHtml3(service.detail || service.key)}\uFF1A${service.parts.map((part) => `${escapeHtml3(part.label)} ${formatSeconds3(part.seconds)}`).join(" + ")} = ${formatSeconds3(service.seconds)} \u79D2</p>`).join("")}</details>`;
   return `<p class="theory-calculation-inputs">${escapeHtml3(name)} \xB7 \u52A0\u5DE5\u65F6\u95F4 ${formatSeconds3(entry.process_seconds?.[0])} \u79D2 \xB7 \u65E0\u6E05\u6D01\u7A33\u6001\u6A21\u578B</p>
     <div class="theory-formula-step"><span class="theory-step-number">1</span><div><h3>\u786E\u5B9A\u91CD\u590D\u5468\u671F</h3><div class="theory-formula-equation">\u4E00\u6B21\u5927\u6C14\u624B\u4EA4\u66FF\u4EA7\u51FA ${facts?.physical_members_per_unit ?? "\u2014"} \u7247\uFF1B${rounds} \u6B21\u4EA4\u66FF\u7EC4\u6210\u76F8\u4F4D\u5468\u671F</div><p>\u9501\u4E0E\u52A0\u5DE5\u8154\u7684\u8F6E\u8F6C\u76F8\u4F4D\u540C\u65F6\u590D\u4F4D\uFF0C\u624D\u6784\u6210\u5B8C\u6574\u5468\u671F\u3002</p></div></div>
-    <div class="theory-formula-step"><span class="theory-step-number">2</span><div><h3>\u8BA1\u7B97\u5468\u671F\u4E0B\u754C</h3>${atmosphereDetails}${chamberDetails}<details class="theory-timing-details"><summary>\u5404\u8D44\u6E90\u6BCF\u76F8\u4F4D\u5468\u671F\u7684\u5DE5\u4F5C\u91CF</summary><table class="theory-timing-table"><tbody>${loads.map(([resource, seconds2]) => `<tr><th>${escapeHtml3(resource)}</th><td>${formatSeconds3(seconds2)} \u79D2</td></tr>`).join("")}</tbody></table></details><div class="theory-formula-equation">T\u8D44\u6E90 = max(W\u1D63) = ${formatSeconds3(floor)} \u79D2<br>T\u7B49\u5F85 = \u03A3d \xF7 \u03A3\u03BB = ${formatSeconds3(delay)} \xF7 ${shift} = ${shift > 0 ? formatSeconds3(delay / shift) : "\u2014"} \u79D2</div><details class="theory-timing-details"><summary>\u5173\u952E\u7B49\u5F85\u94FE\uFF1A${escapeHtml3(entry.limiting_label || "\u67E5\u770B\u7EA6\u675F")}</summary>${chain.map((edge) => `<p>${escapeHtml3(edge.detail || edge.label)}\uFF1A${formatSeconds3(edge.minimum_delay_seconds)} \u79D2\uFF0C\u8DE8 ${edge.cycle_shift} \u5468\u671F</p>`).join("")}<p>\u6BCF\u6761\u8FB9\u6EE1\u8DB3 x\u2C7C \u2212 x\u1D62 \u2265 d\u1D62\u2C7C \u2212 \u03BB\u1D62\u2C7CT\uFF1B\u6CBF\u95ED\u73AF\u76F8\u52A0\uFF0C\u5F97\u5230 T \u2265 \u03A3d / \u03A3\u03BB\u3002</p></details>${serviceDetails}</div></div>
+    <div class="theory-formula-step"><span class="theory-step-number">2</span><div><h3>\u8BA1\u7B97\u5468\u671F\u4E0B\u754C</h3>${atmosphereDetails}${chamberDetails}<details class="theory-timing-details"><summary>\u5404\u8D44\u6E90\u6BCF\u76F8\u4F4D\u5468\u671F\u7684\u5DE5\u4F5C\u91CF</summary><table class="theory-timing-table"><tbody>${loads.map(([resource, seconds3]) => `<tr><th>${escapeHtml3(resource)}</th><td>${formatSeconds3(seconds3)} \u79D2</td></tr>`).join("")}</tbody></table></details><div class="theory-formula-equation">T\u8D44\u6E90 = max(W\u1D63) = ${formatSeconds3(floor)} \u79D2<br>T\u7B49\u5F85 = \u03A3d \xF7 \u03A3\u03BB = ${formatSeconds3(delay)} \xF7 ${shift} = ${shift > 0 ? formatSeconds3(delay / shift) : "\u2014"} \u79D2</div><details class="theory-timing-details"><summary>\u5173\u952E\u7B49\u5F85\u94FE\uFF1A${escapeHtml3(entry.limiting_label || "\u67E5\u770B\u7EA6\u675F")}</summary>${chain.map((edge) => `<p>${escapeHtml3(edge.detail || edge.label)}\uFF1A${formatSeconds3(edge.minimum_delay_seconds)} \u79D2\uFF0C\u8DE8 ${edge.cycle_shift} \u5468\u671F</p>`).join("")}<p>\u6BCF\u6761\u8FB9\u6EE1\u8DB3 x\u2C7C \u2212 x\u1D62 \u2265 d\u1D62\u2C7C \u2212 \u03BB\u1D62\u2C7CT\uFF1B\u6CBF\u95ED\u73AF\u76F8\u52A0\uFF0C\u5F97\u5230 T \u2265 \u03A3d / \u03A3\u03BB\u3002</p></details>${serviceDetails}</div></div>
     <div class="theory-formula-step"><span class="theory-step-number">3</span><div><h3>\u5468\u671F\u65F6\u95F4\u4E0E\u4EA7\u80FD</h3><strong>T\u76F8\u4F4D = max(${formatSeconds3(floor)}, ${shift > 0 ? formatSeconds3(delay / shift) : "\u2014"}) = ${formatSeconds3(period)} \u79D2</strong><div class="theory-formula-equation">\u4E00\u6B21\u4EA4\u66FF T = ${formatSeconds3(period)} \xF7 ${rounds} = <b>${formatSeconds3(period / rounds)} \u79D2</b><br>\u5E73\u5747\u51FA\u7247\u95F4\u9694 = T\u76F8\u4F4D \xF7 q = ${formatSeconds3(period)} \xF7 ${units} = ${formatSeconds3(entry.seconds_per_unit)} \u79D2 / \u7247<br>\u6BCF\u5C0F\u65F6\u4EA7\u80FD = 3600 \xD7 ${units} \xF7 ${formatSeconds3(period)} = ${formatCapacity(entry.physical_wafers_per_hour)} \u7247 / \u5C0F\u65F6</div><p>1 \u5C0F\u65F6\u6709 3600 \u79D2\uFF1B\u5468\u671F\u7531\u4E8B\u4EF6\u56FE\u9A8C\u8BC1\u53EF\u884C\u76F8\u4F4D\uFF0C\u4E0D\u542B\u542F\u52A8\u4E0E\u6536\u5C3E\u3002</p></div></div>`;
 }
 function renderPeriodicDerivation(entry) {
@@ -6948,23 +7233,23 @@ function createTheoryCapacityView(options) {
   let baselineSamples = [];
   let baselineKey = "";
   let capacityAxisMaximum = 0;
-  function simulate(seconds2) {
+  function simulate(seconds3) {
     generation++;
     root.setAttribute?.("aria-busy", "false");
     root.setAttribute?.("data-result-stale", "true");
     button.disabled = false;
     button.textContent = "\u91CD\u65B0\u8BA1\u7B97";
     root.querySelector("#theoryCapacityResultState").textContent = "\u5F85\u66F4\u65B0";
-    root.querySelector("#theoryCapacitySlider").value = String(seconds2);
-    root.querySelector("#theoryProcessReadout").textContent = `${formatSeconds3(seconds2)} \u79D2`;
+    root.querySelector("#theoryCapacitySlider").value = String(seconds3);
+    root.querySelector("#theoryProcessReadout").textContent = `${formatSeconds3(seconds3)} \u79D2`;
     if (!chart || !previewSamples.length) return;
-    const upperIndex = previewSamples.findIndex((point) => point.x >= seconds2);
+    const upperIndex = previewSamples.findIndex((point) => point.x >= seconds3);
     const right = previewSamples[upperIndex < 0 ? previewSamples.length - 1 : upperIndex];
     const left = previewSamples[Math.max(0, upperIndex - 1)];
-    const fraction = right.x > left.x ? Math.max(0, Math.min(1, (seconds2 - left.x) / (right.x - left.x))) : 0;
+    const fraction = right.x > left.x ? Math.max(0, Math.min(1, (seconds3 - left.x) / (right.x - left.x))) : 0;
     const rate = upperIndex < 0 ? right.y : left.y + fraction * (right.y - left.y);
     void chart.updateOptions({ annotations: { points: [{
-      x: seconds2,
+      x: seconds3,
       y: rate,
       marker: { size: 8, fillColor: "#B4F105", strokeColor: "#072F1F" }
     }] } }, false, false);
@@ -7056,7 +7341,7 @@ function createTheoryCapacityView(options) {
       }
       const q = entry.facts?.units_per_cycle ?? 0;
       const period = entry.period_seconds ?? 0;
-      const seconds2 = entry.process_seconds?.[0] ?? 0;
+      const seconds3 = entry.process_seconds?.[0] ?? 0;
       const chain = entry.critical_chain ?? [];
       const delay = chain.reduce((sum, edge) => sum + edge.minimum_delay_seconds, 0);
       const shift = chain.reduce((sum, edge) => sum + edge.cycle_shift, 0);
@@ -7066,11 +7351,13 @@ function createTheoryCapacityView(options) {
       root.setAttribute?.("data-result-unavailable", "false");
       root.querySelector("#theoryCapacityChartSection").hidden = false;
       root.querySelector("#theoryCapacityResultState").textContent = "";
-      root.querySelector("#theoryCapacityComparison").textContent = `\u52A0\u5DE5 ${formatSeconds3(seconds2)} \u79D2 \xB7 ${entry.period_timing ? entry.period_timing.basis === "wac" ? `WAC \u5468\u671F ${entry.period_timing.output_wafers} \u7247` : "\u8FDE\u7EED\u751F\u4EA7 \xB7 13 \u7247 / Job" : "\u5927\u6C14\u624B\u4EA4\u66FF\u5468\u671F"}`;
+      root.querySelector("#theoryCapacityComparison").textContent = `\u52A0\u5DE5 ${formatSeconds3(seconds3)} \u79D2 \xB7 ${entry.period_timing ? entry.period_timing.basis === "wac" ? `WAC \u5468\u671F ${entry.period_timing.output_wafers} \u7247` : "\u8FDE\u7EED\u751F\u4EA7 \xB7 13 \u7247 / Job" : "\u5927\u6C14\u624B\u4EA4\u66FF\u5468\u671F"}`;
       root.querySelector("#theoryCapacityScope").textContent = entry.scope_note ?? "\u8BBA\u6587\u56FA\u5B9A\u5468\u671F\u6A21\u578B\u7684\u7406\u8BBA\u503C\u3002";
       root.querySelector("#theoryCapacityDerivation").innerHTML = renderTeachingDerivation(entry, payload.name);
+      const cycleContainer = root.querySelector("#theoryCapacityCycleDiagram");
+      if (cycleContainer) mountCycleDiagram(cycleContainer, entry.cycle_diagram, entry.period_seconds, options.syncSelect);
       root.querySelector("#theoryCapacityCurrentRate").textContent = formatCapacity(entry.physical_wafers_per_hour);
-      root.querySelector("#theoryCapacityResources").innerHTML = Object.entries(entry.resource_work_seconds ?? {}).map(([name, seconds3]) => `<div><small>${escapeHtml3(name)}</small><strong>${formatSeconds3(seconds3)} <span>\u79D2 / ${batch ? "\u6279\u6B21" : "\u5468\u671F"}</span></strong><progress max="${period}" value="${Math.min(seconds3, period)}" aria-label="${escapeHtml3(name)}\u5360\u603B\u8017\u65F6\u7684\u6BD4\u4F8B"></progress></div>`).join("");
+      root.querySelector("#theoryCapacityResources").innerHTML = Object.entries(entry.resource_work_seconds ?? {}).map(([name, seconds4]) => `<div><small>${escapeHtml3(name)}</small><strong>${formatSeconds3(seconds4)} <span>\u79D2 / ${batch ? "\u6279\u6B21" : "\u5468\u671F"}</span></strong><progress max="${period}" value="${Math.min(seconds4, period)}" aria-label="${escapeHtml3(name)}\u5360\u603B\u8017\u65F6\u7684\u6BD4\u4F8B"></progress></div>`).join("");
       root.querySelector("#theoryCapacityFloor").textContent = `\u6700\u7E41\u5FD9\u8D44\u6E90 ${formatSeconds3(floor)} \u79D2 / ${batch ? "\u6279\u6B21" : "\u5468\u671F"}`;
       results.hidden = false;
       const ApexCharts = window.ApexCharts;
@@ -7126,12 +7413,12 @@ function createTheoryCapacityView(options) {
         },
         annotations: { points: [
           {
-            x: seconds2,
+            x: seconds3,
             y: entry.physical_wafers_per_hour,
             marker: { size: 8, fillColor: "#B4F105", strokeColor: "#072F1F" }
           },
           ...requestValues.clean ? [{
-            x: seconds2,
+            x: seconds3,
             y: entry.baseline_wafers_per_hour,
             marker: { size: 5, fillColor: "#ffffff", strokeColor: "#b4553a" }
           }] : []
@@ -7145,8 +7432,8 @@ function createTheoryCapacityView(options) {
       const slider = root.querySelector("#theoryCapacitySlider");
       slider.min = requestValues.first;
       slider.max = requestValues.last;
-      slider.value = String(seconds2);
-      root.querySelector("#theoryProcessReadout").textContent = `${formatSeconds3(seconds2)} \u79D2`;
+      slider.value = String(seconds3);
+      root.querySelector("#theoryProcessReadout").textContent = `${formatSeconds3(seconds3)} \u79D2`;
     } catch (error) {
       if (request === generation && !destroyed) {
         results.hidden = !device.value;
@@ -7157,6 +7444,8 @@ function createTheoryCapacityView(options) {
         root.querySelector("#theoryCapacityCurrentRate").textContent = "\u2014";
         root.querySelector("#theoryCapacityComparison").textContent = "\u8BF7\u8C03\u6574\u53C2\u6570\u540E\u91CD\u8BD5";
         root.querySelector("#theoryCapacityResultState").textContent = "\u8BA1\u7B97\u5931\u8D25";
+        const cycleContainer = root.querySelector("#theoryCapacityCycleDiagram");
+        if (cycleContainer) mountCycleDiagram(cycleContainer);
         showError(error);
       }
     } finally {
@@ -11093,8 +11382,8 @@ function readableLogFileName(testName) {
 function formatRunElapsed(milliseconds) {
   const totalTenths = Math.max(0, Math.floor(Number(milliseconds || 0) / 100));
   const minutes = Math.floor(totalTenths / 600);
-  const seconds2 = Math.floor(totalTenths / 10) % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds2).padStart(2, "0")}.${totalTenths % 10}`;
+  const seconds3 = Math.floor(totalTenths / 10) % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds3).padStart(2, "0")}.${totalTenths % 10}`;
 }
 function startRunStatus(title, initialLabel = "\u6B63\u5728\u51C6\u5907") {
   const card = document.getElementById("runStatusCard");
@@ -12600,7 +12889,10 @@ function initializeTheoryCapacityView() {
       }));
     },
     requestPreset: (deviceId, values4) => requestTheoryCapacityPreset(deviceId, values4),
-    syncSelect: (select) => refreshCompactSelect(select)
+    syncSelect: (select) => {
+      initializeCompactSelects();
+      refreshCompactSelect(select);
+    }
   }).initialize();
 }
 var managementSections = document.getElementById("testManagementSections");

@@ -2,9 +2,9 @@
 
 本模块是“结果诊断 → 理论产能”页签的数据边界，负责：
 
-- 读取设备概览与测试，按与真实运行完全相同的编译链路
+- 读取设备概览与测试，按平台标准载荷构造链路
   （``build_workspace_batch_plan`` → ``build_task_alg_init`` →
-  ``build_round_update`` → ``compile_problem``）得到 ``Problem``；
+  ``build_round_update`` → ``compile_capacity_input``）得到平台 ``CapacityInput``；
 - 用一次“路线分类”缓存（只编译、不求解）得到每条路线的路径类型、LoadLock
   类型与可建图状态，供筛选器选择；
 - 只对**当前选中**的路径类型与 LoadLock 类型组合扫描曲线，不下发全设备求解；
@@ -12,7 +12,7 @@
   加工时间，纵轴是它按真实加工时间推导出的理论产能。
 
 模型口径固定为**无清洁**：测试中的 Clean 引用与 Clean 定义都会被剥离，清洁类型
-只用于挑选测试点，不改变曲线。驻留上限与 Q-time 不会被静默放宽（由 Cycle 拓扑
+只用于挑选测试点，不改变曲线。驻留上限与 Q-time 不会被静默放宽（由平台静态路线
 识别明确拒绝）。统一加工时间扫描只改真空段加工工序的加工时间，其它设备服务时长
 取自设备 init。
 
@@ -70,11 +70,10 @@ _TEST_INDEX_CACHE: "Dict[Tuple[str, str], Tuple['_TestIndexEntry', ...]]" = {}
 
 
 @dataclass(frozen=True)
-class _AlgorithmRuntime:
-    """按需加载的算法侧能力集合。
+class _CapacityRuntime:
+    """平台自己的输入解析、路线分类和事件图求解能力集合。
 
-    算法仓库是可选依赖：平台在它缺失时仍必须能启动并给出可读错误，因此这里不用
-    模块级导入，而是在首次调用时加载。
+    所有能力均在 app.backend.theory_capacity；首次请求时装配并复用，不加载算法仓库。
     """
 
     analyze_cycle_capacity_model: Callable[..., Any]
@@ -82,8 +81,8 @@ class _AlgorithmRuntime:
     physical_members_per_unit: Callable[..., int]
     reference_process_seconds: Callable[..., Sequence[Mapping[str, float]]]
     scan_cycle_capacity: Callable[..., Any]
-    compile_problem: Callable[..., Any]
-    analyze_cycle_topology: Callable[..., Any]
+    compile_capacity_input: Callable[..., Any]
+    analyze_capacity_topology: Callable[..., Any]
 
 
 @dataclass(frozen=True)
@@ -111,38 +110,33 @@ class _TestIndexEntry:
     route_configs: Mapping[str, Mapping[str, Any]]
 
 
-_ALGORITHM_RUNTIME: Optional[_AlgorithmRuntime] = None
+_CAPACITY_RUNTIME: Optional[_CapacityRuntime] = None
 
 
-def _algorithm() -> _AlgorithmRuntime:
-    """返回算法侧能力；算法仓库缺失或导入失败时给出可读错误。"""
-    global _ALGORITHM_RUNTIME
-    if _ALGORITHM_RUNTIME is not None:
-        return _ALGORITHM_RUNTIME
-    try:
-        from src.analysis.cycle_capacity_graph import (
-            analyze_cycle_capacity_model,
-            build_cycle_capacity_model,
-            physical_members_per_unit,
-            reference_process_seconds,
-            scan_cycle_capacity,
-        )
-        from src.compiler import compile_problem
-        from src.schedule.strategies.cycle.topology import analyze_cycle_topology
-    except Exception as error:  # noqa: BLE001 - 算法仓库是可选依赖
-        raise RuntimeError(
-            f"本地算法仓库未加载，无法计算理论产能：{type(error).__name__}: {error}"
-        ) from error
-    _ALGORITHM_RUNTIME = _AlgorithmRuntime(
+def _capacity_runtime() -> _CapacityRuntime:
+    """装配完全属于平台的输入、建图与求解能力，无外部算法依赖。"""
+    global _CAPACITY_RUNTIME
+    if _CAPACITY_RUNTIME is not None:
+        return _CAPACITY_RUNTIME
+    from app.backend.theory_capacity.device_input import compile_capacity_input
+    from app.backend.theory_capacity.topology import analyze_capacity_topology
+    from app.backend.theory_capacity.device_graph import (
+        analyze_cycle_capacity_model,
+        build_cycle_capacity_model,
+        physical_members_per_unit,
+        reference_process_seconds,
+        scan_cycle_capacity,
+    )
+    _CAPACITY_RUNTIME = _CapacityRuntime(
         analyze_cycle_capacity_model=analyze_cycle_capacity_model,
         build_cycle_capacity_model=build_cycle_capacity_model,
         physical_members_per_unit=physical_members_per_unit,
         reference_process_seconds=reference_process_seconds,
         scan_cycle_capacity=scan_cycle_capacity,
-        compile_problem=compile_problem,
-        analyze_cycle_topology=analyze_cycle_topology,
+        compile_capacity_input=compile_capacity_input,
+        analyze_capacity_topology=analyze_capacity_topology,
     )
-    return _ALGORITHM_RUNTIME
+    return _CAPACITY_RUNTIME
 
 
 def _finite_number(value: Any, default: float) -> float:
@@ -350,7 +344,7 @@ def _compile_route(
     :return: ``(problem, topology)``；``topology`` 可能是拒绝结果。
     :raises ValueError: 计划构造或编译失败时，消息可直接展示给用户。
     """
-    runtime = _algorithm()
+    runtime = _capacity_runtime()
     test_case = _synthetic_test_case(route_name, route_config, load_port)
     plan = build_workspace_batch_plan(device, test_case, "cycle", {})
     plan["device"] = build_task_alg_init(
@@ -358,15 +352,15 @@ def _compile_route(
     )
     build_state = BuildState()
     update = build_round_update(plan, plan["rounds"][0], 0.0, build_state)
-    problem = runtime.compile_problem(plan["device"], update)
-    return problem, runtime.analyze_cycle_topology(problem)
+    problem = runtime.compile_capacity_input(plan["device"], update)
+    return problem, runtime.analyze_capacity_topology(problem)
 
 
 def _failure_fields(error: Exception) -> Tuple[str, str, str]:
     """把编译或建图异常映射为 (status, reason, detail)。
 
     Cycle 拓扑拒绝与建图器拒绝都带 ``reason``/``detail`` 稳定字段，按码分类即可
-    区分“模板不适用”和真正的编译失败，不需要导入算法侧异常类型。
+    区分“模板不适用”和真正的编译失败，不需要外部异常类型。
     """
     reason = str(getattr(error, "reason", "") or "")
     detail = str(getattr(error, "detail", "") or "")
@@ -396,7 +390,7 @@ def _unsupported_entry(
     }
 
 
-def _structure_signature(runtime: _AlgorithmRuntime, problem: Any, topology: Any, members: int) -> str:
+def _structure_signature(runtime: _CapacityRuntime, problem: Any, topology: Any, members: int) -> str:
     """返回忽略站点名的设备计时结构签名。
 
     签名只用服务类别、服务键的角色前缀与秒数，因此 ``PM1`` 与 ``PM3`` 这类计时完全
@@ -405,7 +399,7 @@ def _structure_signature(runtime: _AlgorithmRuntime, problem: Any, topology: Any
 
     这里只建图不求解，因此比完整推导便宜得多。
 
-    :param runtime: 算法侧能力集合。
+    :param runtime: 平台产能能力集合。
     :param problem: 该路线的编译结果。
     :param topology: 该路线的 Cycle 拓扑识别结果。
     :param members: 每逻辑单元的物理成员数。
@@ -835,7 +829,7 @@ def _matched_points(
     ]
     candidates.sort(key=lambda item: (item.group, item.name, item.test_id))
     truncated = len(candidates) > POINT_LIMIT
-    runtime = _algorithm()
+    runtime = _capacity_runtime()
     cache: Dict[Tuple[str, Tuple[Any, ...]], Optional[Dict[str, Any]]] = {}
     points: List[Dict[str, Any]] = []
     for entry in candidates[:POINT_LIMIT]:
@@ -878,7 +872,7 @@ def _matched_points(
 
 
 def _derive_point(
-    runtime: _AlgorithmRuntime,
+    runtime: _CapacityRuntime,
     device: Mapping[str, Any],
     route_name: str,
     route_config: Mapping[str, Any],
@@ -928,7 +922,7 @@ def read_theory_capacity_route_index(device_id: str) -> Dict[str, Any]:
     """
     device = get_workspace_device_overview(device_id)
     device_init = device.get("device") or {}
-    members = _algorithm().physical_members_per_unit(device_init.get("Stations") or {})
+    members = _capacity_runtime().physical_members_per_unit(device_init.get("Stations") or {})
     return {
         "ok": True,
         "device": {
@@ -994,7 +988,7 @@ def read_theory_capacity_scan(
     if cached is not None:
         return cached
     device_init = device.get("device") or {}
-    members = _algorithm().physical_members_per_unit(device_init.get("Stations") or {})
+    members = _capacity_runtime().physical_members_per_unit(device_init.get("Stations") or {})
     index = _route_index(device_id, device)
     selected = [
         entry for entry in index
@@ -1065,7 +1059,7 @@ def _scan_selected_route(
         problem, topology = _compile_route(
             device, entry.route_name, _default_route_config(route), entry.load_port,
         )
-        scan = _algorithm().scan_cycle_capacity(
+        scan = _capacity_runtime().scan_cycle_capacity(
             problem,
             topology,
             first_seconds=window[0],
@@ -1073,7 +1067,7 @@ def _scan_selected_route(
             step_seconds=window[2],
             members_per_unit=members,
         )
-        structure_key = _structure_signature(_algorithm(), problem, topology, members)
+        structure_key = _structure_signature(_capacity_runtime(), problem, topology, members)
     except Exception as error:  # noqa: BLE001 - 单条路线失败不能影响整台设备
         return _route_failure(entry.route_name, entry.group, error)
     return {
@@ -1108,7 +1102,7 @@ def read_theory_capacity_derivation(
         raise ValueError("必须指定测试或路径模板")
     device = get_workspace_device_overview(device_id)
     device_init = device.get("device") or {}
-    members = _algorithm().physical_members_per_unit(device_init.get("Stations") or {})
+    members = _capacity_runtime().physical_members_per_unit(device_init.get("Stations") or {})
     if test_id:
         test_case = get_workspace_test(device_id, test_id)
         entries = _test_route_entries(test_case)
@@ -1154,7 +1148,7 @@ def read_theory_capacity_derivation(
             problem, topology = _compile_route(
                 device, current, _clean_route_config(route_config), load_port,
             )
-            analysis = _algorithm().analyze_cycle_capacity_model(
+            analysis = _capacity_runtime().analyze_cycle_capacity_model(
                 problem, topology, members_per_unit=members,
             )
         except Exception as error:  # noqa: BLE001 - 逐条路线隔离失败
@@ -1172,7 +1166,7 @@ def read_theory_capacity_derivation(
             "detail": "",
             "process_seconds": [
                 round(float(seconds), 3)
-                for seconds in _analysis_process_seconds(_algorithm(), problem, topology)
+                for seconds in _analysis_process_seconds(_capacity_runtime(), problem, topology)
             ],
         })
         derivations.append(payload)
@@ -1218,7 +1212,7 @@ def _test_route_entries(test_case: Mapping[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _analysis_process_seconds(
-    runtime: _AlgorithmRuntime,
+    runtime: _CapacityRuntime,
     problem: Any,
     topology: Any,
 ) -> Sequence[float]:

@@ -1,0 +1,194 @@
+[
+  {
+    "id": "4be41744839c46f0b8a63491cd441a1d",
+    "name": "NC-双向双通道-单节点-P10",
+    "kind": "single-node",
+    "lock": "shared-bidirectional",
+    "process": 10,
+    "route": "PM1"
+  },
+  {
+    "id": "1a3e10fb9ef8421aa9cfcbbfe6d67d4e",
+    "name": "NC-双向双通道-单节点-P80",
+    "kind": "single-node",
+    "lock": "shared-bidirectional",
+    "process": 80,
+    "route": "PM1"
+  },
+  {
+    "id": "7f19308be2d4403292931996624f5050",
+    "name": "NC-双向双通道-单节点-P240",
+    "kind": "single-node",
+    "lock": "shared-bidirectional",
+    "process": 240,
+    "route": "PM1"
+  },
+  {
+    "id": "f698c3b934484d18944992830e72a3a5",
+    "name": "NC-双向双通道-串行-P10",
+    "kind": "serial",
+    "lock": "shared-bidirectional",
+    "process": 10,
+    "route": "PM1 → PM2"
+  },
+  {
+    "id": "3014d2ca773c4d5fbdce4a917c8e5428",
+    "name": "NC-双向双通道-串行-P80",
+    "kind": "serial",
+    "lock": "shared-bidirectional",
+    "process": 80,
+    "route": "PM1 → PM2"
+  },
+  {
+    "id": "c358c8504f554a5ba39de2eb60a6332a",
+    "name": "NC-双向双通道-串行-P240",
+    "kind": "serial",
+    "lock": "shared-bidirectional",
+    "process": 240,
+    "route": "PM1 → PM2"
+  },
+  {
+    "id": "4902a676c7eb4e528e3078b5f9327adf",
+    "name": "NC-双向双通道-并行-P10",
+    "kind": "parallel",
+    "lock": "shared-bidirectional",
+    "process": 10,
+    "route": "PM1/PM2/PM3"
+  },
+  {
+    "id": "666704e369fa4fd6949b69c2d2272f99",
+    "name": "NC-双向双通道-并行-P80",
+    "kind": "parallel",
+    "lock": "shared-bidirectional",
+    "process": 80,
+    "route": "PM1/PM2/PM3"
+  },
+  {
+    "id": "61bfc27ee7be4ab79f0c8b2a9dbb1edd",
+    "name": "NC-双向双通道-并行-P240",
+    "kind": "parallel",
+    "lock": "shared-bidirectional",
+    "process": 240,
+    "route": "PM1/PM2/PM3"
+  },
+  {
+    "id": "13c9331b3c4644479ec85a7645b00396",
+    "name": "NC-双向双通道-混合-P10",
+    "kind": "mixed",
+    "lock": "shared-bidirectional",
+    "process": 10,
+    "route": "PM1 → PM2/PM3"
+  },
+  {
+    "id": "93a11e4f7da546a582a3905241a63129",
+    "name": "NC-双向双通道-混合-P80",
+    "kind": "mixed",
+    "lock": "shared-bidirectional",
+    "process": 80,
+    "route": "PM1 → PM2/PM3"
+  },
+  {
+    "id": "1dc98721d705479ba7b262e6a21e103d",
+    "name": "NC-双向双通道-混合-P240",
+    "kind": "mixed",
+    "lock": "shared-bidirectional",
+    "process": 240,
+    "route": "PM1 → PM2/PM3"
+  },
+  {
+    "id": "f029ccff8528414e86086c7abe6644af",
+    "name": "NC-单向双通道-单节点-P10",
+    "kind": "single-node",
+    "lock": "dedicated-entry-exit",
+    "process": 10,
+    "route": "exp-单向双通道-单节点"
+  },
+  {
+    "id": "24de57bedf17484f88296784f1ae7084",
+    "name": "NC-单向双通道-单节点-P80",
+    "kind": "single-node",
+    "lock": "dedicated-entry-exit",
+    "process": 80,
+    "route": "exp-单向双通道-单节点"
+  },
+  {
+    "id": "ecdafdb68d99422983a11728b01fb944",
+    "name": "NC-单向双通道-单节点-P240",
+    "kind": "single-node",
+    "lock": "dedicated-entry-exit",
+    "process": 240,
+    "route": "exp-单向双通道-单节点"
+  },
+  {
+    "id": "0aa2dd4a54ad43dba903f731bbb6c266",
+    "name": "NC-单向双通道-串行-P10",
+    "kind": "serial",
+    "lock": "dedicated-entry-exit",
+    "process": 10,
+    "route": "exp-单向双通道-串行"
+  },
+  {
+    "id": "6be8dd6605614adcb88d90a6930af04e",
+    "name": "NC-单向双通道-串行-P80",
+    "kind": "serial",
+    "lock": "dedicated-entry-exit",
+    "process": 80,
+    "route": "exp-单向双通道-串行"
+  },
+  {
+    "id": "20f1b17119fb48d6914582cc66991301",
+    "name": "NC-单向双通道-串行-P240",
+    "kind": "serial",
+    "lock": "dedicated-entry-exit",
+    "process": 240,
+    "route": "exp-单向双通道-串行"
+  },
+  {
+    "id": "4c4c89dbac834b54859b8f01027f2bb0",
+    "name": "NC-单向双通道-并行-P10",
+    "kind": "parallel",
+    "lock": "dedicated-entry-exit",
+    "process": 10,
+    "route": "PM1/PM2/PM3 · 单LL LA→LB"
+  },
+  {
+    "id": "84e086bc44754aa6998c4d35f2d66505",
+    "name": "NC-单向双通道-并行-P80",
+    "kind": "parallel",
+    "lock": "dedicated-entry-exit",
+    "process": 80,
+    "route": "PM1/PM2/PM3 · 单LL LA→LB"
+  },
+  {
+    "id": "539ebc299f064d87a4ec6664094e9300",
+    "name": "NC-单向双通道-并行-P240",
+    "kind": "parallel",
+    "lock": "dedicated-entry-exit",
+    "process": 240,
+    "route": "PM1/PM2/PM3 · 单LL LA→LB"
+  },
+  {
+    "id": "3d01829ec2544452b9e92d625f07c0cc",
+    "name": "NC-双向单通道-并行-P10",
+    "kind": "parallel",
+    "lock": "single-bidirectional",
+    "process": 10,
+    "route": "exp-双向单通道-并行"
+  },
+  {
+    "id": "c54e3295a96d455086d4247de553b9d1",
+    "name": "NC-双向单通道-并行-P80",
+    "kind": "parallel",
+    "lock": "single-bidirectional",
+    "process": 80,
+    "route": "exp-双向单通道-并行"
+  },
+  {
+    "id": "782c3956ccb144dd9918787c190c727f",
+    "name": "NC-双向单通道-并行-P240",
+    "kind": "parallel",
+    "lock": "single-bidirectional",
+    "process": 240,
+    "route": "exp-双向单通道-并行"
+  }
+]

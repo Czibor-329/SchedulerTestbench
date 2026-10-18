@@ -1,9 +1,10 @@
 """理论产能固定 PM 组合：只取设备计时构造临时输入，不匹配持久路线和测试。
 
-复用现有计划编译和 Cycle 建图边界；临时模板只在内存存在，不写入工作空间。
+由平台静态输入解析与精简周期核求解；临时模板只在内存存在，不写入工作空间。
 """
 from copy import deepcopy
 from app.backend import theory_capacity_service as capacity
+from app.backend.theory_capacity.compact_presentation import calculate_preset_payload
 
 PRESETS = {
     "single-node": (("PM1",),),
@@ -24,9 +25,9 @@ def build_preset_device(device, kind, lock):
         if name not in stations:
             raise ValueError(f"设备缺少指定加工腔 {name}")
     locks = [name for name, value in stations.items() if value.get("Type") == "LoadLock"]
-    # 双腔按编译器的成对锁视图选择通道，LA/LB 是一个通道而非两把独立锁。
-    from src.compiler.dual_chamber import detect_dual_chamber, _merged_ll_groups
-    groups = _merged_ll_groups(init.get("Robots", {}), stations) if detect_dual_chamber(stations) else {}
+    # 双腔按平台的成对锁视图选择通道，LA/LB 是一个通道而非两把独立锁。
+    from app.backend.theory_capacity.device_input import detect_dual_chamber, paired_loadlock_groups
+    groups = paired_loadlock_groups(init.get("Robots", {}), stations) if detect_dual_chamber(stations) else {}
     paired = {name for names in groups.values() for name in names}
     lock_channels = list(groups.values()) + [[name] for name in locks if name not in paired]
     required = 1 if lock == "single-bidirectional" else 2
@@ -62,11 +63,8 @@ def read_theory_capacity_preset(device_id, *, kind="single-node", lock="shared-b
                                first_seconds=None, last_seconds=None, step_seconds=None,
                                process_seconds=None, cleaning_values=None):
     """返回固定组合扫描及一个加工时间的推导；参数单位秒，输出不含测试匹配。"""
-    if cleaning_values and cleaning_values.get("mode", "steady") not in ("steady", "batch", "periodic"):
-        raise ValueError("计算口径仅支持 steady、periodic 或 batch")
-    if cleaning_values and (cleaning_values.get("mode") == "batch" or cleaning_values.get("clean")):
-        from app.backend.theory_capacity_cleaning import parse_cleaning_scenario
-        parse_cleaning_scenario(cleaning_values)
+    if cleaning_values and (cleaning_values.get("clean") or cleaning_values.get("mode", "steady") != "steady"):
+        raise ValueError("独立理论产能当前仅支持无清洁稳态计算；清洁及有限批次计算暂不支持")
     window = capacity._scan_window(first_seconds, last_seconds, step_seconds)
     process = capacity._query_number(process_seconds, capacity.DEFAULT_PROCESS_SECONDS, "process")
     if process < 0:
@@ -77,17 +75,9 @@ def read_theory_capacity_preset(device_id, *, kind="single-node", lock="shared-b
     for stage in config["stages"].values():
         stage.update(processTime=process, recipeTime=process)
     problem, topology = capacity._compile_route(device, route["name"], config, load_port)
-    runtime = capacity._algorithm()
+    runtime = capacity._capacity_runtime()
     members = runtime.physical_members_per_unit(device["device"]["Stations"])
-    scan = runtime.scan_cycle_capacity(problem, topology, first_seconds=window[0],
-        last_seconds=window[1], step_seconds=window[2], members_per_unit=members)
-    derivation = runtime.analyze_cycle_capacity_model(problem, topology, members_per_unit=members).to_dict()
+    points, derivation = calculate_preset_payload(problem, topology, members, window)
     derivation.update(route_name=route["name"], status="supported", process_seconds=[process] * len(PRESETS[kind]))
-    if cleaning_values and cleaning_values.get("mode") == "periodic" and cleaning_values.get("clean"):
-        from app.backend.theory_capacity_periodic import read_periodic_capacity
-        return read_periodic_capacity(device, route, load_port, scan, derivation, cleaning_values, process)
-    if cleaning_values and (cleaning_values.get("mode") == "batch" or cleaning_values.get("clean")):
-        from app.backend.theory_capacity_cleaning import read_cleaning_capacity
-        return read_cleaning_capacity(device, route, load_port, scan, derivation, cleaning_values, process)
-    return {"ok": True, "name": route["name"], "points": capacity._scan_points_payload(scan),
+    return {"ok": True, "name": route["name"], "points": points,
             "derivation": capacity._round_floats(derivation)}

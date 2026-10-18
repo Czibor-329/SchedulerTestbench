@@ -6009,7 +6009,7 @@ function initializeTheoryCapacityView() {
       }));
     },
     requestPreset: (deviceId, values) => requestTheoryCapacityPreset(deviceId, values),
-    syncSelect: select => refreshCompactSelect(select),
+    syncSelect: select => { initializeCompactSelects(); refreshCompactSelect(select); },
   }).initialize();
 }
 

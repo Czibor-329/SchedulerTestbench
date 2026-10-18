@@ -39,8 +39,8 @@ def test_dual_loadlocks_select_two_logical_channels(monkeypatch):
     for name in ("LC", "LD"):
         stations[name] = deepcopy(stations["LA"])
         stations[name]["Name"] = name
-    from src.compiler import dual_chamber
-    monkeypatch.setattr(dual_chamber, "_merged_ll_groups", lambda *args: {
+    from app.backend.theory_capacity import device_input
+    monkeypatch.setattr(device_input, "paired_loadlock_groups", lambda *args: {
         "LALB": ["LA", "LB"], "LCLD": ["LC", "LD"]})
     _, route, _ = build_preset_device(device, "single-node", "shared-bidirectional")
     assert [visit["stationName"] for visit in route["stages"][2]["visits"]] == ["LA", "LB", "LC", "LD"]

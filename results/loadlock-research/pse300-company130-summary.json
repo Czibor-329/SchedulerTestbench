@@ -1,0 +1,1923 @@
+{
+  "baseline_passed": 103,
+  "baseline_failed": 27,
+  "baseline_failure_categories": {
+    "Dummy 补片模板停滞": 25,
+    "有限驻留不支持": 1,
+    "Q-time 不支持": 1
+  },
+  "research_categories": {
+    "清洁未建模": 107,
+    "找到稳态改善": 10,
+    "候选未改善稳态": 10,
+    "重入未建模": 3
+  },
+  "optimized_finite_batch_run": false,
+  "all_loadlocks_two_slots": true,
+  "rows": [
+    {
+      "test_id": "8fda321ecfc34b2fbb100068895458a4",
+      "name": "test1 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11918.16000000004,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "b71c8dfb32bd4caa9f54403e47d6a919",
+      "name": "test2 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 12248.160000000038,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "9494c026c5c649b98ed86863cc8db782",
+      "name": "test3 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11896.279999999999,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "865c012e7b464d3083e87d06da23f383",
+      "name": "test4 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 14185.630000000161,
+      "baseline_error": null,
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "b90746e82e054742bfe6dbe5ad3d3e2a",
+      "name": "test5 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 14418.320000000145,
+      "baseline_error": null,
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "290c2bc5aaec4e4cb36aceed00a5a30b",
+      "name": "test6 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11491.140000000085,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "找到稳态改善",
+      "steady_throughput_gain_min": 0.19395624467666073,
+      "steady_throughput_gain_max": 0.19587091590048833,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "4d0236fb281b4cc6b52eb77860b7e825",
+      "name": "test7 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11491.140000000085,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "找到稳态改善",
+      "steady_throughput_gain_min": 0.19395624728748206,
+      "steady_throughput_gain_max": 0.1958709152314433,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "6a46eb6e1c194657ae5df52c08f42b68",
+      "name": "test8 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11510.530000000088,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "找到稳态改善",
+      "steady_throughput_gain_min": 0.16875513649939577,
+      "steady_throughput_gain_max": 0.17799917934837084,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "6da2c763a94348b4b509c66ab364626e",
+      "name": "test9 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 46872.83000000007,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "候选未改善稳态",
+      "steady_throughput_gain_min": 4.2859871207667766e-10,
+      "steady_throughput_gain_max": 7.533342838428325e-10,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "3f3996b3798f46cfaee85745d7b92f5f",
+      "name": "test10 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 81872.83000000006,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "候选未改善稳态",
+      "steady_throughput_gain_min": 7.4522610304939e-12,
+      "steady_throughput_gain_max": 1.3122014586031128e-10,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "60f0757b6e014877b7c1484c8f351c1f",
+      "name": "test11 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 13699.45,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "c0cf24cc95834e829a6d1d7eddf87120",
+      "name": "test12 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 12285.55000000004,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "f1ff82472a074450807568c30ae49197",
+      "name": "test13 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 14409.449999999999,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "403209f2f90c425789514108bc3907f2",
+      "name": "test14 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 18025.239999999987,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "7357140efc9b4916a28cbf1374a6792c",
+      "name": "test15 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 14185.630000000161,
+      "baseline_error": null,
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "ec610fe2359a4f8794b46c663e0d0217",
+      "name": "test16 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 98931.31,
+      "baseline_error": null,
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "89ae3dc96f054c3ab7ce176ecf814361",
+      "name": "test17 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 18856.130000000143,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "fa0c0697e51d46d7b16e94e85dda361c",
+      "name": "test18 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 35677.43000000017,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "44ae6ed887bf4dc499447d9b27e1ccfb",
+      "name": "test19 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 21966.07000000014,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "4961746b435e415daeade313aaf42d69",
+      "name": "test20 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/366，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LA\n    ATR place 物料 [100000] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "8a2fb438b08c43039b7ec8eb8fb9ebad",
+      "name": "test21 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/378，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LA\n    ATR place 物料 [100000] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "1e66438d3e254b91944a5fe435bdc299",
+      "name": "test22 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/378，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LA\n    ATR place 物料 [100004] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "024a7b05b6844d97b974698fc6b67281",
+      "name": "test23 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/378，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LA\n    ATR place 物料 [100004] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "669854f7e9cd40aca06a7c8cfbd7cc9c",
+      "name": "test24 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）\n  VTR 游标 0/366，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LA\n    ATR place 物料 [100004] DummyPort -> LA\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 178.88\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 178.88",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "331be8c195454b1ca177b4d904fb32b4",
+      "name": "test25 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 81966.07000000053,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "9746ff50b960449cb71ad08fa0c9efad",
+      "name": "test26 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 246167.4299999979,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "9421832b5ebf44f3b364f9590a1999d2",
+      "name": "test27 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 304916.64000000025,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "276205c861c34e598111cfddebde03e0",
+      "name": "test28 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 304681.1300000003,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "候选未改善稳态",
+      "steady_throughput_gain_min": 9.378453569297562e-11,
+      "steady_throughput_gain_max": 2.4375701457302057e-10,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "84d253b11cf34741aef95f3e9a5b8081",
+      "name": "test29 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 139751.12999999907,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "候选未改善稳态",
+      "steady_throughput_gain_min": 0.0,
+      "steady_throughput_gain_max": 6.397931073820473e-10,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "2ae2839a1a854f87b0cfa1b8b1b70901",
+      "name": "test30 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 304920.09000000043,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "候选未改善稳态",
+      "steady_throughput_gain_min": 1.572602048582894e-10,
+      "steady_throughput_gain_max": 2.555711198226618e-10,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "b9b90347b74f45d29073caaff4461ce7",
+      "name": "test31 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11570.780000000059,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "1ac9d273ebbb4d0dae35335e1c24b5f5",
+      "name": "test32 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11680.780000000059,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "7fc92a2c8075456fb1cb7b84ee712993",
+      "name": "test33 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11538.40000000007,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "eb1b3724839b4a71ab75a1aae374133b",
+      "name": "test34 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 13114.180000000104,
+      "baseline_error": null,
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "36d117bd95e94b8082ee19716ad5ec1b",
+      "name": "test35 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 13310.680000000095,
+      "baseline_error": null,
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "7c3ffc0ba3d94223acfccf971de39440",
+      "name": "test36 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 49764.439999999704,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "354db6165d2340688bdd295a7cff5790",
+      "name": "test37 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 40874.439999999864,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "1fdd83fc53594551b22f706d7811e1d1",
+      "name": "test38 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 60927.9700000005,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "9745a16caf4141a6a5fcb5d6e05f002f",
+      "name": "test39 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 33164.2,
+      "baseline_error": null,
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "8ca72289d4ce452b86a61ba533c87a8e",
+      "name": "test40 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 67026.58000000035,
+      "baseline_error": null,
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "2059da83ece24d23915cf014ce1b61da",
+      "name": "test41 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 67764.43999999952,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "6f30c8dcc6f445a995fa6bdff227f776",
+      "name": "test42 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11680.780000000059,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "75fb4915ba49466e9dca32c282a461b9",
+      "name": "test43 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 60380.29000000039,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "d3454c7c163b48fc9bf389c8eaa1da46",
+      "name": "test44 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 87164.1999999994,
+      "baseline_error": null,
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "776d8db80996418baacb2411ac0200a1",
+      "name": "test45 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 247026.57999999743,
+      "baseline_error": null,
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "8f8244f45ad24e12bd9bccb1a172091f",
+      "name": "test46 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 34791.80000000002,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "deaf8af0ef2642eb929db6dc2270beed",
+      "name": "test47 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 60257.45999999992,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "84946177ef4e4534bae95d5c259c1e28",
+      "name": "test48 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/288，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LA\n    ATR place 物料 [100004] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "2c803dc39e6e4cb1bb6ad424cb108bc0",
+      "name": "test49 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/303，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LA\n    ATR place 物料 [100000] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "9cd703392ed14c83ba57684d2da3de60",
+      "name": "test50 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 14466.609999999986,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "faa2538b63d84ad199c24e0ec62fe544",
+      "name": "test51 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 13430.07999999999,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "候选未改善稳态",
+      "steady_throughput_gain_min": 1.0996237254090602e-09,
+      "steady_throughput_gain_max": 7.977938532022222e-09,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "6f3f2cb854024f618824d7877efb160e",
+      "name": "test52 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 34911.49000000003,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "a996df151ae64576a8da0944a479b249",
+      "name": "test53 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 60312.909999999916,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "628c4a0ae6644d2b9a070020012f5bf4",
+      "name": "test54 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/288，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LA\n    ATR place 物料 [100004] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "f7e0fed8be6a4f6982be4402b6327ad1",
+      "name": "test55 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/288，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LA\n    ATR place 物料 [100000] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "1c72ec8211294c0eab6dff7ac42ef86b",
+      "name": "test56 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 34909.28000000001,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "720008eecdf54dd3aaaa32d612ef3cdd",
+      "name": "test57 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 27055.420000000948,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "226b044752954a40b665fd25ecc3a23d",
+      "name": "test58 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 89711.4400000023,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "2521b0262eb34bc8b9b03bf3f1777b1a",
+      "name": "test59 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 61223.44000000559,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "6e2c8d9819704772b7496953a4f9313c",
+      "name": "test60 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/347，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）\n  VTR 游标 0/714，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LA\n    ATR place 物料 [100002] DummyPort -> LA\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 105.30999999999999\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 105.30999999999999",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "0b82e57254cc4734a94984c4f840f864",
+      "name": "test61 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/347，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）\n  VTR 游标 0/714，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LA\n    ATR place 物料 [100002] DummyPort -> LA\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 102.79\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 102.79",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "287daf099e1942129ec253d7cd36f129",
+      "name": "test62 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 54911.440000004055,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "重入未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "3bcc808e60094fc8b23962cb58bc82f7",
+      "name": "test63 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 12347.340000000013,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "79f48c2ce59346c8b2a2bcc8f7e38ebe",
+      "name": "test64 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11806.520000000015,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "d187a3bc0d874251946010c1556f08c5",
+      "name": "test65 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 16832.670000000195,
+      "baseline_error": null,
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "7eb6288adb6a455998dd851677a04140",
+      "name": "test66 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 17055.41000000016,
+      "baseline_error": null,
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "204ba20f8a134b1bac42a148e9d015d7",
+      "name": "test67 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 13037.340000000033,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "098a9b5f33174d52b527cd0a347bdc76",
+      "name": "test68 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 32408.080000000078,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "7154199611604d2e88e67c24b5033b0c",
+      "name": "test69 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 17352.05000000001,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "d4c59d9a0cbb4219825403bddc9e378b",
+      "name": "test70 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 19278.150000000045,
+      "baseline_error": null,
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "78b58101862646ff81a8738ccaa8d267",
+      "name": "test71 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 17066.83000000017,
+      "baseline_error": null,
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "d37833789c914f94855ada697e19aeb2",
+      "name": "test72 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 13037.340000000033,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "dda3d7ed85c943e2a5e1e3082051a30a",
+      "name": "test73 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11491.140000000085,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "找到稳态改善",
+      "steady_throughput_gain_min": 0.19395624877641038,
+      "steady_throughput_gain_max": 0.19587091350297725,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "747479a3e85743d4928729e8328c6c82",
+      "name": "test74 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11491.140000000085,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "找到稳态改善",
+      "steady_throughput_gain_min": 0.19395624524083743,
+      "steady_throughput_gain_max": 0.19587091358877107,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "a08bc788eed94539b827ba1bd30ebcaf",
+      "name": "test75 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 11491.140000000085,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "找到稳态改善",
+      "steady_throughput_gain_min": 0.19395624686687696,
+      "steady_throughput_gain_max": 0.1958709137658734,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "fdf4dcb904174e0caa607f859cdc6906",
+      "name": "test76 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 41068.34999999988,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "b2bfc0a272d845038dec815f2238f9b2",
+      "name": "test77 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 21210.07000000007,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "828c352edefd4d079102514da79b7614",
+      "name": "test78 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/395，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）\n  VTR 游标 0/309，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LA\n    ATR place 物料 [100002] DummyPort -> LA\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 1049.74\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 1049.74",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "d893905e7d2c4e8d88893a8ea3d9768c",
+      "name": "test79 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/395，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/327，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LA\n    ATR place 物料 [100000] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 1459.7899999999993\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 1459.7899999999993",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "9b0e66b42a6648a78b74eba6d68b04bb",
+      "name": "test80 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 57056.87000000022,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "8748706d273247819a61c15c5086e239",
+      "name": "test81 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 41158.34999999988,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "541c9d8cc19c4d25947705e3f006dc28",
+      "name": "test82 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 45992.75000000043,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "42f42c080946490fb149190fe2f53773",
+      "name": "test83 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/395，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）\n  VTR 游标 0/309，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LA\n    ATR place 物料 [100002] DummyPort -> LA\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 2086.4499999999994\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 2086.4499999999994",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "a47e2a9721df4afba5fb1812b837b4ef",
+      "name": "test84 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/395，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/327，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LA\n    ATR place 物料 [100000] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 2615.2200000000003\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 2615.2200000000003",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "4371661e964e4a83bed968f6a225d612",
+      "name": "test85 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 57053.60000000022,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "20bd6db20fd144eb86f15787274d5bae",
+      "name": "test86 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 35021.360000000015,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "3bc9850d0d6f46cc91e291d28ab82d27",
+      "name": "test87 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 21171.970000000063,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "9690371fb85a4541a2924b917646a125",
+      "name": "test88 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 53682.22000000021,
+      "baseline_error": null,
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "430e747a396b4299ab561a6a60519d3d",
+      "name": "test89 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 68842.66000000057,
+      "baseline_error": null,
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "37a6f0925b764f398ea349c4422f70d3",
+      "name": "test90 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 57007.36000000021,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "7bd51ed6d7464c49a95daf8ae158b638",
+      "name": "test91 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 35056.20000000002,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "4ffc456b25474b7daf198f3cc1c55a02",
+      "name": "test92 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 21256.350000000075,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "740b7e761e9c4c69bd8dfab015183662",
+      "name": "test93 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/443，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）\n  VTR 游标 0/345，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LA\n    ATR place 物料 [100002] DummyPort -> LA\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 2300.610000000001\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 2300.610000000001",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "8e4f7155b8d64883a9c698faae3c1cc7",
+      "name": "test94 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/443，期望 ATR 在 DummyPort 取100004（阶段 supply，第 0 轮）\n  VTR 游标 0/369，期望 VTR 在 LA 取100004（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LA\n    ATR place 物料 [100002] DummyPort -> LA\n  物料 100004 位于 DummyPort 槽 5，阶段 completed，可用时刻 2681.040000000002\n  物料 100004 位于 DummyPort 槽 5，阶段 completed，可用时刻 2681.040000000002",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "c8c8817ca54949c6ad0c03fcead76de4",
+      "name": "test95 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 57007.36000000021,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "8b08d6d394664d3d9ee7204e29f79aad",
+      "name": "test96 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 95711.44000000192,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "35ef90698d6c45188ac9e774b29d45a8",
+      "name": "test97 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 71711.44000000383,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "043fd966b99d4d8188be1c8232d9a366",
+      "name": "test98 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/395，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）\n  VTR 游标 0/753，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LB\n    ATR place 物料 [100002] DummyPort -> LA\n    ATR place 物料 [100002] DummyPort -> LA\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 5863.330000000001\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 5863.330000000001",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "c947194d576a43d98b621cc28799a792",
+      "name": "test99 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/395，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/753，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 4 个：\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LB\n    ATR place 物料 [100000] DummyPort -> LA\n    ATR place 物料 [100000] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 5203.330000000001\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 5203.330000000001",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "735338ad0065465a8303e8da841fe714",
+      "name": "test100 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 117320.98000000112,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "65016213eb9e43cc8bf09caef60e778c",
+      "name": "test101 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 15992.300000000008,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "fa23ab8ab1dd4b7284b48d4336878676",
+      "name": "test102 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 16231.839999999976,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "01cc29a1e1b24b92973806f5c6466a90",
+      "name": "test103 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 17710.069999999985,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "c8dea2342d8a4a6ba9c803f1b2f5ea58",
+      "name": "test104 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/288，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 2 个：\n    ATR place 物料 [100004] DummyPort -> LA\n    ATR place 物料 [100004] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 245.40000000000006\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 245.40000000000006",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "1b615d05d8a44755b0ea4a4be585033c",
+      "name": "test105 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/306，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 2 个：\n    ATR place 物料 [100004] DummyPort -> LA\n    ATR place 物料 [100004] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 193.4900000000001\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 193.4900000000001",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "cfccb4ec18ae4dde86ba976d68924ce0",
+      "name": "test106 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 19318.690000000104,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "02fffde2c1c3420d87f809f407176dea",
+      "name": "test107 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 35711.850000000166,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "626b1a0e10234a949e7b4daaafbe72d5",
+      "name": "test108 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 22005.770000000146,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "ee1b90ca82c34d29b1ccc16bc59a9946",
+      "name": "test109 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）\n  VTR 游标 0/447，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）\n  当前候选 2 个：\n    ATR place 物料 [100004] DummyPort -> LA\n    ATR place 物料 [100004] DummyPort -> LA\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 247.58000000000007\n  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 247.58000000000007",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "aab76ec95a2a434e94ac6b6733c7c615",
+      "name": "test110 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/459，期望 VTR 在 LB 取100002（阶段 startup，第 1 轮）\n  当前候选 2 个：\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LB\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 194.43000000000006\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 194.43000000000006",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "54dc73d89bea4b2bbe23c74292b1768e",
+      "name": "test111 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 15992.300000000008,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "6772b95726824c2aa94d7ab1ffdaf313",
+      "name": "test112 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 16280.240000000005,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "b04cf6f9f7534d3c946522feee648722",
+      "name": "test113 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 22673.880000000096,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "c129dff09dbe421da507484e59a95975",
+      "name": "test114 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/288，期望 VTR 在 LB 取100002（阶段 startup，第 1 轮）\n  当前候选 2 个：\n    ATR place 物料 [100004] DummyPort -> LB\n    ATR place 物料 [100004] DummyPort -> LB\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 246.54000000000005\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 246.54000000000005",
+      "clean_types": [
+        "dummy"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "c34b8e2e357949e3ae10a0e0525e1c9a",
+      "name": "test115 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：\n  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）\n  VTR 游标 0/306，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）\n  当前候选 2 个：\n    ATR place 物料 [100004] DummyPort -> LA\n    ATR place 物料 [100004] DummyPort -> LA\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 193.4900000000001\n  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 193.4900000000001",
+      "clean_types": [
+        "dummywac"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "4d5e67328bb946229043b7499f5de877",
+      "name": "test116 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 39381.58999999993,
+      "baseline_error": null,
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "9f44a1c363bc425aac8b92401c4f6e2e",
+      "name": "test117 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 61991.60999999957,
+      "baseline_error": null,
+      "clean_types": [
+        "postclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "eeb2471bdf354a50afd26227904105f8",
+      "name": "test118 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 36995.14000000038,
+      "baseline_error": null,
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "3a64704030184383a97ff935118bddd9",
+      "name": "test119 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "[residency-not-supported] 晶圆 1 的工序存在驻留上限，本策略尚未接入精确定时复核链路。",
+      "clean_types": [
+        "preclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "c8cc726427294fec8eaea88b9ca7df5a",
+      "name": "test120 (2)",
+      "baseline_passed": false,
+      "baseline_makespan_seconds": null,
+      "baseline_error": "[qtime-not-supported] 晶圆 1 的工序存在 Q-time 上限，本策略尚未接入精确定时复核链路。",
+      "clean_types": [
+        "wacclean"
+      ],
+      "research_category": "清洁未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "6a7d5e1dc8724e8f8fb31639364cf29a",
+      "name": "test121 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 13446.230000000123,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "找到稳态改善",
+      "steady_throughput_gain_min": 0.19395624728748206,
+      "steady_throughput_gain_max": 0.1958709152314433,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "485b78f82940494599b9042d63a7163f",
+      "name": "test122 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 13446.230000000123,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "找到稳态改善",
+      "steady_throughput_gain_min": 0.19395624728748206,
+      "steady_throughput_gain_max": 0.1958709152314433,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "a7d4b160e8814afdb0bbea457471f65a",
+      "name": "test123 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 13445.930000000131,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "找到稳态改善",
+      "steady_throughput_gain_min": 0.19395624728748206,
+      "steady_throughput_gain_max": 0.1958709152314433,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "5247f6438f294fe1bd86872a56f6469a",
+      "name": "test124 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 13445.930000000131,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "找到稳态改善",
+      "steady_throughput_gain_min": 0.19395624728748206,
+      "steady_throughput_gain_max": 0.1958709152314433,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "c59b9e0e02d446768da75bf382ade9fc",
+      "name": "test125 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 304693.8800000003,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "候选未改善稳态",
+      "steady_throughput_gain_min": 9.378453569297562e-11,
+      "steady_throughput_gain_max": 2.4375701457302057e-10,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "21750f302b694be1b5de29b3cce0253d",
+      "name": "test126 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 304693.8800000003,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "候选未改善稳态",
+      "steady_throughput_gain_min": 9.378453569297562e-11,
+      "steady_throughput_gain_max": 2.4375701457302057e-10,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "79f283e909ba4070bd53d1d24dfa65f4",
+      "name": "test127 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 304693.8800000003,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "候选未改善稳态",
+      "steady_throughput_gain_min": 9.378453569297562e-11,
+      "steady_throughput_gain_max": 2.4375701457302057e-10,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "0d1f542d0c9647a3aa4a97abe99d15e4",
+      "name": "test128 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 304693.8800000003,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "候选未改善稳态",
+      "steady_throughput_gain_min": 9.378453569297562e-11,
+      "steady_throughput_gain_max": 2.4375701457302057e-10,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "059d0e34245048b29e3ca095d215243e",
+      "name": "test129 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 13560.830000000007,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "重入未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    },
+    {
+      "test_id": "5314e88c09f842d39f56a50094c754ee",
+      "name": "test130 (2)",
+      "baseline_passed": true,
+      "baseline_makespan_seconds": 304695.43000000034,
+      "baseline_error": null,
+      "clean_types": [],
+      "research_category": "重入未建模",
+      "steady_throughput_gain_min": null,
+      "steady_throughput_gain_max": null,
+      "optimized_finite_makespan_seconds": null,
+      "finite_makespan_reduction": null
+    }
+  ]
+}

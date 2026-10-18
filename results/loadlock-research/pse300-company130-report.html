@@ -1,0 +1,228 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PSE300 公司 130 例 · LoadLock 研究</title><style>
+body{margin:0;background:#101925;color:#dce7f5;font:16px/1.7 system-ui,"Microsoft YaHei",sans-serif}main{max-width:1150px;margin:auto;padding:36px 24px}h1{font-size:29px}h2{font-size:21px;margin-top:32px}p{color:#b3c2d5}.note{padding:15px 20px;border-left:3px solid #f9bf50;background:#202b3b}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;border-bottom:1px solid #304055;padding:10px}th{background:#213146;position:sticky;top:0}a{color:#7dd3fc}pre{white-space:pre-wrap;max-width:500px;font-size:12px}code{color:#a5d9fc}.cards{display:flex;gap:16px;flex-wrap:wrap}.cards>div{background:#1b293b;padding:20px;flex:1;border-radius:10px}.cards b{display:block;font-size:30px;color:#fff}input{padding:10px;margin:12px 0;background:#213146;color:white;border:1px solid #53657d;border-radius:6px;width:260px}</style>
+<main><p>2026-10-16 · 原始测试不变 · 固定 PM 访问顺序</p><h1>PSE300：两片 LoadLock 的收益取决于工况</h1>
+<div class="cards"><div>Cycle 整例基线<b>103 / 130 通过</b></div><div>无清洁稳态比较<b>10 例有改善</b></div><div>清洁用例<b>107 例待建模</b></div></div>
+<p class="note">尚未运行“优化后的 Cycle”完整 130 例。下表的工期是原 Cycle 实测；改善百分比是各单端口、同工艺无限稳态模型的吞吐潜力，两者不能相减得出整例收益。</p>
+<h2>本轮得到的证据</h2><p>全部 130 例的标准 Route 都授权 LA/LB 两个槽。23 例无清洁，其中 20 例可比较，3 例重入未建模；107 例含清洁。36 个工艺与端口组合的最佳候选通过独立 LP、8 周期物料回放和平台稳态物理 MoveList 校验。</p>
+<p>test6/7/73/74/75/121–124 的三 PM 并行短工艺：37.930–38.230 → 31.768–31.968 秒/片，稳态吞吐提升 19.40%–19.59%。test8：37.930–38.230 → 32.453 秒/片，提升 16.88%–17.80%。这不是任意长周期全局最优证明。</p>
+<p>原 Cycle 基线有 25 例 Dummy 补片模板停滞、1 例有限驻留不支持、1 例 Q-time 不支持；失败例不计算收益。当前 cleanHandoffLoadLockOverlap 已开启，不能把这项已有优化重复计为新收益。</p>
+<h2>搜索空间与接入方式</h2><p>固定 PM 骨架后，每轮有 10 种 VAC 进出锁与取放组合；k 轮原始序列为 10ᵏ，另需枚举压力分批和 ATM 顺序。仅保留 LoadLock Swap 时为 2ᵏ。周期长度不设上限则不是固定有限种；三 PM 轮转与 AABB 要共同展开 12 轮。</p>
+<p>可以在 Cycle 宏计划之前增加候选选择，仍由 Machine 处理真实门、压力和清洁。需要同时落地完整压力批、有限批次启动收尾、重算状态恢复和新序列审计。当前 dedicatedLoadLockBatchSize=2 仅覆盖分向锁，不能直接开启共享锁 AABB。</p>
+<p>无清洁模型已计入 Pump/Vent，固定候选的周期是最短可行周期。加入清洁后须增加空腔交接、WAC 计数、PJob 与 Dummy 库存相位；仅把清洁时长平均摊入加工时间不能证明最优。</p>
+<h2>逐例证据</h2><label>筛选 <input id="filter" placeholder="测试名、清洁类型或状态"></label><table><thead><tr><th>测试</th><th>清洁</th><th>原 Cycle 工期 / 秒</th><th>研究范围</th><th>稳态吞吐潜力</th></tr></thead><tbody><tr><td>test1 (2)</td><td>preclean</td><td>11,918.16</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test2 (2)</td><td>postclean</td><td>12,248.16</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test3 (2)</td><td>wacclean</td><td>11,896.28</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test4 (2)</td><td>dummy</td><td>14,185.63</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test5 (2)</td><td>dummywac</td><td>14,418.32</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test6 (2)</td><td>无清洁</td><td>11,491.14</td><td>找到稳态改善</td><td>19.40%—19.59%</td></tr><tr><td>test7 (2)</td><td>无清洁</td><td>11,491.14</td><td>找到稳态改善</td><td>19.40%—19.59%</td></tr><tr><td>test8 (2)</td><td>无清洁</td><td>11,510.53</td><td>找到稳态改善</td><td>16.88%—17.80%</td></tr><tr><td>test9 (2)</td><td>无清洁</td><td>46,872.83</td><td>候选未改善稳态</td><td>0.00%—0.00%</td></tr><tr><td>test10 (2)</td><td>无清洁</td><td>81,872.83</td><td>候选未改善稳态</td><td>0.00%—0.00%</td></tr><tr><td>test11 (2)</td><td>preclean</td><td>13,699.45</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test12 (2)</td><td>postclean</td><td>12,285.55</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test13 (2)</td><td>postclean</td><td>14,409.45</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test14 (2)</td><td>wacclean</td><td>18,025.24</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test15 (2)</td><td>dummy</td><td>14,185.63</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test16 (2)</td><td>dummywac</td><td>98,931.31</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test17 (2)</td><td>preclean</td><td>18,856.13</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test18 (2)</td><td>postclean</td><td>35,677.43</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test19 (2)</td><td>wacclean</td><td>21,966.07</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test20 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/366，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LA
+    ATR place 物料 [100000] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test21 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/378，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LA
+    ATR place 物料 [100000] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test22 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/378，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LA
+    ATR place 物料 [100004] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test23 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/378，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LA
+    ATR place 物料 [100004] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test24 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）
+  VTR 游标 0/366，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LA
+    ATR place 物料 [100004] DummyPort -&gt; LA
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 178.88
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 178.88</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test25 (2)</td><td>wacclean</td><td>81,966.07</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test26 (2)</td><td>postclean</td><td>246,167.43</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test27 (2)</td><td>preclean</td><td>304,916.64</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test28 (2)</td><td>无清洁</td><td>304,681.13</td><td>候选未改善稳态</td><td>0.00%—0.00%</td></tr><tr><td>test29 (2)</td><td>无清洁</td><td>139,751.13</td><td>候选未改善稳态</td><td>0.00%—0.00%</td></tr><tr><td>test30 (2)</td><td>无清洁</td><td>304,920.09</td><td>候选未改善稳态</td><td>0.00%—0.00%</td></tr><tr><td>test31 (2)</td><td>preclean</td><td>11,570.78</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test32 (2)</td><td>postclean</td><td>11,680.78</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test33 (2)</td><td>wacclean</td><td>11,538.40</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test34 (2)</td><td>dummy</td><td>13,114.18</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test35 (2)</td><td>dummywac</td><td>13,310.68</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test36 (2)</td><td>preclean</td><td>49,764.44</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test37 (2)</td><td>postclean</td><td>40,874.44</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test38 (2)</td><td>wacclean</td><td>60,927.97</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test39 (2)</td><td>dummy</td><td>33,164.20</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test40 (2)</td><td>dummywac</td><td>67,026.58</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test41 (2)</td><td>preclean</td><td>67,764.44</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test42 (2)</td><td>postclean</td><td>11,680.78</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test43 (2)</td><td>wacclean</td><td>60,380.29</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test44 (2)</td><td>dummy</td><td>87,164.20</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test45 (2)</td><td>dummywac</td><td>247,026.58</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test46 (2)</td><td>preclean</td><td>34,791.80</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test47 (2)</td><td>wacclean</td><td>60,257.46</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test48 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/288，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LA
+    ATR place 物料 [100004] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test49 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/303，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LA
+    ATR place 物料 [100000] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 148.29000000000002</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test50 (2)</td><td>postclean</td><td>14,466.61</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test51 (2)</td><td>无清洁</td><td>13,430.08</td><td>候选未改善稳态</td><td>0.00%—0.00%</td></tr><tr><td>test52 (2)</td><td>preclean</td><td>34,911.49</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test53 (2)</td><td>wacclean</td><td>60,312.91</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test54 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/288，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LA
+    ATR place 物料 [100004] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test55 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/288，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LA
+    ATR place 物料 [100000] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 178.88</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test56 (2)</td><td>postclean</td><td>34,909.28</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test57 (2)</td><td>preclean</td><td>27,055.42</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test58 (2)</td><td>postclean</td><td>89,711.44</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test59 (2)</td><td>wacclean</td><td>61,223.44</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test60 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/347，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）
+  VTR 游标 0/714，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LA
+    ATR place 物料 [100002] DummyPort -&gt; LA
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 105.30999999999999
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 105.30999999999999</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test61 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/347，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）
+  VTR 游标 0/714，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LA
+    ATR place 物料 [100002] DummyPort -&gt; LA
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 102.79
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 102.79</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test62 (2)</td><td>无清洁</td><td>54,911.44</td><td>重入未建模</td><td>未计算</td></tr><tr><td>test63 (2)</td><td>preclean</td><td>12,347.34</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test64 (2)</td><td>wacclean</td><td>11,806.52</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test65 (2)</td><td>dummy</td><td>16,832.67</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test66 (2)</td><td>dummywac</td><td>17,055.41</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test67 (2)</td><td>postclean</td><td>13,037.34</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test68 (2)</td><td>preclean</td><td>32,408.08</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test69 (2)</td><td>wacclean</td><td>17,352.05</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test70 (2)</td><td>dummy</td><td>19,278.15</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test71 (2)</td><td>dummywac</td><td>17,066.83</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test72 (2)</td><td>postclean</td><td>13,037.34</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test73 (2)</td><td>无清洁</td><td>11,491.14</td><td>找到稳态改善</td><td>19.40%—19.59%</td></tr><tr><td>test74 (2)</td><td>无清洁</td><td>11,491.14</td><td>找到稳态改善</td><td>19.40%—19.59%</td></tr><tr><td>test75 (2)</td><td>无清洁</td><td>11,491.14</td><td>找到稳态改善</td><td>19.40%—19.59%</td></tr><tr><td>test76 (2)</td><td>preclean</td><td>41,068.35</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test77 (2)</td><td>wacclean</td><td>21,210.07</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test78 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/395，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）
+  VTR 游标 0/309，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LA
+    ATR place 物料 [100002] DummyPort -&gt; LA
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 1049.74
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 1049.74</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test79 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/395，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/327，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LA
+    ATR place 物料 [100000] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 1459.7899999999993
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 1459.7899999999993</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test80 (2)</td><td>postclean</td><td>57,056.87</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test81 (2)</td><td>preclean</td><td>41,158.35</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test82 (2)</td><td>wacclean</td><td>45,992.75</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test83 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/395，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）
+  VTR 游标 0/309，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LA
+    ATR place 物料 [100002] DummyPort -&gt; LA
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 2086.4499999999994
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 2086.4499999999994</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test84 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/395，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/327，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LA
+    ATR place 物料 [100000] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 2615.2200000000003
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 2615.2200000000003</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test85 (2)</td><td>postclean</td><td>57,053.60</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test86 (2)</td><td>preclean</td><td>35,021.36</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test87 (2)</td><td>wacclean</td><td>21,171.97</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test88 (2)</td><td>dummy</td><td>53,682.22</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test89 (2)</td><td>dummywac</td><td>68,842.66</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test90 (2)</td><td>postclean</td><td>57,007.36</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test91 (2)</td><td>preclean</td><td>35,056.20</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test92 (2)</td><td>wacclean</td><td>21,256.35</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test93 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/443，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）
+  VTR 游标 0/345，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LA
+    ATR place 物料 [100002] DummyPort -&gt; LA
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 2300.610000000001
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 2300.610000000001</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test94 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/443，期望 ATR 在 DummyPort 取100004（阶段 supply，第 0 轮）
+  VTR 游标 0/369，期望 VTR 在 LA 取100004（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LA
+    ATR place 物料 [100002] DummyPort -&gt; LA
+  物料 100004 位于 DummyPort 槽 5，阶段 completed，可用时刻 2681.040000000002
+  物料 100004 位于 DummyPort 槽 5，阶段 completed，可用时刻 2681.040000000002</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test95 (2)</td><td>postclean</td><td>57,007.36</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test96 (2)</td><td>preclean</td><td>95,711.44</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test97 (2)</td><td>wacclean</td><td>71,711.44</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test98 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/395，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）
+  VTR 游标 0/753，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LB
+    ATR place 物料 [100002] DummyPort -&gt; LA
+    ATR place 物料 [100002] DummyPort -&gt; LA
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 5863.330000000001
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 5863.330000000001</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test99 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/395，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/753，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 4 个：
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LB
+    ATR place 物料 [100000] DummyPort -&gt; LA
+    ATR place 物料 [100000] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 5203.330000000001
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 5203.330000000001</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test100 (2)</td><td>postclean</td><td>117,320.98</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test101 (2)</td><td>preclean</td><td>15,992.30</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test102 (2)</td><td>postclean</td><td>16,231.84</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test103 (2)</td><td>wacclean</td><td>17,710.07</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test104 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/288，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 2 个：
+    ATR place 物料 [100004] DummyPort -&gt; LA
+    ATR place 物料 [100004] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 245.40000000000006
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 245.40000000000006</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test105 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/306，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 2 个：
+    ATR place 物料 [100004] DummyPort -&gt; LA
+    ATR place 物料 [100004] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 193.4900000000001
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 193.4900000000001</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test106 (2)</td><td>preclean</td><td>19,318.69</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test107 (2)</td><td>postclean</td><td>35,711.85</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test108 (2)</td><td>wacclean</td><td>22,005.77</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test109 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100000（阶段 supply，第 0 轮）
+  VTR 游标 0/447，期望 VTR 在 LA 取100000（阶段 startup，第 1 轮）
+  当前候选 2 个：
+    ATR place 物料 [100004] DummyPort -&gt; LA
+    ATR place 物料 [100004] DummyPort -&gt; LA
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 247.58000000000007
+  物料 100000 位于 DummyPort 槽 1，阶段 completed，可用时刻 247.58000000000007</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test110 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/459，期望 VTR 在 LB 取100002（阶段 startup，第 1 轮）
+  当前候选 2 个：
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LB
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 194.43000000000006
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 194.43000000000006</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test111 (2)</td><td>preclean</td><td>15,992.30</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test112 (2)</td><td>postclean</td><td>16,280.24</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test113 (2)</td><td>wacclean</td><td>22,673.88</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test114 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/288，期望 VTR 在 LB 取100002（阶段 startup，第 1 轮）
+  当前候选 2 个：
+    ATR place 物料 [100004] DummyPort -&gt; LB
+    ATR place 物料 [100004] DummyPort -&gt; LB
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 246.54000000000005
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 246.54000000000005</pre></details></td><td>dummy</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test115 (2)</summary><pre>CJobCycle 补片（LP1 2/4） 算法执行失败：单片循环模板无法继续推进：
+  ATR 游标 0/371，期望 ATR 在 DummyPort 取100002（阶段 supply，第 0 轮）
+  VTR 游标 0/306，期望 VTR 在 LA 取100002（阶段 startup，第 1 轮）
+  当前候选 2 个：
+    ATR place 物料 [100004] DummyPort -&gt; LA
+    ATR place 物料 [100004] DummyPort -&gt; LA
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 193.4900000000001
+  物料 100002 位于 DummyPort 槽 3，阶段 completed，可用时刻 193.4900000000001</pre></details></td><td>dummywac</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test116 (2)</td><td>preclean</td><td>39,381.59</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test117 (2)</td><td>postclean</td><td>61,991.61</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test118 (2)</td><td>wacclean</td><td>36,995.14</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test119 (2)</summary><pre>[residency-not-supported] 晶圆 1 的工序存在驻留上限，本策略尚未接入精确定时复核链路。</pre></details></td><td>preclean</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td><details><summary>test120 (2)</summary><pre>[qtime-not-supported] 晶圆 1 的工序存在 Q-time 上限，本策略尚未接入精确定时复核链路。</pre></details></td><td>wacclean</td><td>失败</td><td>清洁未建模</td><td>未计算</td></tr><tr><td>test121 (2)</td><td>无清洁</td><td>13,446.23</td><td>找到稳态改善</td><td>19.40%—19.59%</td></tr><tr><td>test122 (2)</td><td>无清洁</td><td>13,446.23</td><td>找到稳态改善</td><td>19.40%—19.59%</td></tr><tr><td>test123 (2)</td><td>无清洁</td><td>13,445.93</td><td>找到稳态改善</td><td>19.40%—19.59%</td></tr><tr><td>test124 (2)</td><td>无清洁</td><td>13,445.93</td><td>找到稳态改善</td><td>19.40%—19.59%</td></tr><tr><td>test125 (2)</td><td>无清洁</td><td>304,693.88</td><td>候选未改善稳态</td><td>0.00%—0.00%</td></tr><tr><td>test126 (2)</td><td>无清洁</td><td>304,693.88</td><td>候选未改善稳态</td><td>0.00%—0.00%</td></tr><tr><td>test127 (2)</td><td>无清洁</td><td>304,693.88</td><td>候选未改善稳态</td><td>0.00%—0.00%</td></tr><tr><td>test128 (2)</td><td>无清洁</td><td>304,693.88</td><td>候选未改善稳态</td><td>0.00%—0.00%</td></tr><tr><td>test129 (2)</td><td>无清洁</td><td>13,560.83</td><td>重入未建模</td><td>未计算</td></tr><tr><td>test130 (2)</td><td>无清洁</td><td>304,695.43</td><td>重入未建模</td><td>未计算</td></tr></tbody></table>
+<p><a href="pse300-company130-summary.json">紧凑汇总</a> · <a href="pse300-company130-cycle-baseline.json">完整基线结果</a> · <a href="pse300-company130-profile.json">输入画像与候选动作证据</a></p></main>
+<script>document.getElementById('filter').addEventListener('input',event=>{const query=event.target.value.toLowerCase();document.querySelectorAll('tbody tr').forEach(row=>row.hidden=!row.textContent.toLowerCase().includes(query));});</script></html>

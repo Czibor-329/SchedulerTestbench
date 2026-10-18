@@ -1,0 +1,1816 @@
+{
+  "case_count": 27,
+  "all_consistent": true,
+  "maximum_error_seconds": 8.076430901837739e-08,
+  "cases": [
+    {
+      "lock": "shared-bidirectional",
+      "kind": "single-node",
+      "process": 10,
+      "actual": 37.93000000000029,
+      "theory": 37.93000003760274,
+      "difference": 3.7602447378048964e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 2.0,
+        "phase_count": 1,
+        "phase_factors": [
+          2
+        ],
+        "candidate_rounds": 2,
+        "physical_members_per_unit": 1,
+        "start_seconds": 5333.470000000008,
+        "end_seconds": 5409.330000000009,
+        "full_period_seconds": 75.86000000000058,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.159999999999854,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 20.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 10.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.55999999999949,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 21.140000000001237
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "shared-bidirectional",
+      "kind": "single-node",
+      "process": 80,
+      "actual": 97.36000000000001,
+      "theory": 97.36000001288978,
+      "difference": 1.288977102831268e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 2.0,
+        "phase_count": 1,
+        "phase_factors": [
+          2
+        ],
+        "candidate_rounds": 2,
+        "physical_members_per_unit": 1,
+        "start_seconds": 239.11,
+        "end_seconds": 433.83000000000004,
+        "full_period_seconds": 194.72000000000003,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.159999999999968,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 160.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 80.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.56000000000006,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "shared-bidirectional",
+      "kind": "single-node",
+      "process": 240,
+      "actual": 257.35999999999996,
+      "theory": 257.3600000211411,
+      "difference": 2.1141147499292856e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 2.0,
+        "phase_count": 1,
+        "phase_factors": [
+          2
+        ],
+        "candidate_rounds": 2,
+        "physical_members_per_unit": 1,
+        "start_seconds": 559.11,
+        "end_seconds": 1073.83,
+        "full_period_seconds": 514.7199999999999,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.159999999999968,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 480.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 240.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.559999999999945,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "shared-bidirectional",
+      "kind": "serial",
+      "process": 10,
+      "actual": 45.469999999999985,
+      "theory": 45.470000003870226,
+      "difference": 3.8702410165569745e-09,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 2.0,
+        "phase_count": 1,
+        "phase_factors": [
+          2
+        ],
+        "candidate_rounds": 2,
+        "physical_members_per_unit": 1,
+        "start_seconds": 196.90000000000006,
+        "end_seconds": 287.84000000000003,
+        "full_period_seconds": 90.93999999999997,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.159999999999997,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 20.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 10.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.56000000000003,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 36.21999999999994
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "shared-bidirectional",
+      "kind": "serial",
+      "process": 80,
+      "actual": 97.36000000000001,
+      "theory": 97.36000001615554,
+      "difference": 1.6155524917849107e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 2.0,
+        "phase_count": 1,
+        "phase_factors": [
+          2
+        ],
+        "candidate_rounds": 2,
+        "physical_members_per_unit": 1,
+        "start_seconds": 433.83000000000004,
+        "end_seconds": 628.5500000000001,
+        "full_period_seconds": 194.72000000000003,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.160000000000082,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 160.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 80.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.559999999999945,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "shared-bidirectional",
+      "kind": "serial",
+      "process": 240,
+      "actual": 257.3599999999999,
+      "theory": 257.36000002949015,
+      "difference": 2.9490252018149476e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 2.0,
+        "phase_count": 1,
+        "phase_factors": [
+          2
+        ],
+        "candidate_rounds": 2,
+        "physical_members_per_unit": 1,
+        "start_seconds": 1073.83,
+        "end_seconds": 1588.5499999999997,
+        "full_period_seconds": 514.7199999999998,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.159999999999854,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 480.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 240.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.559999999999945,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "shared-bidirectional",
+      "kind": "parallel",
+      "process": 10,
+      "actual": 37.93000000000029,
+      "theory": 37.930000001836895,
+      "difference": 1.8366037579653494e-09,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 6.0,
+        "phase_count": 1,
+        "phase_factors": [
+          6
+        ],
+        "candidate_rounds": 6,
+        "physical_members_per_unit": 1,
+        "start_seconds": 5461.040000000007,
+        "end_seconds": 5688.620000000009,
+        "full_period_seconds": 227.58000000000175,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.159999999999854,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 20.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 10.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.55999999999949,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 172.8600000000024
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "shared-bidirectional",
+      "kind": "parallel",
+      "process": 80,
+      "actual": 37.93000000000029,
+      "theory": 37.93000000619897,
+      "difference": 6.198682456215465e-09,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 6.0,
+        "phase_count": 1,
+        "phase_factors": [
+          6
+        ],
+        "candidate_rounds": 6,
+        "physical_members_per_unit": 1,
+        "start_seconds": 5696.590000000009,
+        "end_seconds": 5924.170000000011,
+        "full_period_seconds": 227.58000000000175,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.159999999999854,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 160.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 80.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.55999999999949,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 32.8600000000024
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "shared-bidirectional",
+      "kind": "parallel",
+      "process": 240,
+      "actual": 85.78666666666665,
+      "theory": 85.78666667836832,
+      "difference": 1.1701672519848216e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 6.0,
+        "phase_count": 1,
+        "phase_factors": [
+          6
+        ],
+        "candidate_rounds": 6,
+        "physical_members_per_unit": 1,
+        "start_seconds": 559.11,
+        "end_seconds": 1073.83,
+        "full_period_seconds": 514.7199999999999,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.159999999999968,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 480.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 240.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.559999999999945,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "shared-bidirectional",
+      "kind": "mixed",
+      "process": 10,
+      "actual": 46.559999999999945,
+      "theory": 46.5600000238078,
+      "difference": 2.3807857019164658e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 2.0,
+        "phase_count": 1,
+        "phase_factors": [
+          2
+        ],
+        "candidate_rounds": 2,
+        "physical_members_per_unit": 1,
+        "start_seconds": 275.59000000000003,
+        "end_seconds": 368.7099999999999,
+        "full_period_seconds": 93.11999999999989,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.159999999999968,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 20.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 10.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.56000000000006,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 38.399999999999864
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "shared-bidirectional",
+      "kind": "mixed",
+      "process": 80,
+      "actual": 97.36000000000001,
+      "theory": 97.36000001053532,
+      "difference": 1.0535302408243297e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 2.0,
+        "phase_count": 1,
+        "phase_factors": [
+          2
+        ],
+        "candidate_rounds": 2,
+        "physical_members_per_unit": 1,
+        "start_seconds": 433.83000000000004,
+        "end_seconds": 628.5500000000001,
+        "full_period_seconds": 194.72000000000003,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.160000000000082,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 160.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 80.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.559999999999945,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "shared-bidirectional",
+      "kind": "mixed",
+      "process": 240,
+      "actual": 257.3599999999999,
+      "theory": 257.36000003495974,
+      "difference": 3.4959839467774145e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 2.0,
+        "phase_count": 1,
+        "phase_factors": [
+          2
+        ],
+        "candidate_rounds": 2,
+        "physical_members_per_unit": 1,
+        "start_seconds": 1073.83,
+        "end_seconds": 1588.5499999999997,
+        "full_period_seconds": 514.7199999999998,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.159999999999854,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 480.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 240.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.559999999999945,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "dedicated-entry-exit",
+      "kind": "single-node",
+      "process": 10,
+      "actual": 51.91,
+      "theory": 51.91000001456822,
+      "difference": 1.4568222184152546e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 1.0,
+        "phase_count": 1,
+        "phase_factors": [
+          1
+        ],
+        "candidate_rounds": 1,
+        "physical_members_per_unit": 1,
+        "start_seconds": 157.87000000000003,
+        "end_seconds": 209.78000000000003,
+        "full_period_seconds": 51.91,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.5800000000000125,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 10.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 10.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.780000000000001,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 24.549999999999983
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "dedicated-entry-exit",
+      "kind": "single-node",
+      "process": 80,
+      "actual": 97.36000000000001,
+      "theory": 97.36000004251139,
+      "difference": 4.251137397659477e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 1.0,
+        "phase_count": 1,
+        "phase_factors": [
+          1
+        ],
+        "candidate_rounds": 1,
+        "physical_members_per_unit": 1,
+        "start_seconds": 141.75,
+        "end_seconds": 239.11,
+        "full_period_seconds": 97.36000000000001,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.5800000000000125,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 80.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 80.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.780000000000001,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "dedicated-entry-exit",
+      "kind": "single-node",
+      "process": 240,
+      "actual": 257.36,
+      "theory": 257.36000006333626,
+      "difference": 6.333624469334609e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 1.0,
+        "phase_count": 1,
+        "phase_factors": [
+          1
+        ],
+        "candidate_rounds": 1,
+        "physical_members_per_unit": 1,
+        "start_seconds": 301.75,
+        "end_seconds": 559.11,
+        "full_period_seconds": 257.36,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.580000000000041,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 240.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 240.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.779999999999973,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "dedicated-entry-exit",
+      "kind": "serial",
+      "process": 10,
+      "actual": 54.01000000000002,
+      "theory": 54.01000004686416,
+      "difference": 4.686413745957907e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 2.0,
+        "phase_count": 2,
+        "phase_factors": [
+          1
+        ],
+        "candidate_rounds": 1,
+        "physical_members_per_unit": 1,
+        "start_seconds": 209.78000000000003,
+        "end_seconds": 317.80000000000007,
+        "full_period_seconds": 108.02000000000004,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 9.159999999999997,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 2.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 20.0,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 10.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 25.560000000000002,
+            "terms": [
+              {
+                "count": 2.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 53.30000000000004
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "dedicated-entry-exit",
+      "kind": "serial",
+      "process": 80,
+      "actual": 97.36000000000001,
+      "theory": 97.36000001311766,
+      "difference": 1.3117642083670944e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 1.0,
+        "phase_count": 1,
+        "phase_factors": [
+          1
+        ],
+        "candidate_rounds": 1,
+        "physical_members_per_unit": 1,
+        "start_seconds": 239.11,
+        "end_seconds": 336.47,
+        "full_period_seconds": 97.36000000000001,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.579999999999984,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 80.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 80.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.78000000000003,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "dedicated-entry-exit",
+      "kind": "serial",
+      "process": 240,
+      "actual": 257.36,
+      "theory": 257.3600000356882,
+      "difference": 3.568817419363768e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 1.0,
+        "phase_count": 1,
+        "phase_factors": [
+          1
+        ],
+        "candidate_rounds": 1,
+        "physical_members_per_unit": 1,
+        "start_seconds": 559.11,
+        "end_seconds": 816.47,
+        "full_period_seconds": 257.36,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.580000000000041,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 240.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 240.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.779999999999973,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "dedicated-entry-exit",
+      "kind": "parallel",
+      "process": 10,
+      "actual": 51.90999999999997,
+      "theory": 51.910000014185776,
+      "difference": 1.418580808376646e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 3.0,
+        "phase_count": 1,
+        "phase_factors": [
+          3
+        ],
+        "candidate_rounds": 3,
+        "physical_members_per_unit": 1,
+        "start_seconds": 365.5099999999999,
+        "end_seconds": 521.2399999999998,
+        "full_period_seconds": 155.7299999999999,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.579999999999984,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 10.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 10.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.779999999999973,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 128.36999999999995
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "dedicated-entry-exit",
+      "kind": "parallel",
+      "process": 80,
+      "actual": 51.90999999999997,
+      "theory": 51.91000001516105,
+      "difference": 1.516108483201606e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 3.0,
+        "phase_count": 1,
+        "phase_factors": [
+          3
+        ],
+        "candidate_rounds": 3,
+        "physical_members_per_unit": 1,
+        "start_seconds": 365.5099999999999,
+        "end_seconds": 521.2399999999998,
+        "full_period_seconds": 155.7299999999999,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.579999999999984,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 80.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 80.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.779999999999973,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 58.36999999999995
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "dedicated-entry-exit",
+      "kind": "parallel",
+      "process": 240,
+      "actual": 85.78666666666663,
+      "theory": 85.78666669433063,
+      "difference": 2.7664000867844152e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 3.0,
+        "phase_count": 1,
+        "phase_factors": [
+          3
+        ],
+        "candidate_rounds": 3,
+        "physical_members_per_unit": 1,
+        "start_seconds": 816.47,
+        "end_seconds": 1073.83,
+        "full_period_seconds": 257.3599999999999,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.579999999999927,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 240.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 240.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.779999999999973,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "single-bidirectional",
+      "kind": "single-node",
+      "process": 10,
+      "actual": 92.27,
+      "theory": 92.2700000807643,
+      "difference": 8.076430901837739e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 1.0,
+        "phase_count": 1,
+        "phase_factors": [
+          1
+        ],
+        "candidate_rounds": 1,
+        "physical_members_per_unit": 1,
+        "start_seconds": 105.96000000000002,
+        "end_seconds": 198.23000000000002,
+        "full_period_seconds": 92.27,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.5800000000000125,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 10.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 10.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.780000000000001,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 64.90999999999998
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "single-bidirectional",
+      "kind": "single-node",
+      "process": 80,
+      "actual": 97.36000000000001,
+      "theory": 97.36000002082439,
+      "difference": 2.0824373336836288e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 1.0,
+        "phase_count": 1,
+        "phase_factors": [
+          1
+        ],
+        "candidate_rounds": 1,
+        "physical_members_per_unit": 1,
+        "start_seconds": 141.75,
+        "end_seconds": 239.11,
+        "full_period_seconds": 97.36000000000001,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.5800000000000125,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 80.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 80.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.780000000000001,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "single-bidirectional",
+      "kind": "single-node",
+      "process": 240,
+      "actual": 257.36,
+      "theory": 257.36000000024217,
+      "difference": 2.4215296434704214e-10,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 1.0,
+        "phase_count": 1,
+        "phase_factors": [
+          1
+        ],
+        "candidate_rounds": 1,
+        "physical_members_per_unit": 1,
+        "start_seconds": 301.75,
+        "end_seconds": 559.11,
+        "full_period_seconds": 257.36,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.580000000000041,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 240.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 240.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.779999999999973,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 0.0
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "single-bidirectional",
+      "kind": "parallel",
+      "process": 10,
+      "actual": 91.54333333333331,
+      "theory": 91.54333334041291,
+      "difference": 7.07960623458348e-09,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 3.0,
+        "phase_count": 1,
+        "phase_factors": [
+          3
+        ],
+        "candidate_rounds": 3,
+        "physical_members_per_unit": 1,
+        "start_seconds": 209.78000000000003,
+        "end_seconds": 484.40999999999997,
+        "full_period_seconds": 274.62999999999994,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.579999999999984,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 10.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 10.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.779999999999973,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 247.26999999999998
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "single-bidirectional",
+      "kind": "parallel",
+      "process": 80,
+      "actual": 91.54333333333334,
+      "theory": 91.54333333964694,
+      "difference": 6.313598532869946e-09,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 3.0,
+        "phase_count": 1,
+        "phase_factors": [
+          3
+        ],
+        "candidate_rounds": 3,
+        "physical_members_per_unit": 1,
+        "start_seconds": 484.40999999999997,
+        "end_seconds": 759.04,
+        "full_period_seconds": 274.63,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.580000000000041,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 80.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 80.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.779999999999973,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 177.26999999999998
+          }
+        ]
+      },
+      "consistent": true
+    },
+    {
+      "lock": "single-bidirectional",
+      "kind": "parallel",
+      "process": 240,
+      "actual": 91.5433333333333,
+      "theory": 91.5433333488193,
+      "difference": 1.5486008919651795e-08,
+      "validation": true,
+      "window": {
+        "basis": "no-clean-rotation",
+        "output_wafers": 3.0,
+        "phase_count": 1,
+        "phase_factors": [
+          3
+        ],
+        "candidate_rounds": 3,
+        "physical_members_per_unit": 1,
+        "start_seconds": 576.3800000000001,
+        "end_seconds": 851.01,
+        "full_period_seconds": 274.6299999999999,
+        "divisor": 1,
+        "verified_repeats": 3,
+        "reference": "首工序同相位产品放片完成",
+        "resource": "PM1",
+        "segments": [
+          {
+            "label": "开关门",
+            "seconds": 4.580000000000041,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 0.75
+              },
+              {
+                "count": 1.0,
+                "seconds": 3.83
+              }
+            ]
+          },
+          {
+            "label": "产品加工",
+            "seconds": 240.0,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 240.0
+              }
+            ]
+          },
+          {
+            "label": "取放与换片",
+            "seconds": 12.779999999999973,
+            "terms": [
+              {
+                "count": 1.0,
+                "seconds": 12.78
+              }
+            ]
+          },
+          {
+            "label": "同步等待",
+            "seconds": 17.269999999999868
+          }
+        ]
+      },
+      "consistent": true
+    }
+  ]
+}

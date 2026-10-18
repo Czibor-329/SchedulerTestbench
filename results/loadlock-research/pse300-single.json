@@ -1,0 +1,4178 @@
+{
+  "device": "PSE300",
+  "device_file": "D:\\project\\milp\\app\\data\\datasets\\460fad299cda43298409d7ce16d54906\\device.json",
+  "device_sha256": "55c19eeaeecd3ad8df09f3cb65b8fda15a6425e483fddcbaf13e8dbfbe63ce8d",
+  "scope": "No Clean, LP1, fixed PM Swap, FIFO within pressure batches; offline event model",
+  "limitations": [
+    "No production MoveList replay or cold-start proof",
+    "No persistent second wafer across PM swaps",
+    "FIFO checked by repeated material replay of improving candidates",
+    "Budgeted search does not prove global optimality"
+  ],
+  "results": [
+    {
+      "shape": "single",
+      "process_seconds": 0.0,
+      "rounds": 2,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 37.93000003326917,
+      "lower_bound_seconds_per_wafer": 31.040000612847507,
+      "best_seconds_per_wafer": 32.34000026744284,
+      "process_lower_bound": 17.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "existing-cycle",
+      "completed": true,
+      "counts": {
+        "words": 111,
+        "pressure_partitions": 719,
+        "atmosphere_orders": 1188,
+        "timing_checks": 96,
+        "improvements": 2,
+        "audit_rejections": 0
+      },
+      "witness": {
+        "word": [
+          [
+            "LA",
+            "LA",
+            "S"
+          ],
+          [
+            "LB",
+            "LB",
+            "S"
+          ]
+        ],
+        "groups": {
+          "LA": [
+            [
+              0
+            ]
+          ],
+          "LB": [
+            [
+              2
+            ]
+          ]
+        },
+        "orders": [
+          [
+            "F",
+            "R"
+          ],
+          [
+            "F",
+            "R"
+          ]
+        ],
+        "tasks": [
+          [
+            4,
+            5
+          ],
+          [
+            6,
+            7
+          ],
+          [
+            8,
+            9
+          ],
+          [
+            10,
+            11
+          ]
+        ],
+        "task_materials": [
+          {
+            "kind": "F",
+            "vacuum_event": 0,
+            "material_shift": 1
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 0,
+            "material_shift": 0
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 2,
+            "material_shift": 1
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 2,
+            "material_shift": 0
+          }
+        ],
+        "atmosphere_sequence": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "vacuum_sequence": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "graph": {
+          "actions": [
+            {
+              "index": 0,
+              "station": "LA",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.87,
+              "body": 12.78,
+              "after": 0.88,
+              "process": 0.0,
+              "round": 0
+            },
+            {
+              "index": 1,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 0.0,
+              "round": 0
+            },
+            {
+              "index": 2,
+              "station": "LB",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.83,
+              "body": 12.78,
+              "after": 0.9,
+              "process": 0.0,
+              "round": 1
+            },
+            {
+              "index": 3,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 0.0,
+              "round": 1
+            },
+            {
+              "index": 4,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 5,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.64,
+              "body": 4.1,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 6,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.64,
+              "body": 4.15,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 7,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 8,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 9,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.53,
+              "body": 4.1,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 10,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.53,
+              "body": 4.15,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 11,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            }
+          ],
+          "edges": [
+            [
+              0,
+              1,
+              14.43,
+              0
+            ],
+            [
+              0,
+              1,
+              16.61,
+              0
+            ],
+            [
+              1,
+              2,
+              14.43,
+              0
+            ],
+            [
+              1,
+              2,
+              13.61,
+              0
+            ],
+            [
+              2,
+              3,
+              14.43,
+              0
+            ],
+            [
+              2,
+              3,
+              16.61,
+              0
+            ],
+            [
+              3,
+              0,
+              14.43,
+              1
+            ],
+            [
+              3,
+              0,
+              13.649999999999999,
+              1
+            ],
+            [
+              1,
+              3,
+              17.36,
+              0
+            ],
+            [
+              3,
+              1,
+              17.36,
+              1
+            ],
+            [
+              4,
+              5,
+              5.25,
+              0
+            ],
+            [
+              4,
+              5,
+              4.79,
+              0
+            ],
+            [
+              6,
+              7,
+              5.25,
+              0
+            ],
+            [
+              6,
+              7,
+              5.25,
+              0
+            ],
+            [
+              0,
+              5,
+              33.6,
+              0
+            ],
+            [
+              5,
+              6,
+              5.77,
+              0
+            ],
+            [
+              6,
+              0,
+              25.310000000000002,
+              1
+            ],
+            [
+              8,
+              9,
+              5.25,
+              0
+            ],
+            [
+              8,
+              9,
+              4.680000000000001,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              2,
+              9,
+              33.45,
+              0
+            ],
+            [
+              9,
+              10,
+              5.55,
+              0
+            ],
+            [
+              10,
+              2,
+              25.66,
+              1
+            ],
+            [
+              5,
+              6,
+              4.1,
+              0
+            ],
+            [
+              7,
+              8,
+              4.1,
+              0
+            ],
+            [
+              9,
+              10,
+              4.1,
+              0
+            ],
+            [
+              11,
+              4,
+              4.1,
+              1
+            ],
+            [
+              4,
+              7,
+              6.35,
+              0
+            ],
+            [
+              7,
+              8,
+              6.299999999999999,
+              0
+            ],
+            [
+              8,
+              11,
+              6.35,
+              0
+            ],
+            [
+              11,
+              4,
+              6.299999999999999,
+              1
+            ]
+          ],
+          "labels": [
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LB",
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LA",
+            "station:PM1",
+            "station:PM1",
+            "robot:ATR",
+            "prepare:LA",
+            "robot:ATR",
+            "prepare:LP1",
+            "station:LA",
+            "station:LA",
+            "station:LA",
+            "robot:ATR",
+            "prepare:LB",
+            "robot:ATR",
+            "prepare:LP1",
+            "station:LB",
+            "station:LB",
+            "station:LB",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1"
+          ],
+          "offsets": [
+            0.0,
+            16.61,
+            31.04,
+            47.65,
+            16.909999465114325,
+            33.6,
+            39.370000000000005,
+            44.620000000000005,
+            50.92,
+            64.49000000000001,
+            70.04,
+            75.29
+          ],
+          "period_seconds": 64.68000053488568
+        }
+      },
+      "elapsed_seconds": 0.15599999998812564,
+      "certificate": "baseline-or-enumerated-family",
+      "verification": {
+        "passed": true,
+        "linear_program": {
+          "success": true,
+          "period_seconds": 64.68,
+          "status": 2,
+          "solver": "Gurobi LP"
+        },
+        "period_matches": true,
+        "replay": {
+          "passed": true,
+          "issues": [],
+          "repeated_periods": 8,
+          "maximum_occupancy": {
+            "ATR": 1,
+            "VTR": 2,
+            "LA": 2,
+            "LB": 2
+          },
+          "fifo": true
+        },
+        "production_move_validation": false
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 0.0,
+      "rounds": 4,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 37.93000003326917,
+      "lower_bound_seconds_per_wafer": 31.040000612847507,
+      "best_seconds_per_wafer": 31.95000023651721,
+      "process_lower_bound": 17.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "previous-search",
+      "completed": false,
+      "counts": {
+        "words": 83,
+        "pressure_partitions": 3500,
+        "atmosphere_orders": 12816,
+        "timing_checks": 13440,
+        "improvements": 1,
+        "audit_rejections": 0
+      },
+      "witness": {
+        "word": [
+          [
+            "LA",
+            "LA",
+            "S"
+          ],
+          [
+            "LA",
+            "LA",
+            "S"
+          ],
+          [
+            "LB",
+            "LB",
+            "S"
+          ],
+          [
+            "LB",
+            "LB",
+            "S"
+          ]
+        ],
+        "groups": {
+          "LA": [
+            [
+              0,
+              2
+            ]
+          ],
+          "LB": [
+            [
+              4,
+              6
+            ]
+          ]
+        },
+        "orders": [
+          [
+            "R",
+            "R",
+            "F",
+            "F"
+          ],
+          [
+            "R",
+            "R",
+            "F",
+            "F"
+          ]
+        ],
+        "tasks": [
+          [
+            8,
+            9
+          ],
+          [
+            10,
+            11
+          ],
+          [
+            12,
+            13
+          ],
+          [
+            14,
+            15
+          ],
+          [
+            16,
+            17
+          ],
+          [
+            18,
+            19
+          ],
+          [
+            20,
+            21
+          ],
+          [
+            22,
+            23
+          ]
+        ],
+        "task_materials": [
+          {
+            "kind": "R",
+            "vacuum_event": 0,
+            "material_shift": 0
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 2,
+            "material_shift": 0
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 0,
+            "material_shift": 1
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 2,
+            "material_shift": 1
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 4,
+            "material_shift": 0
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 6,
+            "material_shift": 0
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 4,
+            "material_shift": 1
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 6,
+            "material_shift": 1
+          }
+        ],
+        "atmosphere_sequence": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "vacuum_sequence": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "graph": {
+          "actions": [
+            {
+              "index": 0,
+              "station": "LA",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.87,
+              "body": 12.78,
+              "after": 0.88,
+              "process": 0.0,
+              "round": 0
+            },
+            {
+              "index": 1,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 0.0,
+              "round": 0
+            },
+            {
+              "index": 2,
+              "station": "LA",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.87,
+              "body": 12.78,
+              "after": 0.88,
+              "process": 0.0,
+              "round": 1
+            },
+            {
+              "index": 3,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 0.0,
+              "round": 1
+            },
+            {
+              "index": 4,
+              "station": "LB",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.83,
+              "body": 12.78,
+              "after": 0.9,
+              "process": 0.0,
+              "round": 2
+            },
+            {
+              "index": 5,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 0.0,
+              "round": 2
+            },
+            {
+              "index": 6,
+              "station": "LB",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.83,
+              "body": 12.78,
+              "after": 0.9,
+              "process": 0.0,
+              "round": 3
+            },
+            {
+              "index": 7,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 0.0,
+              "round": 3
+            },
+            {
+              "index": 8,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.64,
+              "body": 4.15,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 9,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 10,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.64,
+              "body": 4.15,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 11,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 12,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 13,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.64,
+              "body": 4.1,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 14,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 15,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.64,
+              "body": 4.1,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 16,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.53,
+              "body": 4.15,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 17,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 18,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.53,
+              "body": 4.15,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 19,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 20,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 21,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.53,
+              "body": 4.1,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 22,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 23,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.53,
+              "body": 4.1,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            }
+          ],
+          "edges": [
+            [
+              0,
+              1,
+              14.43,
+              0
+            ],
+            [
+              0,
+              1,
+              16.61,
+              0
+            ],
+            [
+              1,
+              2,
+              14.43,
+              0
+            ],
+            [
+              1,
+              2,
+              13.649999999999999,
+              0
+            ],
+            [
+              2,
+              3,
+              14.43,
+              0
+            ],
+            [
+              2,
+              3,
+              16.61,
+              0
+            ],
+            [
+              3,
+              4,
+              14.43,
+              0
+            ],
+            [
+              3,
+              4,
+              13.61,
+              0
+            ],
+            [
+              4,
+              5,
+              14.43,
+              0
+            ],
+            [
+              4,
+              5,
+              16.61,
+              0
+            ],
+            [
+              5,
+              6,
+              14.43,
+              0
+            ],
+            [
+              5,
+              6,
+              13.61,
+              0
+            ],
+            [
+              6,
+              7,
+              14.43,
+              0
+            ],
+            [
+              6,
+              7,
+              16.61,
+              0
+            ],
+            [
+              7,
+              0,
+              14.43,
+              1
+            ],
+            [
+              7,
+              0,
+              13.649999999999999,
+              1
+            ],
+            [
+              1,
+              3,
+              17.36,
+              0
+            ],
+            [
+              3,
+              5,
+              17.36,
+              0
+            ],
+            [
+              5,
+              7,
+              17.36,
+              0
+            ],
+            [
+              7,
+              1,
+              17.36,
+              1
+            ],
+            [
+              0,
+              2,
+              14.53,
+              0
+            ],
+            [
+              8,
+              9,
+              5.25,
+              0
+            ],
+            [
+              8,
+              9,
+              5.25,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              12,
+              13,
+              5.25,
+              0
+            ],
+            [
+              12,
+              13,
+              4.79,
+              0
+            ],
+            [
+              14,
+              15,
+              5.25,
+              0
+            ],
+            [
+              14,
+              15,
+              4.79,
+              0
+            ],
+            [
+              2,
+              8,
+              33.6,
+              0
+            ],
+            [
+              8,
+              10,
+              5.82,
+              0
+            ],
+            [
+              10,
+              13,
+              5.82,
+              0
+            ],
+            [
+              13,
+              15,
+              5.77,
+              0
+            ],
+            [
+              15,
+              0,
+              25.26,
+              1
+            ],
+            [
+              4,
+              6,
+              14.51,
+              0
+            ],
+            [
+              16,
+              17,
+              5.25,
+              0
+            ],
+            [
+              16,
+              17,
+              5.25,
+              0
+            ],
+            [
+              18,
+              19,
+              5.25,
+              0
+            ],
+            [
+              18,
+              19,
+              5.25,
+              0
+            ],
+            [
+              20,
+              21,
+              5.25,
+              0
+            ],
+            [
+              20,
+              21,
+              4.680000000000001,
+              0
+            ],
+            [
+              22,
+              23,
+              5.25,
+              0
+            ],
+            [
+              22,
+              23,
+              4.680000000000001,
+              0
+            ],
+            [
+              6,
+              16,
+              33.45,
+              0
+            ],
+            [
+              16,
+              18,
+              5.6000000000000005,
+              0
+            ],
+            [
+              18,
+              21,
+              5.6000000000000005,
+              0
+            ],
+            [
+              21,
+              23,
+              5.55,
+              0
+            ],
+            [
+              23,
+              4,
+              25.61,
+              1
+            ],
+            [
+              9,
+              10,
+              5.199999999999999,
+              0
+            ],
+            [
+              11,
+              12,
+              4.1,
+              0
+            ],
+            [
+              13,
+              14,
+              5.199999999999999,
+              0
+            ],
+            [
+              15,
+              16,
+              5.199999999999999,
+              0
+            ],
+            [
+              17,
+              18,
+              5.199999999999999,
+              0
+            ],
+            [
+              19,
+              20,
+              4.1,
+              0
+            ],
+            [
+              21,
+              22,
+              5.199999999999999,
+              0
+            ],
+            [
+              23,
+              8,
+              5.199999999999999,
+              1
+            ],
+            [
+              9,
+              11,
+              6.299999999999999,
+              0
+            ],
+            [
+              11,
+              12,
+              6.299999999999999,
+              0
+            ],
+            [
+              12,
+              14,
+              6.35,
+              0
+            ],
+            [
+              14,
+              17,
+              6.35,
+              0
+            ],
+            [
+              17,
+              19,
+              6.299999999999999,
+              0
+            ],
+            [
+              19,
+              20,
+              6.299999999999999,
+              0
+            ],
+            [
+              20,
+              22,
+              6.35,
+              0
+            ],
+            [
+              22,
+              9,
+              6.35,
+              1
+            ]
+          ],
+          "labels": [
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LA",
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LB",
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LB",
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LA",
+            "station:PM1",
+            "station:PM1",
+            "station:PM1",
+            "station:PM1",
+            "station:LA",
+            "robot:ATR",
+            "prepare:LP1",
+            "robot:ATR",
+            "prepare:LP1",
+            "robot:ATR",
+            "prepare:LA",
+            "robot:ATR",
+            "prepare:LA",
+            "station:LA",
+            "station:LA",
+            "station:LA",
+            "station:LA",
+            "station:LA",
+            "station:LB",
+            "robot:ATR",
+            "prepare:LP1",
+            "robot:ATR",
+            "prepare:LP1",
+            "robot:ATR",
+            "prepare:LB",
+            "robot:ATR",
+            "prepare:LB",
+            "station:LB",
+            "station:LB",
+            "station:LB",
+            "station:LB",
+            "station:LB",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1"
+          ],
+          "offsets": [
+            0.0,
+            16.61,
+            31.04,
+            47.65,
+            62.08,
+            78.69,
+            93.12,
+            109.73,
+            64.64,
+            69.89,
+            75.09,
+            80.34,
+            86.64,
+            91.89,
+            97.09,
+            102.34,
+            126.57000000000001,
+            131.82,
+            137.01999999999998,
+            142.26999999999998,
+            148.57,
+            153.82,
+            159.01999999999998,
+            164.26999999999998
+          ],
+          "period_seconds": 127.80000094606883
+        }
+      },
+      "elapsed_seconds": 5.015999999974156,
+      "certificate": "best-found-only",
+      "verification": {
+        "passed": true,
+        "linear_program": {
+          "success": true,
+          "period_seconds": 127.80000000000001,
+          "status": 2,
+          "solver": "Gurobi LP"
+        },
+        "period_matches": true,
+        "replay": {
+          "passed": true,
+          "issues": [],
+          "repeated_periods": 8,
+          "maximum_occupancy": {
+            "ATR": 1,
+            "VTR": 2,
+            "LA": 2,
+            "LB": 2
+          },
+          "fifo": true
+        },
+        "production_move_validation": false
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 10.0,
+      "rounds": 2,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 37.93000003760274,
+      "lower_bound_seconds_per_wafer": 31.040000612847507,
+      "best_seconds_per_wafer": 32.34000027113775,
+      "process_lower_bound": 27.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "existing-cycle",
+      "completed": true,
+      "counts": {
+        "words": 111,
+        "pressure_partitions": 719,
+        "atmosphere_orders": 1188,
+        "timing_checks": 96,
+        "improvements": 2,
+        "audit_rejections": 0
+      },
+      "witness": {
+        "word": [
+          [
+            "LA",
+            "LA",
+            "S"
+          ],
+          [
+            "LB",
+            "LB",
+            "S"
+          ]
+        ],
+        "groups": {
+          "LA": [
+            [
+              0
+            ]
+          ],
+          "LB": [
+            [
+              2
+            ]
+          ]
+        },
+        "orders": [
+          [
+            "F",
+            "R"
+          ],
+          [
+            "F",
+            "R"
+          ]
+        ],
+        "tasks": [
+          [
+            4,
+            5
+          ],
+          [
+            6,
+            7
+          ],
+          [
+            8,
+            9
+          ],
+          [
+            10,
+            11
+          ]
+        ],
+        "task_materials": [
+          {
+            "kind": "F",
+            "vacuum_event": 0,
+            "material_shift": 1
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 0,
+            "material_shift": 0
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 2,
+            "material_shift": 1
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 2,
+            "material_shift": 0
+          }
+        ],
+        "atmosphere_sequence": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "vacuum_sequence": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "graph": {
+          "actions": [
+            {
+              "index": 0,
+              "station": "LA",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.87,
+              "body": 12.78,
+              "after": 0.88,
+              "process": 0.0,
+              "round": 0
+            },
+            {
+              "index": 1,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 10.0,
+              "round": 0
+            },
+            {
+              "index": 2,
+              "station": "LB",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.83,
+              "body": 12.78,
+              "after": 0.9,
+              "process": 0.0,
+              "round": 1
+            },
+            {
+              "index": 3,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 10.0,
+              "round": 1
+            },
+            {
+              "index": 4,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 5,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.64,
+              "body": 4.1,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 6,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.64,
+              "body": 4.15,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 7,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 8,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 9,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.53,
+              "body": 4.1,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 10,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.53,
+              "body": 4.15,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 11,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            }
+          ],
+          "edges": [
+            [
+              0,
+              1,
+              14.43,
+              0
+            ],
+            [
+              0,
+              1,
+              16.61,
+              0
+            ],
+            [
+              1,
+              2,
+              14.43,
+              0
+            ],
+            [
+              1,
+              2,
+              13.61,
+              0
+            ],
+            [
+              2,
+              3,
+              14.43,
+              0
+            ],
+            [
+              2,
+              3,
+              16.61,
+              0
+            ],
+            [
+              3,
+              0,
+              14.43,
+              1
+            ],
+            [
+              3,
+              0,
+              13.649999999999999,
+              1
+            ],
+            [
+              1,
+              3,
+              27.36,
+              0
+            ],
+            [
+              3,
+              1,
+              27.36,
+              1
+            ],
+            [
+              4,
+              5,
+              5.25,
+              0
+            ],
+            [
+              4,
+              5,
+              4.79,
+              0
+            ],
+            [
+              6,
+              7,
+              5.25,
+              0
+            ],
+            [
+              6,
+              7,
+              5.25,
+              0
+            ],
+            [
+              0,
+              5,
+              33.6,
+              0
+            ],
+            [
+              5,
+              6,
+              5.77,
+              0
+            ],
+            [
+              6,
+              0,
+              25.310000000000002,
+              1
+            ],
+            [
+              8,
+              9,
+              5.25,
+              0
+            ],
+            [
+              8,
+              9,
+              4.680000000000001,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              2,
+              9,
+              33.45,
+              0
+            ],
+            [
+              9,
+              10,
+              5.55,
+              0
+            ],
+            [
+              10,
+              2,
+              25.66,
+              1
+            ],
+            [
+              5,
+              6,
+              4.1,
+              0
+            ],
+            [
+              7,
+              8,
+              4.1,
+              0
+            ],
+            [
+              9,
+              10,
+              4.1,
+              0
+            ],
+            [
+              11,
+              4,
+              4.1,
+              1
+            ],
+            [
+              4,
+              7,
+              6.35,
+              0
+            ],
+            [
+              7,
+              8,
+              6.299999999999999,
+              0
+            ],
+            [
+              8,
+              11,
+              6.35,
+              0
+            ],
+            [
+              11,
+              4,
+              6.299999999999999,
+              1
+            ]
+          ],
+          "labels": [
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LB",
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LA",
+            "station:PM1",
+            "station:PM1",
+            "robot:ATR",
+            "prepare:LA",
+            "robot:ATR",
+            "prepare:LP1",
+            "station:LA",
+            "station:LA",
+            "station:LA",
+            "robot:ATR",
+            "prepare:LB",
+            "robot:ATR",
+            "prepare:LP1",
+            "station:LB",
+            "station:LB",
+            "station:LB",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1"
+          ],
+          "offsets": [
+            0.0,
+            16.61,
+            31.04,
+            47.65,
+            16.90999945772451,
+            33.6,
+            39.370000000000005,
+            44.620000000000005,
+            50.92,
+            64.49000000000001,
+            70.04,
+            75.29
+          ],
+          "period_seconds": 64.6800005422755
+        }
+      },
+      "elapsed_seconds": 0.15600000001722947,
+      "certificate": "baseline-or-enumerated-family",
+      "verification": {
+        "passed": true,
+        "linear_program": {
+          "success": true,
+          "period_seconds": 64.68,
+          "status": 2,
+          "solver": "Gurobi LP"
+        },
+        "period_matches": true,
+        "replay": {
+          "passed": true,
+          "issues": [],
+          "repeated_periods": 8,
+          "maximum_occupancy": {
+            "ATR": 1,
+            "VTR": 2,
+            "LA": 2,
+            "LB": 2
+          },
+          "fifo": true
+        },
+        "production_move_validation": false
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 10.0,
+      "rounds": 4,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 37.93000003760274,
+      "lower_bound_seconds_per_wafer": 31.040000612847507,
+      "best_seconds_per_wafer": 31.949999999215798,
+      "process_lower_bound": 27.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "previous-search",
+      "completed": false,
+      "counts": {
+        "words": 83,
+        "pressure_partitions": 3511,
+        "atmosphere_orders": 12862,
+        "timing_checks": 13440,
+        "improvements": 1,
+        "audit_rejections": 0
+      },
+      "witness": {
+        "word": [
+          [
+            "LA",
+            "LA",
+            "S"
+          ],
+          [
+            "LA",
+            "LA",
+            "S"
+          ],
+          [
+            "LB",
+            "LB",
+            "S"
+          ],
+          [
+            "LB",
+            "LB",
+            "S"
+          ]
+        ],
+        "groups": {
+          "LA": [
+            [
+              0,
+              2
+            ]
+          ],
+          "LB": [
+            [
+              4,
+              6
+            ]
+          ]
+        },
+        "orders": [
+          [
+            "R",
+            "R",
+            "F",
+            "F"
+          ],
+          [
+            "R",
+            "R",
+            "F",
+            "F"
+          ]
+        ],
+        "tasks": [
+          [
+            8,
+            9
+          ],
+          [
+            10,
+            11
+          ],
+          [
+            12,
+            13
+          ],
+          [
+            14,
+            15
+          ],
+          [
+            16,
+            17
+          ],
+          [
+            18,
+            19
+          ],
+          [
+            20,
+            21
+          ],
+          [
+            22,
+            23
+          ]
+        ],
+        "task_materials": [
+          {
+            "kind": "R",
+            "vacuum_event": 0,
+            "material_shift": 0
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 2,
+            "material_shift": 0
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 0,
+            "material_shift": 1
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 2,
+            "material_shift": 1
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 4,
+            "material_shift": 0
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 6,
+            "material_shift": 0
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 4,
+            "material_shift": 1
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 6,
+            "material_shift": 1
+          }
+        ],
+        "atmosphere_sequence": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "vacuum_sequence": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "graph": {
+          "actions": [
+            {
+              "index": 0,
+              "station": "LA",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.87,
+              "body": 12.78,
+              "after": 0.88,
+              "process": 0.0,
+              "round": 0
+            },
+            {
+              "index": 1,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 10.0,
+              "round": 0
+            },
+            {
+              "index": 2,
+              "station": "LA",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.87,
+              "body": 12.78,
+              "after": 0.88,
+              "process": 0.0,
+              "round": 1
+            },
+            {
+              "index": 3,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 10.0,
+              "round": 1
+            },
+            {
+              "index": 4,
+              "station": "LB",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.83,
+              "body": 12.78,
+              "after": 0.9,
+              "process": 0.0,
+              "round": 2
+            },
+            {
+              "index": 5,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 10.0,
+              "round": 2
+            },
+            {
+              "index": 6,
+              "station": "LB",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.83,
+              "body": 12.78,
+              "after": 0.9,
+              "process": 0.0,
+              "round": 3
+            },
+            {
+              "index": 7,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 10.0,
+              "round": 3
+            },
+            {
+              "index": 8,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.64,
+              "body": 4.15,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 9,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 10,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.64,
+              "body": 4.15,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 11,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 12,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 13,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.64,
+              "body": 4.1,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 14,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 15,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.64,
+              "body": 4.1,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 16,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.53,
+              "body": 4.15,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 17,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 18,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.53,
+              "body": 4.15,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 19,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 20,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 21,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.53,
+              "body": 4.1,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 22,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 23,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.53,
+              "body": 4.1,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            }
+          ],
+          "edges": [
+            [
+              0,
+              1,
+              14.43,
+              0
+            ],
+            [
+              0,
+              1,
+              16.61,
+              0
+            ],
+            [
+              1,
+              2,
+              14.43,
+              0
+            ],
+            [
+              1,
+              2,
+              13.649999999999999,
+              0
+            ],
+            [
+              2,
+              3,
+              14.43,
+              0
+            ],
+            [
+              2,
+              3,
+              16.61,
+              0
+            ],
+            [
+              3,
+              4,
+              14.43,
+              0
+            ],
+            [
+              3,
+              4,
+              13.61,
+              0
+            ],
+            [
+              4,
+              5,
+              14.43,
+              0
+            ],
+            [
+              4,
+              5,
+              16.61,
+              0
+            ],
+            [
+              5,
+              6,
+              14.43,
+              0
+            ],
+            [
+              5,
+              6,
+              13.61,
+              0
+            ],
+            [
+              6,
+              7,
+              14.43,
+              0
+            ],
+            [
+              6,
+              7,
+              16.61,
+              0
+            ],
+            [
+              7,
+              0,
+              14.43,
+              1
+            ],
+            [
+              7,
+              0,
+              13.649999999999999,
+              1
+            ],
+            [
+              1,
+              3,
+              27.36,
+              0
+            ],
+            [
+              3,
+              5,
+              27.36,
+              0
+            ],
+            [
+              5,
+              7,
+              27.36,
+              0
+            ],
+            [
+              7,
+              1,
+              27.36,
+              1
+            ],
+            [
+              0,
+              2,
+              14.53,
+              0
+            ],
+            [
+              8,
+              9,
+              5.25,
+              0
+            ],
+            [
+              8,
+              9,
+              5.25,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              12,
+              13,
+              5.25,
+              0
+            ],
+            [
+              12,
+              13,
+              4.79,
+              0
+            ],
+            [
+              14,
+              15,
+              5.25,
+              0
+            ],
+            [
+              14,
+              15,
+              4.79,
+              0
+            ],
+            [
+              2,
+              8,
+              33.6,
+              0
+            ],
+            [
+              8,
+              10,
+              5.82,
+              0
+            ],
+            [
+              10,
+              13,
+              5.82,
+              0
+            ],
+            [
+              13,
+              15,
+              5.77,
+              0
+            ],
+            [
+              15,
+              0,
+              25.26,
+              1
+            ],
+            [
+              4,
+              6,
+              14.51,
+              0
+            ],
+            [
+              16,
+              17,
+              5.25,
+              0
+            ],
+            [
+              16,
+              17,
+              5.25,
+              0
+            ],
+            [
+              18,
+              19,
+              5.25,
+              0
+            ],
+            [
+              18,
+              19,
+              5.25,
+              0
+            ],
+            [
+              20,
+              21,
+              5.25,
+              0
+            ],
+            [
+              20,
+              21,
+              4.680000000000001,
+              0
+            ],
+            [
+              22,
+              23,
+              5.25,
+              0
+            ],
+            [
+              22,
+              23,
+              4.680000000000001,
+              0
+            ],
+            [
+              6,
+              16,
+              33.45,
+              0
+            ],
+            [
+              16,
+              18,
+              5.6000000000000005,
+              0
+            ],
+            [
+              18,
+              21,
+              5.6000000000000005,
+              0
+            ],
+            [
+              21,
+              23,
+              5.55,
+              0
+            ],
+            [
+              23,
+              4,
+              25.61,
+              1
+            ],
+            [
+              9,
+              10,
+              5.199999999999999,
+              0
+            ],
+            [
+              11,
+              12,
+              4.1,
+              0
+            ],
+            [
+              13,
+              14,
+              5.199999999999999,
+              0
+            ],
+            [
+              15,
+              16,
+              5.199999999999999,
+              0
+            ],
+            [
+              17,
+              18,
+              5.199999999999999,
+              0
+            ],
+            [
+              19,
+              20,
+              4.1,
+              0
+            ],
+            [
+              21,
+              22,
+              5.199999999999999,
+              0
+            ],
+            [
+              23,
+              8,
+              5.199999999999999,
+              1
+            ],
+            [
+              9,
+              11,
+              6.299999999999999,
+              0
+            ],
+            [
+              11,
+              12,
+              6.299999999999999,
+              0
+            ],
+            [
+              12,
+              14,
+              6.35,
+              0
+            ],
+            [
+              14,
+              17,
+              6.35,
+              0
+            ],
+            [
+              17,
+              19,
+              6.299999999999999,
+              0
+            ],
+            [
+              19,
+              20,
+              6.299999999999999,
+              0
+            ],
+            [
+              20,
+              22,
+              6.35,
+              0
+            ],
+            [
+              22,
+              9,
+              6.35,
+              1
+            ]
+          ],
+          "labels": [
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LA",
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LB",
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LB",
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LA",
+            "station:PM1",
+            "station:PM1",
+            "station:PM1",
+            "station:PM1",
+            "station:LA",
+            "robot:ATR",
+            "prepare:LP1",
+            "robot:ATR",
+            "prepare:LP1",
+            "robot:ATR",
+            "prepare:LA",
+            "robot:ATR",
+            "prepare:LA",
+            "station:LA",
+            "station:LA",
+            "station:LA",
+            "station:LA",
+            "station:LA",
+            "station:LB",
+            "robot:ATR",
+            "prepare:LP1",
+            "robot:ATR",
+            "prepare:LP1",
+            "robot:ATR",
+            "prepare:LB",
+            "robot:ATR",
+            "prepare:LB",
+            "station:LB",
+            "station:LB",
+            "station:LB",
+            "station:LB",
+            "station:LB",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1"
+          ],
+          "offsets": [
+            0.0,
+            16.61,
+            31.04,
+            47.65,
+            62.08,
+            78.69,
+            93.12,
+            109.73,
+            64.64,
+            69.89,
+            75.09,
+            80.34,
+            86.64,
+            91.89,
+            97.09,
+            102.34,
+            126.57000000000001,
+            131.82,
+            137.01999999999998,
+            142.26999999999998,
+            148.57,
+            153.82,
+            159.01999999999998,
+            164.26999999999998
+          ],
+          "period_seconds": 127.79999999686319
+        }
+      },
+      "elapsed_seconds": 5.01600000000326,
+      "certificate": "best-found-only",
+      "verification": {
+        "passed": true,
+        "linear_program": {
+          "success": true,
+          "period_seconds": 127.80000000000001,
+          "status": 2,
+          "solver": "Gurobi LP"
+        },
+        "period_matches": true,
+        "replay": {
+          "passed": true,
+          "issues": [],
+          "repeated_periods": 8,
+          "maximum_occupancy": {
+            "ATR": 1,
+            "VTR": 2,
+            "LA": 2,
+            "LB": 2
+          },
+          "fifo": true
+        },
+        "production_move_validation": false
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 15.0,
+      "rounds": 2,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 37.93000002437097,
+      "lower_bound_seconds_per_wafer": 32.36,
+      "best_seconds_per_wafer": 32.360000157349525,
+      "process_lower_bound": 32.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "existing-cycle",
+      "completed": true,
+      "counts": {
+        "words": 111,
+        "pressure_partitions": 719,
+        "atmosphere_orders": 1188,
+        "timing_checks": 96,
+        "improvements": 2,
+        "audit_rejections": 0
+      },
+      "witness": {
+        "word": [
+          [
+            "LA",
+            "LA",
+            "S"
+          ],
+          [
+            "LB",
+            "LB",
+            "S"
+          ]
+        ],
+        "groups": {
+          "LA": [
+            [
+              0
+            ]
+          ],
+          "LB": [
+            [
+              2
+            ]
+          ]
+        },
+        "orders": [
+          [
+            "F",
+            "R"
+          ],
+          [
+            "F",
+            "R"
+          ]
+        ],
+        "tasks": [
+          [
+            4,
+            5
+          ],
+          [
+            6,
+            7
+          ],
+          [
+            8,
+            9
+          ],
+          [
+            10,
+            11
+          ]
+        ],
+        "task_materials": [
+          {
+            "kind": "F",
+            "vacuum_event": 0,
+            "material_shift": 1
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 0,
+            "material_shift": 0
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 2,
+            "material_shift": 1
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 2,
+            "material_shift": 0
+          }
+        ],
+        "atmosphere_sequence": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "vacuum_sequence": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "graph": {
+          "actions": [
+            {
+              "index": 0,
+              "station": "LA",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.87,
+              "body": 12.78,
+              "after": 0.88,
+              "process": 0.0,
+              "round": 0
+            },
+            {
+              "index": 1,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 15.0,
+              "round": 0
+            },
+            {
+              "index": 2,
+              "station": "LB",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.83,
+              "body": 12.78,
+              "after": 0.9,
+              "process": 0.0,
+              "round": 1
+            },
+            {
+              "index": 3,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 15.0,
+              "round": 1
+            },
+            {
+              "index": 4,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 5,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.64,
+              "body": 4.1,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 6,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.64,
+              "body": 4.15,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 7,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 8,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 9,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.53,
+              "body": 4.1,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 10,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.53,
+              "body": 4.15,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 11,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            }
+          ],
+          "edges": [
+            [
+              0,
+              1,
+              14.43,
+              0
+            ],
+            [
+              0,
+              1,
+              16.61,
+              0
+            ],
+            [
+              1,
+              2,
+              14.43,
+              0
+            ],
+            [
+              1,
+              2,
+              13.61,
+              0
+            ],
+            [
+              2,
+              3,
+              14.43,
+              0
+            ],
+            [
+              2,
+              3,
+              16.61,
+              0
+            ],
+            [
+              3,
+              0,
+              14.43,
+              1
+            ],
+            [
+              3,
+              0,
+              13.649999999999999,
+              1
+            ],
+            [
+              1,
+              3,
+              32.36,
+              0
+            ],
+            [
+              3,
+              1,
+              32.36,
+              1
+            ],
+            [
+              4,
+              5,
+              5.25,
+              0
+            ],
+            [
+              4,
+              5,
+              4.79,
+              0
+            ],
+            [
+              6,
+              7,
+              5.25,
+              0
+            ],
+            [
+              6,
+              7,
+              5.25,
+              0
+            ],
+            [
+              0,
+              5,
+              33.6,
+              0
+            ],
+            [
+              5,
+              6,
+              5.77,
+              0
+            ],
+            [
+              6,
+              0,
+              25.310000000000002,
+              1
+            ],
+            [
+              8,
+              9,
+              5.25,
+              0
+            ],
+            [
+              8,
+              9,
+              4.680000000000001,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              2,
+              9,
+              33.45,
+              0
+            ],
+            [
+              9,
+              10,
+              5.55,
+              0
+            ],
+            [
+              10,
+              2,
+              25.66,
+              1
+            ],
+            [
+              5,
+              6,
+              4.1,
+              0
+            ],
+            [
+              7,
+              8,
+              4.1,
+              0
+            ],
+            [
+              9,
+              10,
+              4.1,
+              0
+            ],
+            [
+              11,
+              4,
+              4.1,
+              1
+            ],
+            [
+              4,
+              7,
+              6.35,
+              0
+            ],
+            [
+              7,
+              8,
+              6.299999999999999,
+              0
+            ],
+            [
+              8,
+              11,
+              6.35,
+              0
+            ],
+            [
+              11,
+              4,
+              6.299999999999999,
+              1
+            ]
+          ],
+          "labels": [
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LB",
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LA",
+            "station:PM1",
+            "station:PM1",
+            "robot:ATR",
+            "prepare:LA",
+            "robot:ATR",
+            "prepare:LP1",
+            "station:LA",
+            "station:LA",
+            "station:LA",
+            "robot:ATR",
+            "prepare:LB",
+            "robot:ATR",
+            "prepare:LP1",
+            "station:LB",
+            "station:LB",
+            "station:LB",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1"
+          ],
+          "offsets": [
+            0.0,
+            16.61,
+            31.04,
+            48.97,
+            16.869999685300954,
+            33.6,
+            39.370000000000005,
+            44.620000000000005,
+            50.92,
+            64.49000000000001,
+            70.04,
+            75.29
+          ],
+          "period_seconds": 64.72000031469905
+        }
+      },
+      "elapsed_seconds": 0.15599999998812564,
+      "certificate": "fixed-PM-resource-bound",
+      "verification": {
+        "passed": true,
+        "linear_program": {
+          "success": true,
+          "period_seconds": 64.72,
+          "status": 2,
+          "solver": "Gurobi LP"
+        },
+        "period_matches": true,
+        "replay": {
+          "passed": true,
+          "issues": [],
+          "repeated_periods": 8,
+          "maximum_occupancy": {
+            "ATR": 1,
+            "VTR": 2,
+            "LA": 2,
+            "LB": 2
+          },
+          "fifo": true
+        },
+        "production_move_validation": false
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 15.0,
+      "rounds": 4,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 37.93000002437097,
+      "lower_bound_seconds_per_wafer": 32.36,
+      "best_seconds_per_wafer": 32.360000157349525,
+      "process_lower_bound": 32.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "previous-search",
+      "completed": true,
+      "counts": {
+        "words": 0,
+        "pressure_partitions": 0,
+        "atmosphere_orders": 0,
+        "timing_checks": 0,
+        "improvements": 0,
+        "audit_rejections": 0
+      },
+      "witness": null,
+      "certificate": "fixed-PM-resource-bound",
+      "elapsed_seconds": 0.0,
+      "verification": {
+        "status": "baseline-only-no-new-witness"
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 20.0,
+      "rounds": 2,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 37.93000003105321,
+      "lower_bound_seconds_per_wafer": 37.36,
+      "best_seconds_per_wafer": 37.360000186153314,
+      "process_lower_bound": 37.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "existing-cycle",
+      "completed": true,
+      "counts": {
+        "words": 111,
+        "pressure_partitions": 719,
+        "atmosphere_orders": 1188,
+        "timing_checks": 96,
+        "improvements": 2,
+        "audit_rejections": 0
+      },
+      "witness": {
+        "word": [
+          [
+            "LA",
+            "LA",
+            "S"
+          ],
+          [
+            "LB",
+            "LB",
+            "S"
+          ]
+        ],
+        "groups": {
+          "LA": [
+            [
+              0
+            ]
+          ],
+          "LB": [
+            [
+              2
+            ]
+          ]
+        },
+        "orders": [
+          [
+            "F",
+            "R"
+          ],
+          [
+            "F",
+            "R"
+          ]
+        ],
+        "tasks": [
+          [
+            4,
+            5
+          ],
+          [
+            6,
+            7
+          ],
+          [
+            8,
+            9
+          ],
+          [
+            10,
+            11
+          ]
+        ],
+        "task_materials": [
+          {
+            "kind": "F",
+            "vacuum_event": 0,
+            "material_shift": 1
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 0,
+            "material_shift": 0
+          },
+          {
+            "kind": "F",
+            "vacuum_event": 2,
+            "material_shift": 1
+          },
+          {
+            "kind": "R",
+            "vacuum_event": 2,
+            "material_shift": 0
+          }
+        ],
+        "atmosphere_sequence": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "vacuum_sequence": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "graph": {
+          "actions": [
+            {
+              "index": 0,
+              "station": "LA",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.87,
+              "body": 12.78,
+              "after": 0.88,
+              "process": 0.0,
+              "round": 0
+            },
+            {
+              "index": 1,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 20.0,
+              "round": 0
+            },
+            {
+              "index": 2,
+              "station": "LB",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 0.83,
+              "body": 12.78,
+              "after": 0.9,
+              "process": 0.0,
+              "round": 1
+            },
+            {
+              "index": 3,
+              "station": "PM1",
+              "robot": "VTR",
+              "kind": "swap",
+              "before": 3.83,
+              "body": 12.78,
+              "after": 0.75,
+              "process": 20.0,
+              "round": 1
+            },
+            {
+              "index": 4,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 5,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.64,
+              "body": 4.1,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 6,
+              "station": "LA",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.64,
+              "body": 4.15,
+              "after": 1.03,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 7,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 8,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 1.1,
+              "body": 4.15,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 9,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 0.53,
+              "body": 4.1,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 10,
+              "station": "LB",
+              "robot": "ATR",
+              "kind": "pick",
+              "before": 0.53,
+              "body": 4.15,
+              "after": 0.92,
+              "process": 0.0,
+              "round": -1
+            },
+            {
+              "index": 11,
+              "station": "LP1",
+              "robot": "ATR",
+              "kind": "place",
+              "before": 1.1,
+              "body": 4.1,
+              "after": 1.1,
+              "process": 0.0,
+              "round": -1
+            }
+          ],
+          "edges": [
+            [
+              0,
+              1,
+              14.43,
+              0
+            ],
+            [
+              0,
+              1,
+              16.61,
+              0
+            ],
+            [
+              1,
+              2,
+              14.43,
+              0
+            ],
+            [
+              1,
+              2,
+              13.61,
+              0
+            ],
+            [
+              2,
+              3,
+              14.43,
+              0
+            ],
+            [
+              2,
+              3,
+              16.61,
+              0
+            ],
+            [
+              3,
+              0,
+              14.43,
+              1
+            ],
+            [
+              3,
+              0,
+              13.649999999999999,
+              1
+            ],
+            [
+              1,
+              3,
+              37.36,
+              0
+            ],
+            [
+              3,
+              1,
+              37.36,
+              1
+            ],
+            [
+              4,
+              5,
+              5.25,
+              0
+            ],
+            [
+              4,
+              5,
+              4.79,
+              0
+            ],
+            [
+              6,
+              7,
+              5.25,
+              0
+            ],
+            [
+              6,
+              7,
+              5.25,
+              0
+            ],
+            [
+              0,
+              5,
+              33.6,
+              0
+            ],
+            [
+              5,
+              6,
+              5.77,
+              0
+            ],
+            [
+              6,
+              0,
+              25.310000000000002,
+              1
+            ],
+            [
+              8,
+              9,
+              5.25,
+              0
+            ],
+            [
+              8,
+              9,
+              4.680000000000001,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              10,
+              11,
+              5.25,
+              0
+            ],
+            [
+              2,
+              9,
+              33.45,
+              0
+            ],
+            [
+              9,
+              10,
+              5.55,
+              0
+            ],
+            [
+              10,
+              2,
+              25.66,
+              1
+            ],
+            [
+              5,
+              6,
+              4.1,
+              0
+            ],
+            [
+              7,
+              8,
+              4.1,
+              0
+            ],
+            [
+              9,
+              10,
+              4.1,
+              0
+            ],
+            [
+              11,
+              4,
+              4.1,
+              1
+            ],
+            [
+              4,
+              7,
+              6.35,
+              0
+            ],
+            [
+              7,
+              8,
+              6.299999999999999,
+              0
+            ],
+            [
+              8,
+              11,
+              6.35,
+              0
+            ],
+            [
+              11,
+              4,
+              6.299999999999999,
+              1
+            ]
+          ],
+          "labels": [
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LB",
+            "robot:VTR",
+            "prepare:PM1",
+            "robot:VTR",
+            "prepare:LA",
+            "station:PM1",
+            "station:PM1",
+            "robot:ATR",
+            "prepare:LA",
+            "robot:ATR",
+            "prepare:LP1",
+            "station:LA",
+            "station:LA",
+            "station:LA",
+            "robot:ATR",
+            "prepare:LB",
+            "robot:ATR",
+            "prepare:LP1",
+            "station:LB",
+            "station:LB",
+            "station:LB",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "robot:ATR",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1",
+            "station:LP1"
+          ],
+          "offsets": [
+            0.0,
+            16.61,
+            31.04,
+            53.97,
+            6.869999627693375,
+            33.6,
+            39.370000000000005,
+            44.620000000000005,
+            50.92,
+            64.49000000000001,
+            70.04,
+            75.29
+          ],
+          "period_seconds": 74.72000037230663
+        }
+      },
+      "elapsed_seconds": 0.15599999998812564,
+      "certificate": "fixed-PM-resource-bound",
+      "verification": {
+        "passed": true,
+        "linear_program": {
+          "success": true,
+          "period_seconds": 74.72,
+          "status": 2,
+          "solver": "Gurobi LP"
+        },
+        "period_matches": true,
+        "replay": {
+          "passed": true,
+          "issues": [],
+          "repeated_periods": 8,
+          "maximum_occupancy": {
+            "ATR": 1,
+            "VTR": 2,
+            "LA": 2,
+            "LB": 2
+          },
+          "fifo": true
+        },
+        "production_move_validation": false
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 20.0,
+      "rounds": 4,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 37.93000003105321,
+      "lower_bound_seconds_per_wafer": 37.36,
+      "best_seconds_per_wafer": 37.360000186153314,
+      "process_lower_bound": 37.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "previous-search",
+      "completed": true,
+      "counts": {
+        "words": 0,
+        "pressure_partitions": 0,
+        "atmosphere_orders": 0,
+        "timing_checks": 0,
+        "improvements": 0,
+        "audit_rejections": 0
+      },
+      "witness": null,
+      "certificate": "fixed-PM-resource-bound",
+      "elapsed_seconds": 0.0,
+      "verification": {
+        "status": "baseline-only-no-new-witness"
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 30.0,
+      "rounds": 2,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 47.36000002860149,
+      "lower_bound_seconds_per_wafer": 47.36,
+      "best_seconds_per_wafer": 47.36000002860149,
+      "process_lower_bound": 47.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "existing-cycle",
+      "completed": true,
+      "counts": {
+        "words": 0,
+        "pressure_partitions": 0,
+        "atmosphere_orders": 0,
+        "timing_checks": 0,
+        "improvements": 0,
+        "audit_rejections": 0
+      },
+      "witness": null,
+      "certificate": "fixed-PM-resource-bound",
+      "elapsed_seconds": 0.0,
+      "verification": {
+        "status": "baseline-only-no-new-witness"
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 30.0,
+      "rounds": 4,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 47.36000002860149,
+      "lower_bound_seconds_per_wafer": 47.36,
+      "best_seconds_per_wafer": 47.36000002860149,
+      "process_lower_bound": 47.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "previous-search",
+      "completed": true,
+      "counts": {
+        "words": 0,
+        "pressure_partitions": 0,
+        "atmosphere_orders": 0,
+        "timing_checks": 0,
+        "improvements": 0,
+        "audit_rejections": 0
+      },
+      "witness": null,
+      "certificate": "fixed-PM-resource-bound",
+      "elapsed_seconds": 0.0,
+      "verification": {
+        "status": "baseline-only-no-new-witness"
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 60.0,
+      "rounds": 2,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 77.36000000698725,
+      "lower_bound_seconds_per_wafer": 77.36,
+      "best_seconds_per_wafer": 77.36000000698725,
+      "process_lower_bound": 77.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "existing-cycle",
+      "completed": true,
+      "counts": {
+        "words": 0,
+        "pressure_partitions": 0,
+        "atmosphere_orders": 0,
+        "timing_checks": 0,
+        "improvements": 0,
+        "audit_rejections": 0
+      },
+      "witness": null,
+      "certificate": "fixed-PM-resource-bound",
+      "elapsed_seconds": 0.0,
+      "verification": {
+        "status": "baseline-only-no-new-witness"
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 60.0,
+      "rounds": 4,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 77.36000000698725,
+      "lower_bound_seconds_per_wafer": 77.36,
+      "best_seconds_per_wafer": 77.36000000698725,
+      "process_lower_bound": 77.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "previous-search",
+      "completed": true,
+      "counts": {
+        "words": 0,
+        "pressure_partitions": 0,
+        "atmosphere_orders": 0,
+        "timing_checks": 0,
+        "improvements": 0,
+        "audit_rejections": 0
+      },
+      "witness": null,
+      "certificate": "fixed-PM-resource-bound",
+      "elapsed_seconds": 0.0,
+      "verification": {
+        "status": "baseline-only-no-new-witness"
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 120.0,
+      "rounds": 2,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 137.36000000718894,
+      "lower_bound_seconds_per_wafer": 137.36,
+      "best_seconds_per_wafer": 137.36000000718894,
+      "process_lower_bound": 137.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "existing-cycle",
+      "completed": true,
+      "counts": {
+        "words": 0,
+        "pressure_partitions": 0,
+        "atmosphere_orders": 0,
+        "timing_checks": 0,
+        "improvements": 0,
+        "audit_rejections": 0
+      },
+      "witness": null,
+      "certificate": "fixed-PM-resource-bound",
+      "elapsed_seconds": 0.0,
+      "verification": {
+        "status": "baseline-only-no-new-witness"
+      }
+    },
+    {
+      "shape": "single",
+      "process_seconds": 120.0,
+      "rounds": 4,
+      "family": "all",
+      "return_policy": "any",
+      "baseline_seconds_per_wafer": 137.36000000718894,
+      "lower_bound_seconds_per_wafer": 137.36,
+      "best_seconds_per_wafer": 137.36000000718894,
+      "process_lower_bound": 137.36,
+      "robot_lower_bound": 31.040000612847507,
+      "incumbent_source": "previous-search",
+      "completed": true,
+      "counts": {
+        "words": 0,
+        "pressure_partitions": 0,
+        "atmosphere_orders": 0,
+        "timing_checks": 0,
+        "improvements": 0,
+        "audit_rejections": 0
+      },
+      "witness": null,
+      "certificate": "fixed-PM-resource-bound",
+      "elapsed_seconds": 0.0,
+      "verification": {
+        "status": "baseline-only-no-new-witness"
+      }
+    }
+  ]
+}

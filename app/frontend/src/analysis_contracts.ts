@@ -366,6 +366,8 @@ export interface TheoryCapacityWaitingEdge {
 }
 
 export interface TheoryCapacityDerivation {
+  /** 精简核本次求解的动作、约束与可行相位；不由前端重新计算。 */
+  cycle_diagram?: TheoryCapacityCycleDiagram;
   /** Cycle 批次结果独立于稳态周期图，包含完整启动与清洁收尾。 */
   model_kind?: "cycle-batch" | "cycle-periodic";
   /** 连续生产中段的重复窗口证据；Job 相位跨期时按 divisor 换算。 */
@@ -410,6 +412,14 @@ export interface TheoryCapacityDerivation {
   resource_upper_bound_wafers_per_hour?: number | null;
   limiting_kind?: TheoryCapacityLimitingKind;
   limiting_label?: string;
+}
+
+/** 循环交互图的原始证据。相位不取模，跨期数决定事件先后。 */
+export interface TheoryCapacityCycleDiagram {
+  events: Array<{id: string; station: string; robot: string; lane: "vacuum" | "atmosphere";
+    round: number; label: string; phase_seconds: number; before_seconds: number;
+    body_seconds: number; after_seconds: number; process_seconds: number}>;
+  edges: Array<TheoryCapacityWaitingEdge & {id: string; category: string; slack_seconds: number}>;
 }
 
 export interface TheoryCapacityDerivationResponse {

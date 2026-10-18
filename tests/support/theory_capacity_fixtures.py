@@ -3,10 +3,9 @@
 本模块只提供纯数据 builder 和只读的依赖替换，不读取或修改 ``app/data/datasets/``。
 时间参数是为测试设计的合成值，可与手算结果逐项核对：
 
-- VAC 一次换片 = 0.5 + 2.5 + 0.5 的取 + 放 = 7 秒；ATM 一次取放 = 3 秒；
-- LoadLock 抽气与充气各 20 秒，机器人转位 3 秒；
-- 因此单节点共享双锁的同锁恢复链 = 3 + 3 + 3 + 23 + 27 = 68 秒，
-  两轮一周期时理论产能上限为 3600 × 2 / 68 片/小时。
+- VAC 原子换片 = 开门 0.5 + Pick 2.5 + 站内转位 3 + Place 2.5 + 关门 0.5 = 9 秒；
+- LoadLock 抽气与充气各 20 秒，机器人跨站转位 3 秒，与目标开门重叠；
+- 同站回盒后取片不发生空手转位；同锁恢复链按真实资源边界手算。
 """
 
 from __future__ import annotations
@@ -30,13 +29,15 @@ VENT_SECONDS = 20.0
 
 # 手算参照：一次真空换片、一次大气取放、同锁恢复链、重入模板的逐段链。
 VACUUM_PICK_SECONDS = DOOR_SECONDS + VACUUM_ROBOT_SECONDS + DOOR_SECONDS
-VACUUM_SWAP_SECONDS = 2 * VACUUM_PICK_SECONDS
+VACUUM_SWAP_SECONDS = 2 * DOOR_SECONDS + 2 * VACUUM_ROBOT_SECONDS + MOVE_SECONDS
 ATMOSPHERE_PICK_SECONDS = DOOR_SECONDS + ATMOSPHERE_ROBOT_SECONDS + DOOR_SECONDS
+# 从 VAC Swap 开始到同锁下一次 Swap：各机器人转位与站点门准备取 max。
 LOCK_RECOVERY_CHAIN_SECONDS = (
-    2 * (ATMOSPHERE_PICK_SECONDS + MOVE_SECONDS)
-    + (ATMOSPHERE_PICK_SECONDS + MOVE_SECONDS)
-    + (ATMOSPHERE_PICK_SECONDS + PUMP_SECONDS)
-    + (VACUUM_SWAP_SECONDS + VENT_SECONDS)
+    VACUUM_SWAP_SECONDS - DOOR_SECONDS + VENT_SECONDS + DOOR_SECONDS
+    + ATMOSPHERE_ROBOT_SECONDS + max(MOVE_SECONDS, DOOR_SECONDS)
+    + ATMOSPHERE_ROBOT_SECONDS + 2 * DOOR_SECONDS
+    + ATMOSPHERE_ROBOT_SECONDS + max(MOVE_SECONDS, DOOR_SECONDS)
+    + ATMOSPHERE_ROBOT_SECONDS + DOOR_SECONDS + PUMP_SECONDS + DOOR_SECONDS
 )
 
 DEVICE_ID = "synthetic-theory-device"

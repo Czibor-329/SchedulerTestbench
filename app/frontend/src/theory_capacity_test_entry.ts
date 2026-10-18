@@ -1,4 +1,5 @@
 /** 仅供前端 Node 测试从当前 TypeScript 源码导出理论产能页签的纯函数与控制器。 */
+export {cycleDiagramEdges, renderCycleDiagram, renderCompactDerivation} from "./theory_capacity_cycle_diagram";
 export {
   processSecondsAtPosition,
   renderTeachingDerivation,
@@ -34,3 +35,5 @@ export {
   routeStatusClass,
   routeStatusLabel,
 } from "./theory_capacity_view";
+
+export {cycleDiagramLayout, cycleEdgeGeometry} from "./theory_capacity_cycle_layout";

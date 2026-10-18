@@ -445,15 +445,14 @@ def test_scan_payload_stays_json_serializable(isolated_workspace: None) -> None:
         assert len(lengths) == 1
 
 
-def test_missing_algorithm_repository_gives_readable_error(
+def test_missing_algorithm_repository_still_computes_capacity(
     isolated_workspace: None, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """算法仓库是可选依赖：缺失时平台仍能导入本模块，调用时给出可读错误。"""
+    """平台静态编译和建图已独立，缺少算法编译器不能影响理论产能接口。"""
     import sys
 
-    monkeypatch.delitem(sys.modules, "src.analysis.cycle_capacity_graph", raising=False)
-    monkeypatch.setitem(sys.modules, "src.analysis", None)
-    monkeypatch.setattr(theory_capacity_service, "_ALGORITHM_RUNTIME", None)
-    with pytest.raises(RuntimeError) as context:
-        theory_capacity_service.read_theory_capacity_scan(fixtures.DEVICE_ID)
-    assert "算法仓库未加载" in str(context.value)
+    monkeypatch.setitem(sys.modules, "src.compiler", None)
+    monkeypatch.setattr(theory_capacity_service, "_CAPACITY_RUNTIME", None)
+    payload = theory_capacity_service.read_theory_capacity_scan(fixtures.DEVICE_ID)
+    assert payload['ok'] is True
+    assert any(row['status'] == 'supported' for row in payload['routes'])

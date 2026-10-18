@@ -1,5 +1,5 @@
 /** 理论产能页签：固定 PM 组合、Spark ApexCharts 曲线与简略代入公式。
- * 设备目录与请求由宿主注入；清洁滑块复用 Cycle 批次求解，并固定同批次无清洁参照。
+ * 设备目录与请求由宿主注入；固定页使用精简周期核及其动作证据，只开放无清洁。
  * 不读取路线或测试索引。保留旧图表纯函数供已有接口消费者测试。
  */
 
@@ -16,6 +16,7 @@ import type {
   TheoryCapacityTestPoint,
 } from "./analysis_contracts";
 import { THEORY_CLEAN_TYPES, THEORY_LOCK_MODES, THEORY_ROUTE_KINDS } from "./analysis_contracts";
+import { mountCycleDiagram, renderCompactDerivation } from "./theory_capacity_cycle_diagram";
 
 /** 扫描区间；与后端默认值保持一致。 */
 export interface TheoryCapacityWindow {
@@ -573,6 +574,7 @@ export function processSecondsAtPosition(clientX: number, left: number, width: n
 
 /** 论文周期推导：展示每周期产出、资源负荷、关键闭合等待链及数值代入。 */
 export function renderTeachingDerivation(entry: TheoryCapacityDerivation, name: string): string {
+  if (entry.model_name === "compact-period" && entry.cycle_diagram) return renderCompactDerivation(entry);
   if (entry.model_kind === "cycle-batch") return renderBatchDerivation(entry);
   if (entry.model_kind === "cycle-periodic") return renderPeriodicDerivation(entry);
   const facts = entry.facts;
@@ -795,6 +797,8 @@ export function createTheoryCapacityView(options: TheoryCapacityViewOptions): Th
       root.querySelector("#theoryCapacityComparison")!.textContent = `加工 ${formatSeconds(seconds)} 秒 · ${entry.period_timing ? (entry.period_timing.basis === "wac" ? `WAC 周期 ${entry.period_timing.output_wafers} 片` : "连续生产 · 13 片 / Job") : "大气手交替周期"}`;
       root.querySelector("#theoryCapacityScope")!.textContent = entry.scope_note ?? "论文固定周期模型的理论值。";
       root.querySelector("#theoryCapacityDerivation")!.innerHTML = renderTeachingDerivation(entry, payload.name);
+      const cycleContainer = root.querySelector<HTMLElement>("#theoryCapacityCycleDiagram");
+      if (cycleContainer) mountCycleDiagram(cycleContainer, entry.cycle_diagram, entry.period_seconds, options.syncSelect);
       root.querySelector("#theoryCapacityCurrentRate")!.textContent = formatCapacity(entry.physical_wafers_per_hour);
       root.querySelector("#theoryCapacityResources")!.innerHTML = Object.entries(entry.resource_work_seconds ?? {}).map(([name, seconds]) =>
         `<div><small>${escapeHtml(name)}</small><strong>${formatSeconds(seconds)} <span>秒 / ${batch ? "批次" : "周期"}</span></strong><progress max="${period}" value="${Math.min(seconds, period)}" aria-label="${escapeHtml(name)}占总耗时的比例"></progress></div>`).join("");
@@ -852,6 +856,8 @@ export function createTheoryCapacityView(options: TheoryCapacityViewOptions): Th
         root.querySelector("#theoryCapacityCurrentRate")!.textContent = "—";
         root.querySelector("#theoryCapacityComparison")!.textContent = "请调整参数后重试";
         root.querySelector("#theoryCapacityResultState")!.textContent = "计算失败";
+        const cycleContainer = root.querySelector<HTMLElement>("#theoryCapacityCycleDiagram");
+        if (cycleContainer) mountCycleDiagram(cycleContainer);
         showError(error);
       }
     } finally {
