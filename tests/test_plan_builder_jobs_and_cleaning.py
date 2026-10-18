@@ -475,10 +475,10 @@ class ConfigEditorPlanTests(unittest.TestCase):
 
         self.assertEqual("PreClean", pre["taskName"])
         self.assertEqual("PostClean", post["taskName"])
-        self.assertEqual(999999.0, pre["upper"])
+        self.assertEqual(9999.0, pre["upper"])
         self.assertEqual(999999.0, post["upper"])
-        self.assertEqual(999999.0, dummy["upper"])
-        self.assertEqual(999999.0, dummy_wac["upper"])
+        self.assertEqual(99999.0, dummy["upper"])
+        self.assertEqual(99999.0, dummy_wac["upper"])
         self.assertEqual(9999.0, wac["upper"])
         self.assertEqual(("ProcessCount", 7), (wac["stateVariable"], wac["lower"]))
         self.assertEqual(("WacClean", ["ProcessCount"]), (wac["taskName"], wac["updateStateVariables"]))

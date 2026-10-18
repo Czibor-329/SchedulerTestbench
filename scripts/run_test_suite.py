@@ -85,7 +85,9 @@ def _run_frontend(*, fail_fast: bool) -> int:
         result_table_output = build_root / "result_table.js"
         gantt_toolbar_output = build_root / "gantt_toolbar.js"
         theory_capacity_output = build_root / "theory_capacity.js"
+        clean_idle_time_output = build_root / "clean_idle_time.js"
         entries = (
+            (FRONTEND_ROOT / "src" / "clean_idle_time.ts", clean_idle_time_output),
             (FRONTEND_ROOT / "src" / "workspace_visualizer_test_entry.ts", workspace_output),
             (FRONTEND_ROOT / "src" / "route_editor_logic.ts", route_output),
             (FRONTEND_ROOT / "src" / "gantt_execution_compare.ts", gantt_output),
@@ -123,6 +125,7 @@ def _run_frontend(*, fail_fast: bool) -> int:
 
         environment = os.environ.copy()
         environment["CT_WORKSPACE_VISUALIZER_TEST_BUILD"] = str(workspace_output)
+        environment["CT_CLEAN_IDLE_TIME_TEST_BUILD"] = str(clean_idle_time_output)
         environment["CT_ROUTE_EDITOR_TEST_BUILD"] = str(route_output)
         environment["CT_GANTT_COMPARE_TEST_BUILD"] = str(gantt_output)
         environment["CT_GANTT_SEMANTICS_TEST_BUILD"] = str(gantt_semantics_output)

@@ -12,6 +12,7 @@ import { createDraftChoiceDialog, resolveTestDraft } from "./test_draft_navigati
 import { initializeConsoleShell } from "./console_shell";
 import { initializeConsoleReplayToolbar } from "./console_replay_toolbar";
 import { initializeConsoleGanttToolbar } from "./gantt_toolbar";
+import { cleanIdleTimeValues, supportsCleanIdleTime, updateCleanIdleTimeFields } from "./clean_idle_time";
 import * as RouteEditorLogic from "./route_editor_logic";
 import {
   cancelTestGroupAnalysisJob,
@@ -237,6 +238,7 @@ function normalizeClean(clean) {
   const name = String(value.name || `Clean${state.cleans.length + 1}`).trim() || `Clean${state.cleans.length + 1}`;
   value.name = name;
   value.cleanType = cleanType;
+  if (supportsCleanIdleTime(cleanType)) Object.assign(value, cleanIdleTimeValues(value));
   value.recipeName = String(value.recipeName || value.recipeRef || `${name}-Recipe`).trim() || `${name}-Recipe`;
   const recipeTime = Number(value.recipeTime);
   value.recipeTime = Math.max(0, Number.isFinite(recipeTime) ? recipeTime : 0);
@@ -326,8 +328,8 @@ function runtimeClean(clean) {
     modules: value.modules,
     taskName: taskNames[type],
     stateVariable: isWac ? "ProcessCount" : "IdleTime",
-    lower: isWac ? value.triggerCount : 0,
-    upper: isWac ? DEFAULT_COUNT_CLEAN_UPPER : DEFAULT_IDLE_TIME_CLEAN_UPPER,
+    lower: isWac ? value.triggerCount : supportsCleanIdleTime(type) ? value.lower : 0,
+    upper: isWac ? DEFAULT_COUNT_CLEAN_UPPER : supportsCleanIdleTime(type) ? value.upper : DEFAULT_IDLE_TIME_CLEAN_UPPER,
     updateStateVariables: isWac ? ["ProcessCount"] : isDummy ? ["IdleTime", "DummyCount"] : type === "preclean" ? ["IdleTime"] : [],
     materialCount: isDummy ? value.triggerCount : 0,
     preJudge: false,
@@ -2868,6 +2870,7 @@ function updateCleanDialogFields() {
     .map(item => `<option value="${item.key}">${escapeHtml(item.label)}</option>`)
     .join("");
   typeSelect.value = definition?.types.includes(currentType) ? currentType : definition?.types[0] || "";
+  updateCleanIdleTimeFields(document, typeSelect.value);
   const isDummyClean = ["dummy", "dummywac"].includes(typeSelect.value);
   document.getElementById("cleanTriggerField").hidden = typeSelect.value !== "wacclean" && !isDummyClean;
   document.getElementById("cleanTriggerLabel").textContent = isDummyClean
@@ -2901,6 +2904,9 @@ function openCleanDialog(scope, routeIndex, stageIndex = -1, cleanName = "", pla
   placementSelect.innerHTML = definitions.map(item => `<option value="${item.key}">${escapeHtml(item.label)}</option>`).join("");
   placementSelect.value = selectedPlacement;
   document.getElementById("cleanType").innerHTML = `<option value="${draft.cleanType}">${escapeHtml(draft.cleanType)}</option>`;
+  const idleTime = supportsCleanIdleTime(draft.cleanType) ? cleanIdleTimeValues(draft) : cleanIdleTimeValues({});
+  document.getElementById("cleanIdleTimeMin").value = String(idleTime.lower);
+  document.getElementById("cleanIdleTimeMax").value = String(idleTime.upper);
   document.getElementById("cleanRecipeTime").value = String(draft.recipeTime);
   document.getElementById("cleanTriggerCount").value = String(draft.triggerCount);
   document.getElementById("cleanDummyWaferCount").value = String(draft.dummyWaferCount || DEFAULT_DUMMY_WAFER_COUNT);
@@ -2930,8 +2936,19 @@ function saveCleanDialog() {
   }
   const placement = document.getElementById("cleanPlacement").value;
   const cleanType = document.getElementById("cleanType").value;
+  let idleTime = {};
+  try {
+    if (supportsCleanIdleTime(cleanType)) idleTime = cleanIdleTimeValues({
+      lower: document.getElementById("cleanIdleTimeMin").value,
+      upper: document.getElementById("cleanIdleTimeMax").value,
+    });
+  } catch (error) {
+    document.getElementById("cleanDialogError").textContent = error.message;
+    return;
+  }
   const clean = normalizeClean({
     ...context.draft,
+    ...idleTime,
     cleanType,
     recipeTime: Number(document.getElementById("cleanRecipeTime").value),
     triggerCount: Number(document.getElementById("cleanTriggerCount").value),

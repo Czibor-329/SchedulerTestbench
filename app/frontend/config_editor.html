@@ -7,17 +7,17 @@
   <title>调度平台</title>
   <link rel="stylesheet" href="/assets/tabler.min.css">
   <link rel="stylesheet" href="/assets/katex.min.css?v=1.4.4">
-  <link rel="stylesheet" href="/assets/fonts.css?v=1.6.22">
-  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.22">
-  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.22">
-  <link rel="stylesheet" href="/assets/console_shell.css?v=1.6.22">
-  <link rel="stylesheet" href="/assets/console_components.css?v=1.6.22">
-  <link rel="stylesheet" href="/assets/spark_table.css?v=1.6.22">
-  <link rel="stylesheet" href="/assets/result_table.css?v=1.6.22">
-  <link rel="stylesheet" href="/assets/analysis_report.css?v=1.6.22">
-  <link rel="stylesheet" href="/assets/console_replay_toolbar.css?v=1.6.22">
-  <link rel="stylesheet" href="/assets/console_gantt_toolbar.css?v=1.6.22">
-  <link rel="stylesheet" href="/assets/theory_capacity.css?v=1.6.22">
+  <link rel="stylesheet" href="/assets/fonts.css?v=1.6.23">
+  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.23">
+  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.23">
+  <link rel="stylesheet" href="/assets/console_shell.css?v=1.6.23">
+  <link rel="stylesheet" href="/assets/console_components.css?v=1.6.23">
+  <link rel="stylesheet" href="/assets/spark_table.css?v=1.6.23">
+  <link rel="stylesheet" href="/assets/result_table.css?v=1.6.23">
+  <link rel="stylesheet" href="/assets/analysis_report.css?v=1.6.23">
+  <link rel="stylesheet" href="/assets/console_replay_toolbar.css?v=1.6.23">
+  <link rel="stylesheet" href="/assets/console_gantt_toolbar.css?v=1.6.23">
+  <link rel="stylesheet" href="/assets/theory_capacity.css?v=1.6.23">
   <script src="/assets/vendor/apexcharts.min.js"></script>
 </head>
 <body class="theme-light" data-bs-theme="light">
@@ -64,7 +64,7 @@
       </nav>
       <div class="sidebar-footer">
         <span class="sidebar-footer-label">本地调度工作台</span>
-        <span class="frontend-version">V1.6.22</span>
+        <span class="frontend-version">V1.6.23</span>
       </div>
     </aside>
     <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="关闭导航" tabindex="-1" hidden></button>
@@ -689,6 +689,10 @@
         <div class="field"><label for="cleanPlacement">执行位置</label><select id="cleanPlacement"></select></div>
         <div class="field"><label for="cleanType">清洁类别</label><select id="cleanType"></select></div>
         <div class="field"><label for="cleanRecipeTime">清洁时间（秒）</label><input id="cleanRecipeTime" type="number" min="0" step="0.1" required></div>
+        <div class="clean-idle-time-fields" id="cleanIdleTimeFields">
+          <div class="field" id="cleanIdleTimeMinField"><label for="cleanIdleTimeMin">idleTime.Min</label><input id="cleanIdleTimeMin" type="number" min="0" step="any" value="0" required></div>
+          <div class="field" id="cleanIdleTimeMaxField"><label for="cleanIdleTimeMax">idleTime.Max</label><input id="cleanIdleTimeMax" type="number" min="0" step="any" value="99999" required></div>
+        </div>
         <div class="field" id="cleanTriggerField"><label id="cleanTriggerLabel" for="cleanTriggerCount">触发次数</label><input id="cleanTriggerCount" type="number" min="1" step="1" required></div>
         <div class="field" id="cleanDummyWaferCountField" hidden><label for="cleanDummyWaferCount">Dummy wafer 投放数量</label><input id="cleanDummyWaferCount" type="number" min="1" step="1" value="8" aria-describedby="cleanDummyWaferCountHint" required><small id="cleanDummyWaferCountHint">设置 DummyPort 库存，与 MaterialCount 独立。</small></div>
         <div class="field" id="cleanWacTimeField"><label for="cleanWacRecipeTime">WAC 清洁长度（秒）</label><input id="cleanWacRecipeTime" type="number" min="0" step="0.1" required></div>
@@ -883,7 +887,7 @@
     </aside>
   </dialog>
 
-  <script type="module" src="/assets/config_editor.js?v=1.6.22"></script>
+  <script type="module" src="/assets/config_editor.js?v=1.6.23"></script>
   <dialog id="testDraftDialog" aria-labelledby="testDraftTitle">
     <h2 id="testDraftTitle">测试有未保存的修改</h2><p>保存后再离开，或放弃本次修改。</p>
     <form method="dialog" class="editor-save-actions"><button class="btn" value="cancel" autofocus>继续编辑</button><button class="btn" value="discard">放弃修改</button><button class="btn primary" value="save">保存并继续</button></form>

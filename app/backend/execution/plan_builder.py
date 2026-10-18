@@ -24,6 +24,7 @@ FIRST_SLOT_ID = 1
 MAX_WAFERS_PER_JOB = 25
 DEFAULT_TRIGGER_UPPER = 9999.0
 DEFAULT_IDLE_TIME_CLEAN_UPPER = 999999.0
+DEFAULT_PRE_CLEAN_IDLE_TIME_UPPER = 99999.0
 # 旧 Clean 未提供库存配置时使用的 DummyPort wafer 数量。
 DEFAULT_DUMMY_WAFER_COUNT = 8
 DUMMY_MATERIAL_ID_START = 100000
@@ -498,6 +499,23 @@ def _runtime_clean(clean: Mapping[str, Any]) -> Dict[str, Any]:
         "dummy": "PreDummyClean",
         "dummywac": "PreWacClean",
     }
+    # 前置清洁保留编辑器配置的 IdleTime；Max 只传递，不代表触发截止时间。
+    idle_lower, idle_upper = 0.0, DEFAULT_IDLE_TIME_CLEAN_UPPER
+    if clean_type in {"preclean", "dummy", "dummywac"}:
+        idle_lower = value.get("lower")
+        idle_upper = value.get("upper")
+        idle_lower = 0.0 if idle_lower is None else idle_lower
+        idle_upper = DEFAULT_PRE_CLEAN_IDLE_TIME_UPPER if idle_upper is None else idle_upper
+        try:
+            if isinstance(idle_lower, bool) or isinstance(idle_upper, bool):
+                raise ValueError("布尔值不是时间")
+            idle_lower, idle_upper = float(idle_lower), float(idle_upper)
+        except (ValueError, TypeError) as error:
+            raise ValueError("IdleTime 必须是非负有限数值") from error
+        if not all(math.isfinite(item) and item >= 0 for item in (idle_lower, idle_upper)):
+            raise ValueError("IdleTime 必须是非负有限数值")
+        if idle_upper < idle_lower:
+            raise ValueError("IdleTime 最大值不能小于最小值")
     value.update({
         "name": name,
         "cleanType": clean_type,
@@ -507,8 +525,8 @@ def _runtime_clean(clean: Mapping[str, Any]) -> Dict[str, Any]:
         "modules": _string_list(value.get("modules")),
         "taskName": task_names[clean_type],
         "stateVariable": "ProcessCount" if is_wac else "IdleTime",
-        "lower": trigger_count if is_wac else 0,
-        "upper": DEFAULT_TRIGGER_UPPER if is_wac else DEFAULT_IDLE_TIME_CLEAN_UPPER,
+        "lower": trigger_count if is_wac else idle_lower,
+        "upper": DEFAULT_TRIGGER_UPPER if is_wac else idle_upper,
         "triggerCount": material_count if is_dummy else trigger_count,
         "updateStateVariables": (
             ["ProcessCount"]

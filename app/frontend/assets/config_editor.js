@@ -356,6 +356,35 @@ function initializeConsoleGanttToolbar() {
   };
 }
 
+// src/clean_idle_time.ts
+var DEFAULT_IDLE_TIME_MIN = 0;
+var DEFAULT_IDLE_TIME_MAX = 99999;
+function supportsCleanIdleTime(cleanType) {
+  return ["preclean", "dummy", "dummywac"].includes(cleanType);
+}
+function cleanIdleTimeValues(clean) {
+  const parse = (value, fallback) => {
+    if (value === void 0 || value === null) return fallback;
+    if (typeof value !== "number" && typeof value !== "string") throw new Error("IdleTime \u5FC5\u987B\u662F\u975E\u8D1F\u6709\u9650\u6570\u503C\u3002");
+    if (typeof value === "string" && !value.trim()) throw new Error("\u8BF7\u586B\u5199 IdleTime \u6700\u5C0F\u503C\u548C\u6700\u5927\u503C\u3002");
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0) throw new Error("IdleTime \u5FC5\u987B\u662F\u975E\u8D1F\u6709\u9650\u6570\u503C\u3002");
+    return number;
+  };
+  const lower = parse(clean.lower, DEFAULT_IDLE_TIME_MIN);
+  const upper = parse(clean.upper, DEFAULT_IDLE_TIME_MAX);
+  if (upper < lower) throw new Error("IdleTime \u6700\u5927\u503C\u4E0D\u80FD\u5C0F\u4E8E\u6700\u5C0F\u503C\u3002");
+  return { lower, upper };
+}
+function updateCleanIdleTimeFields(root, cleanType) {
+  const enabled = supportsCleanIdleTime(cleanType);
+  root.getElementById("cleanIdleTimeFields").hidden = !enabled;
+  for (const suffix of ["Min", "Max"]) {
+    root.getElementById(`cleanIdleTime${suffix}Field`).hidden = !enabled;
+    root.getElementById(`cleanIdleTime${suffix}`).disabled = !enabled;
+  }
+}
+
 // src/route_editor_logic.ts
 var route_editor_logic_exports = {};
 __export(route_editor_logic_exports, {
@@ -7945,6 +7974,7 @@ function normalizeClean(clean) {
   const name = String(value.name || `Clean${state.cleans.length + 1}`).trim() || `Clean${state.cleans.length + 1}`;
   value.name = name;
   value.cleanType = cleanType;
+  if (supportsCleanIdleTime(cleanType)) Object.assign(value, cleanIdleTimeValues(value));
   value.recipeName = String(value.recipeName || value.recipeRef || `${name}-Recipe`).trim() || `${name}-Recipe`;
   const recipeTime = Number(value.recipeTime);
   value.recipeTime = Math.max(0, Number.isFinite(recipeTime) ? recipeTime : 0);
@@ -8022,8 +8052,8 @@ function runtimeClean(clean) {
     modules: value.modules,
     taskName: taskNames[type],
     stateVariable: isWac ? "ProcessCount" : "IdleTime",
-    lower: isWac ? value.triggerCount : 0,
-    upper: isWac ? DEFAULT_COUNT_CLEAN_UPPER : DEFAULT_IDLE_TIME_CLEAN_UPPER,
+    lower: isWac ? value.triggerCount : supportsCleanIdleTime(type) ? value.lower : 0,
+    upper: isWac ? DEFAULT_COUNT_CLEAN_UPPER : supportsCleanIdleTime(type) ? value.upper : DEFAULT_IDLE_TIME_CLEAN_UPPER,
     updateStateVariables: isWac ? ["ProcessCount"] : isDummy ? ["IdleTime", "DummyCount"] : type === "preclean" ? ["IdleTime"] : [],
     materialCount: isDummy ? value.triggerCount : 0,
     preJudge: false,
@@ -10015,6 +10045,7 @@ function updateCleanDialogFields() {
   const currentType = typeSelect.value || context.draft.cleanType;
   typeSelect.innerHTML = CLEAN_TYPE_DEFINITIONS.filter((item) => definition?.types.includes(item.key)).map((item) => `<option value="${item.key}">${escapeHtml4(item.label)}</option>`).join("");
   typeSelect.value = definition?.types.includes(currentType) ? currentType : definition?.types[0] || "";
+  updateCleanIdleTimeFields(document, typeSelect.value);
   const isDummyClean = ["dummy", "dummywac"].includes(typeSelect.value);
   document.getElementById("cleanTriggerField").hidden = typeSelect.value !== "wacclean" && !isDummyClean;
   document.getElementById("cleanTriggerLabel").textContent = isDummyClean ? "\u5355\u6B21\u6E05\u6D01\u5E26\u7247\u6570\uFF08MaterialCount\uFF09" : "\u89E6\u53D1\u6B21\u6570";
@@ -10042,6 +10073,9 @@ function openCleanDialog(scope, routeIndex, stageIndex = -1, cleanName = "", pla
   placementSelect.innerHTML = definitions.map((item) => `<option value="${item.key}">${escapeHtml4(item.label)}</option>`).join("");
   placementSelect.value = selectedPlacement;
   document.getElementById("cleanType").innerHTML = `<option value="${draft.cleanType}">${escapeHtml4(draft.cleanType)}</option>`;
+  const idleTime = supportsCleanIdleTime(draft.cleanType) ? cleanIdleTimeValues(draft) : cleanIdleTimeValues({});
+  document.getElementById("cleanIdleTimeMin").value = String(idleTime.lower);
+  document.getElementById("cleanIdleTimeMax").value = String(idleTime.upper);
   document.getElementById("cleanRecipeTime").value = String(draft.recipeTime);
   document.getElementById("cleanTriggerCount").value = String(draft.triggerCount);
   document.getElementById("cleanDummyWaferCount").value = String(draft.dummyWaferCount || DEFAULT_DUMMY_WAFER_COUNT);
@@ -10067,8 +10101,19 @@ function saveCleanDialog() {
   }
   const placement = document.getElementById("cleanPlacement").value;
   const cleanType = document.getElementById("cleanType").value;
+  let idleTime = {};
+  try {
+    if (supportsCleanIdleTime(cleanType)) idleTime = cleanIdleTimeValues({
+      lower: document.getElementById("cleanIdleTimeMin").value,
+      upper: document.getElementById("cleanIdleTimeMax").value
+    });
+  } catch (error) {
+    document.getElementById("cleanDialogError").textContent = error.message;
+    return;
+  }
   const clean = normalizeClean({
     ...context.draft,
+    ...idleTime,
     cleanType,
     recipeTime: Number(document.getElementById("cleanRecipeTime").value),
     triggerCount: Number(document.getElementById("cleanTriggerCount").value),
