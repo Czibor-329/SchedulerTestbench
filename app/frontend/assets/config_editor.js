@@ -6515,9 +6515,10 @@ function createResultCardRunQueue(options) {
 }
 
 // src/result_table.ts
-var RESULT_TABLE_PAGE_SIZES = [10, 20, 50];
+var RESULT_TABLE_PAGE_SIZES = [10, 20, 30, 40, 50];
 var DEFAULT_PAGE_SIZE = RESULT_TABLE_PAGE_SIZES[0];
-var PAGE_NEIGHBOR_COUNT = 1;
+var MAX_VISIBLE_PAGES = 5;
+var PAGE_EDGE_WINDOW = 3;
 var RESULT_TABLE_ACTION_ICONS = {
   details: '<path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>',
   collapse: '<path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7 7 0 0 0-2.79.588l.77.771A6 6 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755q-.247.248-.517.486z"/><path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829"/><path d="M3.35 5.47q-.27.24-.518.487A13 13 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7 7 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12z"/>',
@@ -6537,9 +6538,12 @@ function projectResultTablePage(rows, state2, context) {
   const selectedIds = context.selectedTestIds;
   const scopeKey = JSON.stringify([
     context.scope,
-    selectedIds === null ? null : [...selectedIds].sort()
+    selectedIds === null ? null : [...selectedIds].sort(),
+    (state2.search || "").trim().toLocaleLowerCase(),
+    [...state2.statuses || []].sort()
   ]);
-  const selectedRows = filterResultRows(rows, selectedIds);
+  const search = (state2.search || "").trim().toLocaleLowerCase();
+  const selectedRows = filterResultRows(rows, selectedIds).filter((row) => row.testName.toLocaleLowerCase().includes(search) && (!state2.statuses?.length || state2.statuses.includes(resultStatusKey(row.status))));
   const pageSize = normalizePageSize(state2.pageSize);
   const total = selectedRows.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -6548,7 +6552,7 @@ function projectResultTablePage(rows, state2, context) {
   const offset = (page - 1) * pageSize;
   return {
     rows: selectedRows.slice(offset, offset + pageSize),
-    state: { page, pageSize, scopeKey },
+    state: { ...state2, page, pageSize, scopeKey },
     total,
     pageCount,
     start: total ? offset + 1 : 0,
@@ -6568,18 +6572,10 @@ function resultLink(value) {
   return /^\/(?!\/)/.test(value) ? escapeResultText(value) : "";
 }
 function pageNumbers(page, pageCount) {
-  const visible = /* @__PURE__ */ new Set([1, pageCount]);
-  for (let candidate = page - PAGE_NEIGHBOR_COUNT; candidate <= page + PAGE_NEIGHBOR_COUNT; candidate += 1) {
-    if (candidate >= 1 && candidate <= pageCount) visible.add(candidate);
-  }
-  const ordered = [...visible].sort((left, right) => left - right);
-  const result = [];
-  for (const candidate of ordered) {
-    const previous = result[result.length - 1];
-    if (typeof previous === "number" && candidate - previous > 1) result.push(null);
-    result.push(candidate);
-  }
-  return result;
+  if (pageCount <= MAX_VISIBLE_PAGES) return Array.from({ length: pageCount }, (_, index) => index + 1);
+  if (page <= PAGE_EDGE_WINDOW) return [1, 2, 3, 4, null, pageCount];
+  if (page >= pageCount - PAGE_EDGE_WINDOW + 1) return [1, null, pageCount - 3, pageCount - 2, pageCount - 1, pageCount];
+  return [1, null, page - 1, page, page + 1, null, pageCount];
 }
 var RESULT_STATUS_LABELS = {
   "not-run": "\u672A\u8FD0\u884C",
@@ -6611,10 +6607,9 @@ function resultTableMetricsCsv(rows) {
 function actionIcon(name) {
   return `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">${RESULT_TABLE_ACTION_ICONS[name]}</svg>`;
 }
-var EMPTY_METRIC_TEXT = "\u2014";
 function metricCell(text) {
-  const empty = text === EMPTY_METRIC_TEXT;
-  return `<td class="result-table-number${empty ? " is-empty" : ""}">${escapeResultText(text)}</td>`;
+  const empty = !text.trim() || /^(?:—|-)(?:\/.*)?$/.test(text.trim());
+  return `<td class="result-table-number${empty ? " is-empty" : ""}">${empty ? "" : escapeResultText(text)}</td>`;
 }
 function renderResultRow(row, expandedTestId) {
   const status = resultStatusKey(row.status);
@@ -6631,7 +6626,6 @@ function renderResultRow(row, expandedTestId) {
     <td><span class="badge-table ${badgeClass}">${RESULT_STATUS_LABELS[status]}</span></td>
     ${metricCell(row.productionText)}
     ${metricCell(row.recomputeText)}
-    ${metricCell(row.makespanText)}
     <td><div class="result-table-actions">
       <button class="table-btn-action" type="button" title="${expanded ? "\u6536\u8D77" : "\u67E5\u770B"}\u8BE6\u60C5" data-result-table-details="${testId}" aria-expanded="${expanded}" aria-controls="batchTestDetails" aria-label="${expanded ? "\u6536\u8D77" : "\u67E5\u770B"} ${name} \u7684\u8BE6\u60C5">${actionIcon(expanded ? "collapse" : "details")}</button>
       <button class="table-btn-action" type="button" title="\u8FD0\u884C" data-result-table-run="${testId}" aria-label="\u8FD0\u884C ${name}"${["queued", "running"].includes(status) ? " disabled" : ""}>${actionIcon("run")}</button>
@@ -6645,25 +6639,40 @@ function renderResultRow(row, expandedTestId) {
     </div></td>
   </tr>`;
 }
+function paginationArrow(page, label, direction, disabled) {
+  const paths = {
+    first: "m11 5-7 7 7 7m9-14-7 7 7 7",
+    previous: "m15 5-7 7 7 7",
+    next: "m9 5 7 7-7 7",
+    last: "m4 5 7 7-7 7m9-14 7 7-7 7"
+  };
+  return `<li><button class="result-page-button result-page-arrow" type="button" data-result-table-page="${page}" aria-label="${label}"${disabled ? " disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[direction]}"/></svg></button></li>`;
+}
 function renderResultTable(page, expandedTestId = "") {
   const { state: state2, pageCount, total, start, end } = page;
   return `<div class="table-responsive result-table-scroll" tabindex="0" role="region" aria-label="\u6D4B\u8BD5\u8FD0\u884C\u7ED3\u679C\u8868\u683C\uFF0C\u53EF\u6EDA\u52A8">
     <table class="table-custom result-table">
       <caption class="sr-only">\u6240\u9009\u6D4B\u8BD5\u7684\u8FD0\u884C\u7ED3\u679C\uFF1B\u5355\u51FB\u6D4B\u8BD5\u884C\u67E5\u770B\u8BE6\u60C5\uFF0C\u53CC\u51FB\u52A0\u5165\u8FD0\u884C\u961F\u5217\u3002</caption>
-      <thead><tr><th scope="col">\u6D4B\u8BD5\u540D\u79F0</th><th scope="col" class="result-table-status-column">\u72B6\u6001</th><th scope="col" class="result-table-number result-table-metric-column" title="\u5355\u4F4D\uFF1A\u7247/h">\u4EA7\u80FD</th><th scope="col" class="result-table-number result-table-metric-column" title="\u5355\u4F4D\uFF1As">\u5E73\u5747\u91CD\u7B97</th><th scope="col" class="result-table-number result-table-metric-column" title="\u5355\u4F4D\uFF1As">Makespan</th><th scope="col" class="result-table-actions-column">\u64CD\u4F5C</th></tr></thead>
-      <tbody>${page.rows.length ? page.rows.map((row) => renderResultRow(row, expandedTestId)).join("") : '<tr><td colspan="6" class="result-table-empty">\u5F53\u524D\u6CA1\u6709\u53EF\u663E\u793A\u7684\u6D4B\u8BD5\uFF0C\u8BF7\u9009\u62E9\u8BBE\u5907\u4E0E\u6D4B\u8BD5\u7EC4\u3002</td></tr>'}</tbody>
+      <thead><tr><th scope="col">\u6D4B\u8BD5\u540D\u79F0</th><th scope="col" class="result-table-status-column">\u72B6\u6001</th><th scope="col" class="result-table-number result-table-metric-column" title="\u5355\u4F4D\uFF1A\u7247/h">\u4EA7\u80FD</th><th scope="col" class="result-table-number result-table-metric-column" title="\u5355\u4F4D\uFF1As">\u5E73\u5747\u91CD\u7B97</th><th scope="col" class="result-table-actions-column" aria-label="\u64CD\u4F5C"></th></tr></thead>
+      <tbody>${page.rows.length ? page.rows.map((row) => renderResultRow(row, expandedTestId)).join("") : '<tr><td colspan="5" class="result-table-empty">\u6CA1\u6709\u5339\u914D\u7684\u6D4B\u8BD5\uFF0C\u8BF7\u8C03\u6574\u641C\u7D22\u3001\u72B6\u6001\u7B5B\u9009\u6216\u6D4B\u8BD5\u9009\u62E9\u3002</td></tr>'}</tbody>
     </table>
   </div>
   <footer class="table-footer-control result-table-footer">
-    <div class="result-table-page-summary"><span class="table-pagination-info" role="status" aria-live="polite">\u7B2C ${start}\u2013${end} \u6761\uFF0C\u5171 ${total} \u6761</span></div>
-    <nav aria-label="\u8FD0\u884C\u7ED3\u679C\u5206\u9875"><ul class="pagination result-table-pagination">
-      <li class="page-item${state2.page === 1 ? " disabled" : ""}"><button class="page-link" type="button" data-result-table-page="${state2.page - 1}" aria-label="\u4E0A\u4E00\u9875"${state2.page === 1 ? " disabled" : ""}>\u4E0A\u4E00\u9875</button></li>
-      ${pageNumbers(state2.page, pageCount).map((number) => number === null ? '<li class="result-table-page-gap" aria-hidden="true">\u2026</li>' : `<li class="page-item${number === state2.page ? " active" : ""}"><button class="page-link" type="button" data-result-table-page="${number}" aria-label="\u7B2C ${number} \u9875"${number === state2.page ? ' aria-current="page"' : ""}>${number}</button></li>`).join("")}
-      <li class="page-item${state2.page === pageCount ? " disabled" : ""}"><button class="page-link" type="button" data-result-table-page="${state2.page + 1}" aria-label="\u4E0B\u4E00\u9875"${state2.page === pageCount ? " disabled" : ""}>\u4E0B\u4E00\u9875</button></li>
-    </ul></nav>
+    <label class="result-table-page-size"><span class="result-page-select"><select data-result-table-size data-compact-label="\u6BCF\u9875\u6761\u6570" aria-label="\u6BCF\u9875\u6761\u6570">${RESULT_TABLE_PAGE_SIZES.map((size) => `<option value="${size}"${size === state2.pageSize ? " selected" : ""}>${size}</option>`).join("")}</select></span><span>\u6761 / \u9875</span></label>
+    <span class="sr-only" role="status" aria-live="polite">\u7B2C ${start}\u2013${end} \u6761\uFF0C\u5171 ${total} \u6761</span>
+    <div class="result-pagination-controls">
+      <span class="result-page-position">\u7B2C ${state2.page} \u9875\uFF0C\u5171 ${pageCount} \u9875</span>
+      <nav aria-label="\u8FD0\u884C\u7ED3\u679C\u5206\u9875"><ul class="result-table-pagination">
+        ${paginationArrow(1, "\u9996\u9875", "first", state2.page === 1)}
+        ${paginationArrow(state2.page - 1, "\u4E0A\u4E00\u9875", "previous", state2.page === 1)}
+        ${pageNumbers(state2.page, pageCount).map((number) => number === null ? '<li class="result-table-page-gap" aria-hidden="true">...</li>' : `<li><button class="result-page-button" type="button" data-result-table-page="${number}" aria-label="\u7B2C ${number} \u9875"${number === state2.page ? ' aria-current="page"' : ""}>${number}</button></li>`).join("")}
+        ${paginationArrow(state2.page + 1, "\u4E0B\u4E00\u9875", "next", state2.page === pageCount)}
+        ${paginationArrow(pageCount, "\u672B\u9875", "last", state2.page === pageCount)}
+      </ul></nav>
+    </div>
   </footer>`;
 }
-function createResultTable(container, actions) {
+function createResultTable(container, actions, toolbar) {
   let state2 = createResultTableState();
   let rows = [];
   let context = { scope: "", selectedTestIds: null, expandedTestId: "" };
@@ -6704,7 +6713,9 @@ function createResultTable(container, actions) {
       const openTestId = menuOpener?.dataset.resultTableMore;
       const focusedMenuAction = activeMenu?.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement?.dataset.resultTableMenuAction : void 0;
       closeMenu();
+      actions.beforeRender?.();
       container.innerHTML = markup;
+      actions.afterRender?.();
       lastMarkup = markup;
       if (openTestId) {
         const opener = Array.from(container.querySelectorAll("[data-result-table-more]")).find((button) => button.dataset.resultTableMore === openTestId);
@@ -6745,6 +6756,14 @@ function createResultTable(container, actions) {
       actions.runTest(button.dataset.resultTableRun);
     }
   }
+  function handlePageSize(event) {
+    const select = event.target?.closest("[data-result-table-size]");
+    if (!select) return;
+    const pageSize = normalizePageSize(Number(select.value));
+    state2 = { ...state2, page: Math.floor((state2.page - 1) * state2.pageSize / pageSize) + 1, pageSize };
+    refresh();
+    (container.querySelector(".result-page-select .compact-select-trigger") || container.querySelector("[data-result-table-size]"))?.focus();
+  }
   function handleKeydown(event) {
     const target = event.target;
     const more = target?.closest("[data-result-table-more]");
@@ -6777,10 +6796,35 @@ function createResultTable(container, actions) {
   function handleToggle(event) {
     if (event.target === activeMenu && !activeMenu.matches(":popover-open")) closeMenu();
   }
+  function setFilters(search, statuses) {
+    state2 = { ...state2, search, statuses: [...statuses] };
+    refresh();
+  }
+  function handleFilters() {
+    const search = toolbar?.querySelector("#resultTableSearch")?.value || "";
+    const statuses = Array.from(toolbar?.querySelectorAll("[data-result-status]:checked") || []).map((input) => input.value);
+    const count = toolbar?.querySelector("#resultStatusCount");
+    if (count) {
+      count.textContent = String(statuses.length);
+      count.hidden = statuses.length === 0;
+    }
+    setFilters(search, statuses);
+  }
+  function handleFilterClick(event) {
+    if (!event.target?.closest("[data-result-status-clear]")) return;
+    toolbar?.querySelectorAll("[data-result-status]").forEach((input) => {
+      input.checked = false;
+    });
+    handleFilters();
+  }
+  toolbar?.addEventListener("input", handleFilters);
+  toolbar?.addEventListener("click", handleFilterClick);
+  container.addEventListener("change", handlePageSize);
   container.addEventListener("click", handleClick);
   container.addEventListener("keydown", handleKeydown);
   container.addEventListener("toggle", handleToggle, true);
   return {
+    setFilters,
     update(nextRows, nextContext) {
       rows = nextRows;
       context = nextContext;
@@ -6794,7 +6838,10 @@ function createResultTable(container, actions) {
       return resultTableMetricsCsv(filterResultRows(rows, context.selectedTestIds));
     },
     dispose() {
+      toolbar?.removeEventListener("input", handleFilters);
+      toolbar?.removeEventListener("click", handleFilterClick);
       closeMenu();
+      container.removeEventListener("change", handlePageSize);
       container.removeEventListener("click", handleClick);
       container.removeEventListener("keydown", handleKeydown);
       container.removeEventListener("toggle", handleToggle, true);
@@ -7771,8 +7818,11 @@ var batchResultItemHistory = /* @__PURE__ */ new Map();
 var batchResultTable = createResultTable(document.getElementById("batchResults"), {
   showDetails: (testId) => toggleBatchTestDetails(testId).catch((error) => writeTerminal(`$ \u6D4B\u8BD5\u8BE6\u60C5\u8BFB\u53D6\u5931\u8D25
   ${error.message || "\u672A\u77E5\u9519\u8BEF"}`, true)),
-  runTest: (testId) => enqueueResultCardTest(testId)
-});
+  runTest: (testId) => enqueueResultCardTest(testId),
+  // 表格重绘前归还标准下拉浮层，重绘后复用项目统一控件，避免孤立菜单。
+  beforeRender: () => document.querySelectorAll("#batchResults .compact-select.is-open").forEach(closeCompactSelect),
+  afterRender: () => initializeCompactSelects()
+}, document.getElementById("resultTableToolbar"));
 var runPreparationActive = false;
 var navigationPending = false;
 var activeManagementSection = "cases";
@@ -9127,7 +9177,9 @@ function initializeCompactSelects() {
       (select.closest("dialog") || document.body).append(menu);
       menu.hidden = false;
       menu.style.position = "fixed";
-      menu.style.top = `${triggerBounds.bottom + 6}px`;
+      const menuGap = 6;
+      const menuHeight = menu.getBoundingClientRect().height;
+      menu.style.top = `${triggerBounds.bottom + menuGap + menuHeight > window.innerHeight ? Math.max(menuGap, triggerBounds.top - menuHeight - menuGap) : triggerBounds.bottom + menuGap}px`;
       menu.style.left = `${triggerBounds.left}px`;
       menu.style.width = `${triggerBounds.width}px`;
       wrapper.classList.add("is-open");

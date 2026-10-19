@@ -63,7 +63,10 @@ const batchResultItemHistory = new Map<string, any>();
 const batchResultTable = createResultTable(document.getElementById("batchResults"), {
   showDetails: testId => toggleBatchTestDetails(testId).catch(error => writeTerminal(`$ 测试详情读取失败\n  ${error.message || "未知错误"}`, true)),
   runTest: testId => enqueueResultCardTest(testId),
-});
+  // 表格重绘前归还标准下拉浮层，重绘后复用项目统一控件，避免孤立菜单。
+  beforeRender: () => document.querySelectorAll("#batchResults .compact-select.is-open").forEach(closeCompactSelect),
+  afterRender: () => initializeCompactSelects(),
+}, document.getElementById("resultTableToolbar"));
 let runPreparationActive = false;
 let navigationPending = false;
 let activeManagementSection = "cases";
@@ -1585,7 +1588,10 @@ function initializeCompactSelects() {
       (select.closest("dialog") || document.body).append(menu);
       menu.hidden = false;
       menu.style.position = "fixed";
-      menu.style.top = `${triggerBounds.bottom + 6}px`;
+      const menuGap = 6;
+      const menuHeight = menu.getBoundingClientRect().height;
+      menu.style.top = `${triggerBounds.bottom + menuGap + menuHeight > window.innerHeight
+        ? Math.max(menuGap, triggerBounds.top - menuHeight - menuGap) : triggerBounds.bottom + menuGap}px`;
       menu.style.left = `${triggerBounds.left}px`;
       menu.style.width = `${triggerBounds.width}px`;
       wrapper.classList.add("is-open");

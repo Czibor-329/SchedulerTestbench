@@ -27,6 +27,18 @@ function context(selectedTestIds = null, scope = "device-1/group-1") {
   return { scope, selectedTestIds, expandedTestId: "" };
 }
 
+test("未出指标时单元格留白，已有产能和零重算时间正常显示", () => {
+  const rows = [
+    { ...results(1)[0], productionText: "-/87.0" },
+    { ...results(1)[0], testId: "ready", status: "succeeded", productionText: "97.3/88.0", recomputeText: "0.00" },
+  ];
+  const markup = renderResultTable(projectResultTablePage(rows, createResultTableState(), context()), "");
+  assert.equal((markup.match(/<td class="result-table-number is-empty"><\/td>/g) || []).length, 2);
+  assert.doesNotMatch(markup, /-\/87\.0/);
+  assert.match(markup, /<td class="result-table-number">97\.3\/88\.0<\/td>/);
+  assert.match(markup, /<td class="result-table-number">0\.00<\/td>/);
+});
+
 test("空表、整页与末页的范围正确，越界页码被夹到有效范围", () => {
   const empty = projectResultTablePage([], createResultTableState(), context());
   assert.deepEqual([empty.total, empty.pageCount, empty.start, empty.end], [0, 1, 0, 0]);
@@ -78,11 +90,12 @@ test("表格保留表头和原生行语义，提供键盘详情、运行和结�
   const page = projectResultTablePage([row], createResultTableState(), context());
   const markup = renderResultTable(page, row.testId);
   assert.match(markup, /<table\b/);
-  for (const header of ["测试名称", "状态", "产能", "平均重算", "Makespan", "操作"]) assert.ok(markup.includes(header));
+  for (const header of ["测试名称", "状态", "产能", "平均重算", "操作"]) assert.ok(markup.includes(header));
   assert.doesNotMatch(markup, /产能<span>|平均重算<span>|Makespan<span>/, "表头不得拼写单位");
   assert.match(markup, /title="单位：片\/h">产能<\/th>/);
   assert.match(markup, /title="单位：s">平均重算<\/th>/);
-  assert.match(markup, /title="单位：s">Makespan<\/th>/);
+  assert.doesNotMatch(markup, /Makespan/);
+  assert.match(markup, /aria-label="操作"><\/th>/);
   assert.match(markup, /<td class="result-table-number">18\.5\/20\.0<\/td>/);
   assert.match(markup, /<tr[^>]+data-batch-test-card="test-1">/);
   assert.doesNotMatch(markup, /<tr[^>]+(?:role="button"|tabindex=)/);
@@ -93,7 +106,7 @@ test("表格保留表头和原生行语义，提供键盘详情、运行和结�
   assert.match(markup, /download="日志.json"/);
   assert.ok(markup.includes("18.5/20.0"));
   assert.ok(markup.includes("3.20"));
-  assert.ok(markup.includes("12.34"));
+  assert.ok(!markup.includes("12.34"));
   assert.ok(markup.includes("测试 &lt;A&gt; &quot;一&quot;"));
   assert.doesNotMatch(markup, /测试 <A>/);
   const injected = renderResultTable({ ...page, rows: [{ ...row, logUrl: "javascript:alert(1)", ganttUrl: "//remote.test/" }] });
@@ -127,7 +140,7 @@ test("行操作按钮不带文字，只显示图标并提供可访问名称", ()
   assert.notEqual(expanded.inner, actionButton(markup, "data-result-table-details").inner, "展开状态使用收起图标");
 });
 
-test("指标列宽度固定并强调真实数字，行操作沿用模板图标按钮几何", () => {
+test("指标列宽度固定并使用常规字重，行操作沿用模板图标按钮几何", () => {
   const css = fs.readFileSync(path.join(__dirname, "../app/frontend/assets/result_table.css"), "utf8");
   const tableRule = /\.result-table\s*\{([^}]*)\}/.exec(css);
   assert.ok(tableRule, "结果表必须定义表格规则");
@@ -143,7 +156,7 @@ test("指标列宽度固定并强调真实数字，行操作沿用模板图标�
   }
   const numberRule = /\.result-table \.result-table-number\s*\{([^}]*)\}/.exec(css);
   assert.ok(numberRule, "结果表必须定义指标数值样式");
-  assert.match(numberRule[1], /font-weight:\s*700/);
+  assert.match(numberRule[1], /font-weight:\s*400/);
   assert.match(numberRule[1], /color:\s*var\(--ink\)/);
   const emptyRule = /\.result-table \.result-table-number\.is-empty\s*\{([^}]*)\}/.exec(css);
   assert.ok(emptyRule, "无值占位必须有独立样式");
@@ -156,7 +169,7 @@ test("指标列宽度固定并强调真实数字，行操作沿用模板图标�
   assert.doesNotMatch(css, /\.result-table thead th \{[^}]*position:\s*sticky/, "结果表不再使用吸顶表头");
 
   const emptyMarkup = renderResultTable(projectResultTablePage(results(1), createResultTableState(), context()), "");
-  assert.match(emptyMarkup, /<td class="result-table-number is-empty">—<\/td>/);
+  assert.match(emptyMarkup, /<td class="result-table-number is-empty"><\/td>/);
 
   const template = fs.readFileSync(path.join(__dirname, "../app/frontend/assets/spark_table.css"), "utf8");
   const actionRule = /\.table-btn-action\s*\{([^}]*)\}/.exec(template);
@@ -230,7 +243,7 @@ test("分页控制器隔离行操作、保留轮询页码，每页固定 10 项"
   assert.equal(container.dispatch("click", { resultTableRun: "test-22" }), true);
   assert.deepEqual(details, ["test-22"]);
   assert.deepEqual(runs, ["test-22"]);
-  assert.doesNotMatch(container.innerHTML, /data-result-table-size/, "分页底栏不再提供每页条数选择");
+  assert.match(container.innerHTML, /data-result-table-size/, "分页底栏提供模板的每页条数选择");
   assert.match(container.innerHTML, /第 21–30 条，共 60 条/);
   assert.equal(selected.size, 60);
   controller.dispose();
@@ -280,5 +293,65 @@ test("更多菜单使用顶层浮层，轮询保留操作焦点，Escape返回�
   assert.equal(menu.opened, false);
   assert.equal(attributes.get("aria-expanded"), "false");
   assert.equal(document.activeElement, moreButton);
+  controller.dispose();
+});
+
+
+test("名称搜索与多个状态组合，只匹配测试名称且不改变运行选择", () => {
+  const rows = results(4).map((row, index) => ({ ...row, testName: ["Alpha", "ALPHABET", "Beta", "Alpha failed"][index], status: ["succeeded", "running", "succeeded", "failed"][index] }));
+  const selected = new Set(["test-1", "test-2", "test-3"]);
+  const page = projectResultTablePage(rows, { ...createResultTableState(), search: " ALPHA ", statuses: ["succeeded", "running"] }, context(selected));
+  assert.deepEqual(page.rows.map(row => row.testId), ["test-1", "test-2"]);
+  assert.equal(selected.size, 3);
+  const noIdMatch = projectResultTablePage(rows, { ...createResultTableState(), search: "test-1" }, context());
+  assert.equal(noIdMatch.total, 0);
+  assert.match(renderResultTable(noIdMatch), /没有匹配的测试/);
+});
+
+test("筛选变更回第一页，状态轮询夹到有效页且清空条件恢复列表", () => {
+  const rows = results(25).map(row => ({ ...row, status: "running" }));
+  const first = projectResultTablePage(rows, createResultTableState(), context());
+  const filtered = projectResultTablePage(rows, { ...first.state, page: 3, statuses: ["running"] }, context());
+  assert.equal(filtered.state.page, 1);
+  const polled = projectResultTablePage(rows.map((row, i) => ({ ...row, status: i < 3 ? "running" : "succeeded" })), { ...filtered.state, page: 2 }, context());
+  assert.equal(polled.total, 3);
+  assert.equal(polled.state.page, 1);
+  const restored = projectResultTablePage(rows, { ...polled.state, statuses: [], search: "" }, context());
+  assert.equal(restored.total, 25);
+});
+
+test("控制器轮询保留搜索条件，显示筛选不改变 CSV 导出范围", () => {
+  const container = tableContainer();
+  const controller = createResultTable(container, { showDetails() {}, runTest() {} });
+  const rows = results(3);
+  controller.update(rows, context());
+  controller.setFilters("测试 2", ["succeeded"]);
+  assert.match(container.innerHTML, /没有匹配的测试/);
+  controller.update(rows.map(row => ({ ...row, status: "succeeded" })), context());
+  assert.match(container.innerHTML, /第 1–1 条，共 1 条/);
+  assert.equal(controller.metricsCsv().split("\r\n").length, 4);
+  controller.setFilters("", []);
+  assert.match(container.innerHTML, /共 3 条/);
+  controller.dispose();
+});
+
+
+test("模板分页提供五种条数、首末页箭头，修改条数保留首行位置与运行选择", () => {
+  const container = tableContainer();
+  const controller = createResultTable(container, { showDetails() {}, runTest() {} });
+  const rows = results(123);
+  const selected = new Set(rows.map(row => row.testId));
+  controller.update(rows, context(selected));
+  assert.match(container.innerHTML, /第 1 页，共 13 页/);
+  for (const size of [10, 20, 30, 40, 50]) assert.ok(container.innerHTML.includes(`value="${size}"`));
+  for (const label of ["首页", "上一页", "下一页", "末页"]) assert.ok(container.innerHTML.includes(`aria-label="${label}"`));
+  container.dispatch("click", { resultTablePage: "4" });
+  container.dispatch("change", { resultTableSize: "" }, "20");
+  assert.match(container.innerHTML, /第 2 页，共 7 页/);
+  assert.match(container.innerHTML, /第 21–40 条，共 123 条/);
+  assert.equal(selected.size, 123);
+  assert.equal(controller.metricsCsv().split("\r\n").length, 124);
+  controller.update(rows, context(selected));
+  assert.match(container.innerHTML, /第 2 页，共 7 页/);
   controller.dispose();
 });

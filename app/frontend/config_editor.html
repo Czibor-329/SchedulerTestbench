@@ -7,17 +7,18 @@
   <title>调度平台</title>
   <link rel="stylesheet" href="/assets/tabler.min.css">
   <link rel="stylesheet" href="/assets/katex.min.css?v=1.4.4">
-  <link rel="stylesheet" href="/assets/fonts.css?v=1.6.23">
-  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.23">
-  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.23">
-  <link rel="stylesheet" href="/assets/console_shell.css?v=1.6.23">
-  <link rel="stylesheet" href="/assets/console_components.css?v=1.6.23">
-  <link rel="stylesheet" href="/assets/spark_table.css?v=1.6.23">
-  <link rel="stylesheet" href="/assets/result_table.css?v=1.6.23">
-  <link rel="stylesheet" href="/assets/analysis_report.css?v=1.6.23">
-  <link rel="stylesheet" href="/assets/console_replay_toolbar.css?v=1.6.23">
-  <link rel="stylesheet" href="/assets/console_gantt_toolbar.css?v=1.6.23">
-  <link rel="stylesheet" href="/assets/theory_capacity.css?v=1.6.23">
+  <link rel="stylesheet" href="/assets/fonts.css?v=1.6.24">
+  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.24">
+  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.24">
+  <link rel="stylesheet" href="/assets/console_shell.css?v=1.6.24">
+  <link rel="stylesheet" href="/assets/console_components.css?v=1.6.24">
+  <link rel="stylesheet" href="/assets/spark_table.css?v=1.6.24">
+  <link rel="stylesheet" href="/assets/result_table.css?v=1.6.24">
+  <link rel="stylesheet" href="/assets/analysis_report.css?v=1.6.24">
+  <link rel="stylesheet" href="/assets/console_replay_toolbar.css?v=1.6.24">
+  <link rel="stylesheet" href="/assets/console_gantt_toolbar.css?v=1.6.24">
+  <link rel="stylesheet" href="/assets/theory_capacity.css?v=1.6.24">
+  <link rel="stylesheet" href="/assets/shadcn_theme.css?v=1.6.24">
   <script src="/assets/vendor/apexcharts.min.js"></script>
 </head>
 <body class="theme-light" data-bs-theme="light">
@@ -64,7 +65,7 @@
       </nav>
       <div class="sidebar-footer">
         <span class="sidebar-footer-label">本地调度工作台</span>
-        <span class="frontend-version">V1.6.23</span>
+        <span class="frontend-version">V1.6.24</span>
       </div>
     </aside>
     <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="关闭导航" tabindex="-1" hidden></button>
@@ -95,8 +96,21 @@
             </div>
           </article>
           <div class="run-preview-stack" id="runPreviewArea">
-          <article class="panel table-card-custom result-panel" id="runResultsView">
+          <article class="result-panel" id="runResultsView">
             <div class="panel-body">
+              <div class="result-table-toolbar" id="resultTableToolbar" aria-label="测试列表工具栏">
+                <div class="result-table-filters">
+                  <input type="search" id="resultTableSearch" aria-label="按测试名称搜索" placeholder="搜索测试名称…">
+                  <div class="result-status-filter">
+                    <button class="btn result-status-trigger" type="button" popovertarget="resultStatusPopover" aria-label="筛选测试状态"><span aria-hidden="true">⊕</span> 状态<span id="resultStatusCount" hidden></span></button>
+                    <div id="resultStatusPopover" class="result-status-popover" popover>
+                      <fieldset><legend>筛选状态</legend><label><input type="checkbox" value="not-run" data-result-status> 未运行</label><label><input type="checkbox" value="queued" data-result-status> 等待中</label><label><input type="checkbox" value="running" data-result-status> 运行中</label><label><input type="checkbox" value="succeeded" data-result-status> 成功</label><label><input type="checkbox" value="failed" data-result-status> 失败</label><label><input type="checkbox" value="cancelled" data-result-status> 已终止</label></fieldset>
+                      <button class="btn small" type="button" data-result-status-clear>清除筛选</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="result-toolbar-actions"><a class="btn batch-log-download" id="resultBatchLogButton" href="#" download aria-disabled="true">导出日志</a><a class="btn" id="batchGanttButton" href="#" target="_blank" aria-disabled="true">全部甘特图</a><button class="btn" id="exportMetricsCsvButton" type="button">导出指标 CSV</button><button class="btn small" id="batchResultFilterButton" type="button">选择测试</button></div>
+              </div>
               <div class="result-table-container" id="batchResults"></div>
               <div class="result-error-panel" id="resultErrorPanel" role="alert" hidden>
                 <header class="result-error-header">
@@ -107,7 +121,7 @@
                 <div id="resultErrorDetails" class="result-error-details" hidden></div>
                 <pre id="terminal"></pre>
               </div>
-              <div class="result-actions"><a class="btn batch-log-download" id="resultBatchLogButton" href="#" download aria-disabled="true">导出本批日志</a><a class="btn primary" id="batchGanttButton" href="#" target="_blank" aria-disabled="true">全部甘特图</a><button class="btn" id="exportMetricsCsvButton" type="button">导出指标 CSV</button></div>
+
             </div>
           </article>
           <section class="batch-test-details" id="batchTestDetails" aria-live="polite" hidden></section>
@@ -452,7 +466,7 @@
 
       <aside class="side" id="scheduleSide">
         <article class="panel">
-          <div class="panel-head"><div><h2>运行策略</h2></div><button class="btn small" id="batchResultFilterButton" type="button">选择测试</button></div>
+          <div class="panel-head"><div><h2>运行策略</h2></div></div>
           <fieldset class="panel-body" id="runStrategyFields">
             <div class="strategy-options">
               <div class="other-algorithm-options" id="otherAlgorithmOptions"></div>
@@ -887,7 +901,7 @@
     </aside>
   </dialog>
 
-  <script type="module" src="/assets/config_editor.js?v=1.6.23"></script>
+  <script type="module" src="/assets/config_editor.js?v=1.6.24"></script>
   <dialog id="testDraftDialog" aria-labelledby="testDraftTitle">
     <h2 id="testDraftTitle">测试有未保存的修改</h2><p>保存后再离开，或放弃本次修改。</p>
     <form method="dialog" class="editor-save-actions"><button class="btn" value="cancel" autofocus>继续编辑</button><button class="btn" value="discard">放弃修改</button><button class="btn primary" value="save">保存并继续</button></form>

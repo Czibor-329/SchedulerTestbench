@@ -1,11 +1,12 @@
 /**
- * 首页运行结果表格：拥有分页状态、语义化行展示和分页控件交互。
+ * 首页运行结果表格：拥有搜索、状态筛选、分页状态与语义化行展示。
  * 指标与运行选择由页面入口提供；翻页只投影当前选择，不修改测试集合、运行队列或结果。
  */
 
-export const RESULT_TABLE_PAGE_SIZES = [10, 20, 50] as const;
+export const RESULT_TABLE_PAGE_SIZES = [10, 20, 30, 40, 50] as const;
 const DEFAULT_PAGE_SIZE = RESULT_TABLE_PAGE_SIZES[0];
-const PAGE_NEIGHBOR_COUNT = 1;
+const MAX_VISIBLE_PAGES = 5;
+const PAGE_EDGE_WINDOW = 3;
 
 /**
  * 行操作按钮的图标：沿用 spark-admin-v1.0.0 模板表格操作按钮的语义
@@ -37,6 +38,8 @@ export interface ResultTableState {
   page: number;
   pageSize: number;
   scopeKey: string | null;
+  search?: string;
+  statuses?: readonly string[];
 }
 
 export interface ResultTableContext {
@@ -86,8 +89,13 @@ export function projectResultTablePage(
   const scopeKey = JSON.stringify([
     context.scope,
     selectedIds === null ? null : [...selectedIds].sort(),
+    (state.search || "").trim().toLocaleLowerCase(),
+    [...(state.statuses || [])].sort(),
   ]);
-  const selectedRows = filterResultRows(rows, selectedIds);
+  const search = (state.search || "").trim().toLocaleLowerCase();
+  const selectedRows = filterResultRows(rows, selectedIds).filter(row =>
+    row.testName.toLocaleLowerCase().includes(search)
+    && (!state.statuses?.length || state.statuses.includes(resultStatusKey(row.status))));
   const pageSize = normalizePageSize(state.pageSize);
   const total = selectedRows.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -97,7 +105,7 @@ export function projectResultTablePage(
   const offset = (page - 1) * pageSize;
   return {
     rows: selectedRows.slice(offset, offset + pageSize),
-    state: { page, pageSize, scopeKey },
+    state: { ...state, page, pageSize, scopeKey },
     total,
     pageCount,
     start: total ? offset + 1 : 0,
@@ -119,18 +127,10 @@ function resultLink(value: string): string {
 
 /** 显示可见页附近、首页与末页，长区间折叠，避免大量页码占满底栏。 */
 function pageNumbers(page: number, pageCount: number): (number | null)[] {
-  const visible = new Set([1, pageCount]);
-  for (let candidate = page - PAGE_NEIGHBOR_COUNT; candidate <= page + PAGE_NEIGHBOR_COUNT; candidate += 1) {
-    if (candidate >= 1 && candidate <= pageCount) visible.add(candidate);
-  }
-  const ordered = [...visible].sort((left, right) => left - right);
-  const result: (number | null)[] = [];
-  for (const candidate of ordered) {
-    const previous = result[result.length - 1];
-    if (typeof previous === "number" && candidate - previous > 1) result.push(null);
-    result.push(candidate);
-  }
-  return result;
+  if (pageCount <= MAX_VISIBLE_PAGES) return Array.from({ length: pageCount }, (_, index) => index + 1);
+  if (page <= PAGE_EDGE_WINDOW) return [1, 2, 3, 4, null, pageCount];
+  if (page >= pageCount - PAGE_EDGE_WINDOW + 1) return [1, null, pageCount - 3, pageCount - 2, pageCount - 1, pageCount];
+  return [1, null, page - 1, page, page + 1, null, pageCount];
 }
 
 /** 行状态的中文标签；未知状态按等待中处理，避免出现空状态格。 */
@@ -144,7 +144,7 @@ function resultStatusKey(status: string): string {
 }
 
 /**
- * 指标 CSV 的列定义：与结果表的三项指标一致，表头带单位便于表格软件直接阅读。
+ * 指标 CSV 的列定义：保留产能、平均重算及 Makespan 导出契约，表头带单位便于表格软件直接阅读。
  * 无值沿用表格中的占位文本，不把缺失当成 0。
  */
 const METRICS_CSV_COLUMNS: { header: string; value: (row: ResultTableRow) => string }[] = [
@@ -173,13 +173,10 @@ function actionIcon(name: string): string {
   return `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">${RESULT_TABLE_ACTION_ICONS[name]}</svg>`;
 }
 
-/** 无可用指标时的占位文本；该占位在表格中弱化显示，让真实数字成为视觉重点。 */
-const EMPTY_METRIC_TEXT = "—";
-
-/** 生成指标单元格：有值时加粗强调，无值时退为浅色占位。 */
+/** 生成指标单元格：缺失指标及仅有基线的产能留白，真实数值（包括零）正常展示。 */
 function metricCell(text: string): string {
-  const empty = text === EMPTY_METRIC_TEXT;
-  return `<td class="result-table-number${empty ? " is-empty" : ""}">${escapeResultText(text)}</td>`;
+  const empty = !text.trim() || /^(?:—|-)(?:\/.*)?$/.test(text.trim());
+  return `<td class="result-table-number${empty ? " is-empty" : ""}">${empty ? "" : escapeResultText(text)}</td>`;
 }
 
 /** 生成独立可访问的行操作；按钮承担键盘入口，表格行保持原生语义。 */
@@ -198,7 +195,6 @@ function renderResultRow(row: ResultTableRow, expandedTestId: string): string {
     <td><span class="badge-table ${badgeClass}">${RESULT_STATUS_LABELS[status]}</span></td>
     ${metricCell(row.productionText)}
     ${metricCell(row.recomputeText)}
-    ${metricCell(row.makespanText)}
     <td><div class="result-table-actions">
       <button class="table-btn-action" type="button" title="${expanded ? "收起" : "查看"}详情" data-result-table-details="${testId}" aria-expanded="${expanded}" aria-controls="batchTestDetails" aria-label="${expanded ? "收起" : "查看"} ${name} 的详情">${actionIcon(expanded ? "collapse" : "details")}</button>
       <button class="table-btn-action" type="button" title="运行" data-result-table-run="${testId}" aria-label="运行 ${name}"${["queued", "running"].includes(status) ? " disabled" : ""}>${actionIcon("run")}</button>
@@ -213,29 +209,46 @@ function renderResultRow(row: ResultTableRow, expandedTestId: string): string {
   </tr>`;
 }
 
+/** 模板分页的单/双箭头按钮；禁用边界页并保留中文可访问名称。 */
+function paginationArrow(page: number, label: string, direction: string, disabled: boolean): string {
+  const paths: Record<string, string> = {
+    first: "m11 5-7 7 7 7m9-14-7 7 7 7", previous: "m15 5-7 7 7 7",
+    next: "m9 5 7 7-7 7", last: "m4 5 7 7-7 7m9-14 7 7-7 7",
+  };
+  return `<li><button class="result-page-button result-page-arrow" type="button" data-result-table-page="${page}" aria-label="${label}"${disabled ? " disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[direction]}"/></svg></button></li>`;
+}
+
 /** 生成当前分页的原生表格与页码栏；空选择也保留表头、范围与禁用导航。 */
 export function renderResultTable(page: ResultTablePage, expandedTestId = ""): string {
   const { state, pageCount, total, start, end } = page;
   return `<div class="table-responsive result-table-scroll" tabindex="0" role="region" aria-label="测试运行结果表格，可滚动">
     <table class="table-custom result-table">
       <caption class="sr-only">所选测试的运行结果；单击测试行查看详情，双击加入运行队列。</caption>
-      <thead><tr><th scope="col">测试名称</th><th scope="col" class="result-table-status-column">状态</th><th scope="col" class="result-table-number result-table-metric-column" title="单位：片/h">产能</th><th scope="col" class="result-table-number result-table-metric-column" title="单位：s">平均重算</th><th scope="col" class="result-table-number result-table-metric-column" title="单位：s">Makespan</th><th scope="col" class="result-table-actions-column">操作</th></tr></thead>
-      <tbody>${page.rows.length ? page.rows.map(row => renderResultRow(row, expandedTestId)).join("") : '<tr><td colspan="6" class="result-table-empty">当前没有可显示的测试，请选择设备与测试组。</td></tr>'}</tbody>
+      <thead><tr><th scope="col">测试名称</th><th scope="col" class="result-table-status-column">状态</th><th scope="col" class="result-table-number result-table-metric-column" title="单位：片/h">产能</th><th scope="col" class="result-table-number result-table-metric-column" title="单位：s">平均重算</th><th scope="col" class="result-table-actions-column" aria-label="操作"></th></tr></thead>
+      <tbody>${page.rows.length ? page.rows.map(row => renderResultRow(row, expandedTestId)).join("") : '<tr><td colspan="5" class="result-table-empty">没有匹配的测试，请调整搜索、状态筛选或测试选择。</td></tr>'}</tbody>
     </table>
   </div>
   <footer class="table-footer-control result-table-footer">
-    <div class="result-table-page-summary"><span class="table-pagination-info" role="status" aria-live="polite">第 ${start}–${end} 条，共 ${total} 条</span></div>
-    <nav aria-label="运行结果分页"><ul class="pagination result-table-pagination">
-      <li class="page-item${state.page === 1 ? " disabled" : ""}"><button class="page-link" type="button" data-result-table-page="${state.page - 1}" aria-label="上一页"${state.page === 1 ? " disabled" : ""}>上一页</button></li>
-      ${pageNumbers(state.page, pageCount).map(number => number === null ? '<li class="result-table-page-gap" aria-hidden="true">…</li>' : `<li class="page-item${number === state.page ? " active" : ""}"><button class="page-link" type="button" data-result-table-page="${number}" aria-label="第 ${number} 页"${number === state.page ? ' aria-current="page"' : ""}>${number}</button></li>`).join("")}
-      <li class="page-item${state.page === pageCount ? " disabled" : ""}"><button class="page-link" type="button" data-result-table-page="${state.page + 1}" aria-label="下一页"${state.page === pageCount ? " disabled" : ""}>下一页</button></li>
-    </ul></nav>
+    <label class="result-table-page-size"><span class="result-page-select"><select data-result-table-size data-compact-label="每页条数" aria-label="每页条数">${RESULT_TABLE_PAGE_SIZES.map(size => `<option value="${size}"${size === state.pageSize ? " selected" : ""}>${size}</option>`).join("")}</select></span><span>条 / 页</span></label>
+    <span class="sr-only" role="status" aria-live="polite">第 ${start}–${end} 条，共 ${total} 条</span>
+    <div class="result-pagination-controls">
+      <span class="result-page-position">第 ${state.page} 页，共 ${pageCount} 页</span>
+      <nav aria-label="运行结果分页"><ul class="result-table-pagination">
+        ${paginationArrow(1, "首页", "first", state.page === 1)}
+        ${paginationArrow(state.page - 1, "上一页", "previous", state.page === 1)}
+        ${pageNumbers(state.page, pageCount).map(number => number === null ? '<li class="result-table-page-gap" aria-hidden="true">...</li>' : `<li><button class="result-page-button" type="button" data-result-table-page="${number}" aria-label="第 ${number} 页"${number === state.page ? ' aria-current="page"' : ""}>${number}</button></li>`).join("")}
+        ${paginationArrow(state.page + 1, "下一页", "next", state.page === pageCount)}
+        ${paginationArrow(pageCount, "末页", "last", state.page === pageCount)}
+      </ul></nav>
+    </div>
   </footer>`;
 }
 
 export interface ResultTableController {
   update(rows: readonly ResultTableRow[], context: ResultTableContext): void;
   setExpandedTest(testId: string): void;
+  /** 更新显示筛选；不改变运行选择和导出范围。 */
+  setFilters(search: string, statuses: readonly string[]): void;
   /** 导出当前筛选范围内的指标 CSV；分页只影响屏幕，不影响导出内容。 */
   metricsCsv(): string;
   dispose(): void;
@@ -247,7 +260,8 @@ export interface ResultTableController {
  */
 export function createResultTable(
   container: HTMLElement,
-  actions: { showDetails(testId: string): void; runTest(testId: string): void },
+  actions: { showDetails(testId: string): void; runTest(testId: string): void; beforeRender?(): void; afterRender?(): void },
+  toolbar?: HTMLElement,
 ): ResultTableController {
   let state = createResultTableState();
   let rows: readonly ResultTableRow[] = [];
@@ -296,7 +310,9 @@ export function createResultTable(
       const focusedMenuAction = activeMenu?.contains(container.ownerDocument.activeElement)
         ? (container.ownerDocument.activeElement as HTMLElement)?.dataset.resultTableMenuAction : undefined;
       closeMenu();
+      actions.beforeRender?.();
       container.innerHTML = markup;
+      actions.afterRender?.();
       lastMarkup = markup;
       if (openTestId) {
         const opener = Array.from(container.querySelectorAll<HTMLButtonElement>("[data-result-table-more]"))
@@ -342,6 +358,17 @@ export function createResultTable(
     }
   }
 
+  /** 模板每页条数切换保留当前首行所在区间，不更改运行选择或导出范围。 */
+  function handlePageSize(event: Event): void {
+    const select = (event.target as Element)?.closest<HTMLSelectElement>("[data-result-table-size]");
+    if (!select) return;
+    const pageSize = normalizePageSize(Number(select.value));
+    state = { ...state, page: Math.floor((state.page - 1) * state.pageSize / pageSize) + 1, pageSize };
+    refresh();
+    (container.querySelector<HTMLElement>(".result-page-select .compact-select-trigger")
+      || container.querySelector<HTMLSelectElement>("[data-result-table-size]"))?.focus();
+  }
+
   /** 结果菜单按常规菜单键盘方式导航，Escape 关闭并返回“更多”。 */
   function handleKeydown(event: KeyboardEvent): void {
     const target = event.target as Element | null;
@@ -379,10 +406,36 @@ export function createResultTable(
     if (event.target === activeMenu && !activeMenu.matches(":popover-open")) closeMenu();
   }
 
+  /** 更新显示条件并重新分页，运行选择和 CSV 导出范围保持独立。 */
+  function setFilters(search: string, statuses: readonly string[]): void {
+    state = { ...state, search, statuses: [...statuses] };
+    refresh();
+  }
+
+  /** 静态工具栏不随轮询重建，因此输入焦点和弹出菜单保持稳定。 */
+  function handleFilters(): void {
+    const search = toolbar?.querySelector<HTMLInputElement>("#resultTableSearch")?.value || "";
+    const statuses = Array.from(toolbar?.querySelectorAll<HTMLInputElement>("[data-result-status]:checked") || []).map(input => input.value);
+    const count = toolbar?.querySelector<HTMLElement>("#resultStatusCount");
+    if (count) { count.textContent = String(statuses.length); count.hidden = statuses.length === 0; }
+    setFilters(search, statuses);
+  }
+
+  /** 清除状态条件，保留名称搜索；浮层中的按钮仍可继续通过键盘访问。 */
+  function handleFilterClick(event: Event): void {
+    if (!(event.target as Element)?.closest("[data-result-status-clear]")) return;
+    toolbar?.querySelectorAll<HTMLInputElement>("[data-result-status]").forEach(input => { input.checked = false; });
+    handleFilters();
+  }
+
+  toolbar?.addEventListener("input", handleFilters);
+  toolbar?.addEventListener("click", handleFilterClick);
+  container.addEventListener("change", handlePageSize);
   container.addEventListener("click", handleClick);
   container.addEventListener("keydown", handleKeydown);
   container.addEventListener("toggle", handleToggle, true);
   return {
+    setFilters,
     update(nextRows, nextContext) {
       rows = nextRows;
       context = nextContext;
@@ -396,7 +449,10 @@ export function createResultTable(
       return resultTableMetricsCsv(filterResultRows(rows, context.selectedTestIds));
     },
     dispose() {
+      toolbar?.removeEventListener("input", handleFilters);
+      toolbar?.removeEventListener("click", handleFilterClick);
       closeMenu();
+      container.removeEventListener("change", handlePageSize);
       container.removeEventListener("click", handleClick);
       container.removeEventListener("keydown", handleKeydown);
       container.removeEventListener("toggle", handleToggle, true);
