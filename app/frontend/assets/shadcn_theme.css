@@ -183,15 +183,11 @@ dialog::backdrop, dialog#testDraftDialog::backdrop, .drawer-layer::backdrop { ba
 .console-gantt-controls button:hover:not(:disabled) { border-color: var(--line); background: var(--brand-soft); }
 .console-gantt-controls button.primary:hover:not(:disabled) { background: var(--brand-dark); }
 .console-replay-controls :is(.timeline-current, .timeline-total) { color: var(--muted); }
-/* 桌面各页统一内容边距；回放的固定画布同步缩进，保持与顶栏对齐。 */
+/* 桌面普通页面统一内容边距；回放画布由 console_shell.css 铺满导航右侧视口。 */
 @media (min-width: 1001px) {
   body { --console-page-padding: 120px; }
   body .console-topbar { padding-inline: var(--console-page-padding); }
   body .layout { padding-inline: var(--console-page-padding); }
-  body [data-tab-view="playback"].active #visualTopologyPlayback:not([hidden]) {
-    left: calc(var(--console-sidebar-width) + var(--console-page-padding));
-    right: var(--console-page-padding);
-  }
 }
 @media (max-width: 767px) {
   body :is(.field input, .field select, .field textarea) { font-size: 16px; }
