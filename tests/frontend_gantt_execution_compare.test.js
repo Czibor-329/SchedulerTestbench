@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 
 const compare = require(
   process.env.CT_GANTT_COMPARE_TEST_BUILD
-    || "../realtime_scheduler/frontend/assets/gantt_execution_compare.js",
+    || "../app/frontend/assets/gantt_execution_compare.js",
 );
 
 test("reconstructExecutionLog uses every Running/Done pair when MoveID is reused", () => {

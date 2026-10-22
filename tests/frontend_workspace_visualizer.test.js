@@ -6,10 +6,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const logic = require(
   process.env.CT_WORKSPACE_VISUALIZER_TEST_BUILD
-    || "../realtime_scheduler/frontend/workspace_visualizer_logic.js",
+    || "../app/frontend/workspace_visualizer_logic.js",
 );
 const frontendCss = fs.readFileSync(
-  path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+  path.join(__dirname, "../app/frontend/assets/config_editor.css"),
   "utf8",
 );
 
@@ -318,6 +318,8 @@ class FakeElement {
     this.textContent = "";
     this.classList = new FakeClassList();
     this.attributes = new Map();
+    this.dataset = {};
+    this.ownerDocument = { activeElement: null };
     this.listeners = new Map();
     this.label = null;
     this.style = { setProperty() {} };
@@ -339,6 +341,11 @@ class FakeElement {
     return selector === "span" ? this.label : null;
   }
 
+  /** 业务测试不解析 innerHTML；画布注释和选择允许查询空的节点集合。 */
+  querySelectorAll() {
+    return [];
+  }
+
   focus() {
     this.focused = true;
   }
@@ -358,6 +365,8 @@ function fakeWorkspaceDocument() {
     "visualContent",
     "visualTopologyPlayback",
     "visualDeviceStage",
+    "visualFrontSlotOverview",
+    "visualReplayObjectDetails",
     "visualDecisionLens",
     "visualActionStatusFilter",
     "visualActionKindFilter",
@@ -438,7 +447,7 @@ test("日志导入明确拒绝普通 MoveList 文件", () => {
 });
 
 test("回放控制保留稳定入口且动作查询默认关闭", () => {
-  const html = fs.readFileSync(path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/config_editor.html"), "utf8");
   for (const id of ["visualPlayButton", "visualSource", "visualTimeline", "visualSpeed", "visualTotalTime", "visualExportDeadlockDiagnostic", "visualWaferProgress"]) {
     assert.ok(html.includes(`id="${id}"`));
   }
@@ -449,7 +458,7 @@ test("回放控制保留稳定入口且动作查询默认关闭", () => {
 
 test("正视槽位卡片按内容收缩，不以画布高度拉长模块槽位", () => {
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
   assert.match(css, /\.topology-front-slot-card \{[^}]*height:\s*auto;[^}]*max-height:\s*var\(--topology-canvas-height, 640px\);/);
@@ -460,15 +469,15 @@ test("正视槽位卡片按内容收缩，不以画布高度拉长模块槽位",
 
 test("合法动作空间面板保持两列卡片与默认全状态视觉契约", () => {
   const html = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"),
+    path.join(__dirname, "../app/frontend/config_editor.html"),
     "utf8",
   );
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
   const source = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/config_editor.ts"),
+    path.join(__dirname, "../app/frontend/src/config_editor.ts"),
     "utf8",
   );
 
@@ -538,7 +547,7 @@ test("结果分析与拓扑回放使用独立界面并共享当前 MoveList", as
   assert.equal(root.elements.get("visualSource").title, "t1.json");
   const lens = root.elements.get("visualDecisionLens").innerHTML;
   assert.equal(lens, "");
-  assert.doesNotMatch(lens, /E2E推荐|Δ 基准|模型偏好|剩余工期/);
+  assert.doesNotMatch(lens, /Δ 基准|模型偏好|剩余工期/);
   assert.doesNotMatch(root.elements.get("visualDeviceStage").innerHTML, /PM2/);
 
   workspace.showGroupAnalysis("<h2>组级统计</h2>");
@@ -569,7 +578,7 @@ test("动作空间按状态筛选并把原因放进悬浮提示", () => {
   const enabled = logic.renderDecisionLens(decision, "idle", "", ["enabled"]);
   assert.match(enabled, /Pick\(1\) LP1#1 → ATR#1/);
   assert.match(enabled, /action-status-tooltip[\s\S]*当前物理可行/);
-  assert.doesNotMatch(enabled, /decision-tag action-status|action-block-reason|目标槽已满|无回程槽|E2E|推荐|剩余工期|LA#1/);
+  assert.doesNotMatch(enabled, /decision-tag action-status|action-block-reason|目标槽已满|无回程槽|推荐|剩余工期|LA#1/);
   const blockedSwap = logic.renderDecisionLens(decision, "idle", "", ["deadlock-blocked"]);
   assert.match(blockedSwap, /Swap\(1,2\) VTR#1 → PM2#1/);
   assert.doesNotMatch(blockedSwap, /decision-tag action-status/);
@@ -578,149 +587,6 @@ test("动作空间按状态筛选并把原因放进悬浮提示", () => {
   const blockedPlace = logic.renderDecisionLens(decision, "idle", "", ["physical-blocked"]);
   assert.match(blockedPlace, /Place ATR#1 → LA#1/);
   assert.match(blockedPlace, /另 23 片相同/);
-});
-
-test("旧模型推荐轨迹不再进入动作状态卡片", async () => {
-  const root = fakeWorkspaceDocument();
-  const workspace = logic.createVisualizationWorkspace(root);
-  await workspace.loadFile({
-    name: "dual-actor-decision.json",
-    async text() {
-      return JSON.stringify({
-        MoveList: moves,
-        DecisionTraceMeta: {
-          schema: "dual-actor-primitive-decision-trace-v1",
-          model: "双 Actor 原子调度",
-        },
-        DecisionTrace: [{
-          model: "dual-actor-e2e",
-          decisionIndex: 12,
-          time: 0,
-          candidateGroups: [
-            {
-              actor: "atmosphere",
-              label: "大气端 Actor",
-              selectedActionId: "atr-pick",
-              candidateCount: 2,
-              candidates: [
-                { actionId: "atr-place", actor: "atmosphere", kind: "place", robot: "ATR", source: "ATR", destination: "LA", rank: 2, policyPreference: 0.2, expectedRemainingCost: 18 },
-                { actionId: "atr-pick", actor: "atmosphere", kind: "pick", robot: "ATR", source: "LP1", destination: "Robot hand", rank: 1, selected: true, policyPreference: 0.8, expectedRemainingCost: 11 },
-              ],
-            },
-            {
-              actor: "vacuum",
-              label: "真空端 Actor",
-              selectedActionId: "vtr-swap",
-              candidateCount: 1,
-              candidates: [
-                { actionId: "vtr-swap", actor: "vacuum", kind: "swap", robot: "VTR", source: "PM1", destination: "PM2", rank: 1, selected: true, policyPreference: 1, expectedRemainingCost: 9 },
-              ],
-            },
-          ],
-        }],
-      });
-    },
-  });
-
-  const lens = root.elements.get("visualDecisionLens").innerHTML;
-  assert.equal(lens, "");
-  assert.doesNotMatch(lens, /Actor|推荐|policyPreference/);
-});
-
-test("双 Actor 原始决策按最终定时 MoveList 的物理动作时刻对齐", () => {
-  const trace = logic.normalizeDecisionTrace({
-    DecisionTraceMeta: {
-      schema: "dual-actor-primitive-decision-trace-v1",
-      model: "双 Actor 原子调度",
-    },
-    DecisionTrace: [
-      {
-        model: "dual-actor-e2e",
-        decisionIndex: 1,
-        time: 0,
-        selectedActionId: "atr:pick:W1:LP1",
-        proposals: [{
-          actor: "atmosphere",
-          actionId: "atr:pick:W1:LP1",
-          kind: "pick",
-          robot: "ATR",
-          materialIds: ["W1"],
-          source: "LP1",
-          selected: true,
-        }],
-      },
-      {
-        model: "dual-actor-e2e",
-        decisionIndex: 2,
-        time: 0,
-        selectedActionId: "atr:place:W1:LA",
-        proposals: [{
-          actor: "atmosphere",
-          actionId: "atr:place:W1:LA",
-          kind: "place",
-          robot: "ATR",
-          materialIds: ["W1"],
-          source: "LP1",
-          destination: "LA",
-          selected: true,
-        }],
-      },
-    ],
-  });
-  const aligned = logic.alignOriginalDecisionTraceToMoves(trace, [
-    {
-      MoveID: 10, MoveType: 0, StartTime: 12.5, EndTime: 14,
-      Robot: "ATR", ModuleName: "ATR", MatIDList: ["W1"], SrcStationList: ["LP1"],
-    },
-    {
-      MoveID: 11, MoveType: 1, StartTime: 18.75, EndTime: 20,
-      Robot: "ATR", ModuleName: "ATR", MatIDList: ["W1"], DestStationList: ["LA"],
-    },
-  ]);
-
-  assert.deepEqual(aligned.map(step => step.time), [12.5, 18.75]);
-  assert.deepEqual(
-    aligned.map(step => step.executedActionId),
-    ["atr:pick:W1:LP1", "atr:place:W1:LA"],
-  );
-  assert.ok(aligned.every(step => step.modelEvaluated && !step.replayEvaluated));
-  assert.ok(aligned.every(step => step.candidates.some(candidate => candidate.executed)));
-});
-
-test("旧联合动作推荐不再进入动作状态卡片", async () => {
-  const root = fakeWorkspaceDocument();
-  const workspace = logic.createVisualizationWorkspace(root);
-  await workspace.loadFile({
-    name: "reentrant-priority.json",
-    async text() {
-      return JSON.stringify({
-        MoveList: moves,
-        DecisionTrace: [{
-          decisionIndex: 7,
-          time: 188.7,
-          selectedActionId: "pm-reentry",
-          executedActionId: "pm-reentry",
-          candidateCount: 2,
-          candidates: [
-            {
-              actionId: "feed-later", rank: 2, source: "LP1", destination: "LB",
-              robot: "ATR", flowKind: "feed", policyPreference: 0.9,
-              priorityDeferred: true,
-            },
-            {
-              actionId: "pm-reentry", rank: 1, source: "PM3", destination: "PM2",
-              robot: "VTR", flowKind: "internal", policyPreference: 0.1,
-              selected: true, executed: true,
-            },
-          ],
-        }],
-      });
-    },
-  });
-
-  const lens = root.elements.get("visualDecisionLens").innerHTML;
-  assert.equal(lens, "");
-  assert.doesNotMatch(lens, /E2E推荐|与计划一致/);
 });
 
 test("连续回放不恢复已经取消的决策边界自动暂停", async () => {
@@ -859,9 +725,10 @@ test("拓扑回放补全设备配置中未被 MoveList 引用的腔室", () => {
   assert.equal(full.modules.find(module => module.name === "LA").door, "closed");
 });
 
+/** 从完整开始标签读取原始设备坐标，允许对象交互增加 data/role 等属性。 */
 function positionsFromTopology(topology) {
   const positions = [];
-  const pattern = /class="reference-(module|robot)-position" style="--(?:module|robot)-left:([\d.]+)%;--(?:module|robot)-top:(\d+)px[^\"]*">([\s\S]*?)(?=<div class="reference-|\s*<svg class="topology-target-arrows)/g;
+  const pattern = /class="reference-(module|robot)-position"[^>]*style="--(?:module|robot)-left:([\d.]+)%;--(?:module|robot)-top:(\d+)px[^\"]*"[^>]*>([\s\S]*?)(?=<div class="reference-|\s*<svg class="topology-target-arrows)/g;
   let match;
   while ((match = pattern.exec(topology)) !== null) {
     const isRobot = match[1] === "robot";
@@ -937,14 +804,14 @@ test("单真空机械手拓扑以方框架固定四个 PM、Heater 与两把 Loa
 
   const modulePosition = name => {
     const match = new RegExp(
-      `class="reference-module-position" style="--module-left:([\\d.]+)%;--module-top:(\\d+)px[^\"]*">(?:(?!class="reference-module-position")[\\s\\S])*?<strong[^>]*>${name}</strong>`,
+      `class="reference-module-position"[^>]*style="--module-left:([\\d.]+)%;--module-top:(\\d+)px[^\"]*"[^>]*>(?:(?!class="reference-module-position")[\\s\\S])*?<strong[^>]*>${name}</strong>`,
     ).exec(topology);
     assert.ok(match, `应找到 ${name} 的坐标`);
     return { x: Number(match[1]), y: Number(match[2]) };
   };
   const robotPosition = name => {
     const match = new RegExp(
-      `class="reference-robot-position" style="--robot-left:([\\d.]+)%;--robot-top:(\\d+)px[^\"]*">(?:(?!class="reference-robot-position")[\\s\\S])*?aria-label="${name}，`,
+      `class="reference-robot-position"[^>]*style="--robot-left:([\\d.]+)%;--robot-top:(\\d+)px[^\"]*"[^>]*>(?:(?!class="reference-robot-position")[\\s\\S])*?aria-label="${name}，`,
     ).exec(topology);
     assert.ok(match, `应找到 ${name} 的坐标`);
     return { x: Number(match[1]), y: Number(match[2]) };
@@ -1003,7 +870,7 @@ test("LP2 与 Dummy Port 之间固定预留 LP3 列位", () => {
   );
   const xFor = name => {
     const match = new RegExp(
-      `class="reference-module-position" style="--module-left:([\\d.]+)%;[^>]*>(?:(?!class="reference-module-position")[\\s\\S])*?<strong[^>]*>${name}</strong>`,
+      `class="reference-module-position"[^>]*style="--module-left:([\\d.]+)%;[^>]*>(?:(?!class="reference-module-position")[\\s\\S])*?<strong[^>]*>${name}</strong>`,
     ).exec(topology);
     assert.ok(match, `应找到 ${name} 的列位`);
     return Number(match[1]);
@@ -1088,11 +955,11 @@ test("双真空机械手级联拓扑固定显示全部 LP，并完整显示腔�
   assert.match(topology, /data-frame-id="vacuum-vtr-2"/);
   const yOf = name => {
     const module = new RegExp(
-      `class="reference-module-position" style="--module-left:[\\d.]+%;--module-top:(\\d+)px[^\"]*">\\s*<strong class="equipment-external-name[^"]*">${name}</strong>`
+      `class="reference-module-position"[^>]*style="--module-left:[\\d.]+%;--module-top:(\\d+)px[^\"]*"[^>]*>\\s*<strong class="equipment-external-name[^"]*">${name}</strong>`
     ).exec(topology);
     if (module) return Number(module[1]);
     const robot = new RegExp(
-      `class="reference-robot-position" style="--robot-left:[\\d.]+%;--robot-top:(\\d+)px[^\"]*">\\s*<article class="robot-hub[^"]*"[^>]*aria-label="${name}`
+      `class="reference-robot-position"[^>]*style="--robot-left:[\\d.]+%;--robot-top:(\\d+)px[^\"]*"[^>]*>\\s*<article class="robot-hub[^"]*"[^>]*aria-label="${name}`
     ).exec(topology);
     assert.ok(robot, `拓扑应包含 ${name}`);
     return Number(robot[1]);
@@ -1141,9 +1008,9 @@ test("级联与非级联拓扑的大气侧布局和区域高度保持一致", ()
   };
   const verticalPosition = (topology, kind, name) => {
     const prefix = kind === "robot"
-      ? 'class="reference-robot-position" style="--robot-left:[\\d.]+%;--robot-top:'
-      : 'class="reference-module-position" style="--module-left:[\\d.]+%;--module-top:';
-    const match = new RegExp(`${prefix}(\\d+)px[^\"]*">(?:(?!class="reference-(?:robot|module)-position")[\\s\\S])*?${name}`).exec(topology);
+      ? 'class="reference-robot-position"[^>]*style="--robot-left:[\\d.]+%;--robot-top:'
+      : 'class="reference-module-position"[^>]*style="--module-left:[\\d.]+%;--module-top:';
+    const match = new RegExp(`${prefix}(\\d+)px[^\"]*"[^>]*>(?:(?!class="reference-(?:robot|module)-position")[\\s\\S])*?${name}`).exec(topology);
     assert.ok(match, `应找到 ${name} 的纵向坐标`);
     return Number(match[1]);
   };
@@ -1219,7 +1086,7 @@ test("三类设备以机器框架和不可见附着点固定真空腔室位置",
     const variable = kind === "robot" ? "robot" : "module";
     const marker = kind === "robot" ? `aria-label="${name}，` : `>${name}</strong>`;
     const match = new RegExp(
-      `class="${className}" style="--${variable}-left:([\\d.]+)%;--${variable}-top:(\\d+)px[^\"]*">(?:(?!class="reference-(?:robot|module)-position")[\\s\\S])*?${marker}`,
+      `class="${className}"[^>]*style="--${variable}-left:([\\d.]+)%;--${variable}-top:(\\d+)px[^\"]*"[^>]*>(?:(?!class="reference-(?:robot|module)-position")[\\s\\S])*?${marker}`,
     ).exec(topology);
     assert.ok(match, `应找到 ${name} 的框架坐标`);
     return { x: Number(match[1]) * 10, y: Number(match[2]) };
@@ -1411,11 +1278,11 @@ test("三级机器手设备按结构使用级联布局，不依赖设备名称",
   assertTopologyComplete(topology, ["LA", "LB", "UBR", "DBR", "PM1", "PM2", "PM3", "PM4", "PM5"]);
   const positionOf = name => {
     const module = new RegExp(
-      `class="reference-module-position" style="--module-left:([\\d.]+)%;--module-top:(\\d+)px[^\"]*">\\s*<strong class="equipment-external-name[^"]*">${name}</strong>`
+      `class="reference-module-position"[^>]*style="--module-left:([\\d.]+)%;--module-top:(\\d+)px[^\"]*"[^>]*>\\s*<strong class="equipment-external-name[^"]*">${name}</strong>`
     ).exec(topology);
     if (module) return { x: Number(module[1]) / 100 * 1000, y: Number(module[2]) };
     const robot = new RegExp(
-      `class="reference-robot-position" style="--robot-left:([\\d.]+)%;--robot-top:(\\d+)px[^\"]*">\\s*<article class="robot-hub[^"]*"[^>]*aria-label="${name}`
+      `class="reference-robot-position"[^>]*style="--robot-left:([\\d.]+)%;--robot-top:(\\d+)px[^\"]*"[^>]*>\\s*<article class="robot-hub[^"]*"[^>]*aria-label="${name}`
     ).exec(topology);
     assert.ok(robot, `拓扑应包含 ${name}`);
     return { x: Number(robot[1]) / 100 * 1000, y: Number(robot[2]) };
@@ -1472,7 +1339,7 @@ test("多个大气机械手在同一排横向分布且不重叠", () => {
   );
   assertTopologyComplete(topology, ["LP1", "LP2", "LA", "LB", "PM1", "PM2"]);
   assert.match(topology, />LP2</);
-  const reAtr = /class="reference-robot-position" style="--robot-left:([\d.]+)%;--robot-top:(\d+)px">\s*<article class="robot-hub[^"]*"[^>]*aria-label="(ATR_\d)[^"]*"/g;
+  const reAtr = /class="reference-robot-position"[^>]*style="--robot-left:([\d.]+)%;--robot-top:(\d+)px[^\"]*"[^>]*>\s*<article class="robot-hub[^"]*"[^>]*aria-label="(ATR_\d)[^"]*"/g;
   let match;
   const found = new Map();
   while ((match = reAtr.exec(topology)) !== null) {
@@ -1733,7 +1600,7 @@ test("Aligner 使用紧凑叉形，Cooler 在俯视图显示顶部可见槽位",
   assert.doesNotMatch(topology, /cooler-plate/);
 });
 
-test("E2E 决策在机器人尚未执行时驱动单槽机械臂朝向且不再绘制箭头", () => {
+test("动作决策在机器人尚未执行时驱动单槽机械臂朝向且不再绘制箭头", () => {
   const idleSnapshot = logic.buildWorkspaceSnapshot(moves, device, 0);
   const decision = {
     decisionIndex: 0,
@@ -1786,7 +1653,7 @@ test("机械手清除旧坐标偏移，并按 PRE_TRANS 进度连续旋转", () 
   assert.equal(angleAt(10), angleAt(15));
 
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
   assert.match(css, /\.robot-hub-vacuum[^}]*top:\s*auto;\s*left:\s*auto;/);
@@ -1819,7 +1686,7 @@ test("机械手清除旧坐标偏移，并按 PRE_TRANS 进度连续旋转", () 
 
 test("拓扑回放的晶圆尺寸统一以机器手持片为基准", () => {
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
   const uniformToken = "width: var(--topology-wafer-size); min-width: var(--topology-wafer-size); height: var(--topology-wafer-size);";
@@ -2270,7 +2137,7 @@ test("动作接口回放跨过 Pick 边界时保持连续播放", async () => {
     const root = fakeWorkspaceDocument();
     const workspace = logic.createVisualizationWorkspace(root);
     await workspace.loadFile({
-      name: "dual-actor-primitive-boundary.json",
+      name: "primitive-boundary.json",
       async text() {
         return JSON.stringify({ MoveList: moves });
       },
@@ -2414,7 +2281,7 @@ test("工艺腔渲染为正八边形 shell 结构，清洁状态使用浅粉色�
   assert.match(topology, /class="equipment-card equipment-process[^"]*"[^>]*>\s*<div class="equipment-process-shell"><div class="equipment-body"/);
   assert.doesNotMatch(topology, /class="equipment-card equipment-lock[^"]*"[^>]*>\s*<div class="equipment-process-shell"/);
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
   assert.match(css, /\.reference-grid-canvas \.equipment-process \.equipment-process-shell \{[^}]*clip-path:\s*polygon\(29\.29% 0, 70\.71% 0, 100% 29\.29%, 100% 70\.71%, 70\.71% 100%, 29\.29% 100%, 0 70\.71%, 0 29\.29%\)/);
@@ -2440,7 +2307,7 @@ test("以空 ProcessMove 或清洁配方记录的清洁在拓扑回放中可见"
 
 test("瓶颈分析隐藏说明、窗口详情和统计口径可见标签", () => {
   const source = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/workspace_visualizer.ts"),
+    path.join(__dirname, "../app/frontend/src/workspace_visualizer.ts"),
     "utf8",
   );
   assert.doesNotMatch(source, /同一道工序的设备合并取平均，按平均利用率最多显示 4 行。/);
@@ -2451,19 +2318,19 @@ test("瓶颈分析隐藏说明、窗口详情和统计口径可见标签", () =>
 
 test("瓶颈分析提供目的、判定原理和最优性说明", () => {
   const workspaceSource = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/workspace_visualizer.ts"),
+    path.join(__dirname, "../app/frontend/src/workspace_visualizer.ts"),
     "utf8",
   );
   const html = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"),
+    path.join(__dirname, "../app/frontend/config_editor.html"),
     "utf8",
   );
   const editorSource = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/config_editor.ts"),
+    path.join(__dirname, "../app/frontend/src/config_editor.ts"),
     "utf8",
   );
   const css = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/assets/config_editor.css"),
+    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
     "utf8",
   );
 
@@ -2475,15 +2342,15 @@ test("瓶颈分析提供目的、判定原理和最优性说明", () => {
 
 test("驻留时间分析展示逐片腔室和机器手驻留，并提供说明", () => {
   const workspaceSource = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/workspace_visualizer.ts"),
+    path.join(__dirname, "../app/frontend/src/workspace_visualizer.ts"),
     "utf8",
   );
   const html = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/config_editor.html"),
+    path.join(__dirname, "../app/frontend/config_editor.html"),
     "utf8",
   );
   const editorSource = fs.readFileSync(
-    path.join(__dirname, "../realtime_scheduler/frontend/src/config_editor.ts"),
+    path.join(__dirname, "../app/frontend/src/config_editor.ts"),
     "utf8",
   );
 

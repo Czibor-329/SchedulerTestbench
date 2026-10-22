@@ -5,19 +5,19 @@ from unittest.mock import patch
 
 import pytest
 
-from realtime_scheduler.backend import application as scheduler_application
-from realtime_scheduler.backend.execution import service as execution_service
-from realtime_scheduler.backend.execution.batch_service import build_workspace_batch_plan
-from realtime_scheduler.backend.execution.run_state import ReproductionLog, _planned_events
-from realtime_scheduler.backend.validation.move_validation import materialize_module_parallel_moves
-from realtime_scheduler.backend.validation.hongye.log_validator import HongYeLogValidator
+from app.backend import application as scheduler_application
+from app.backend.execution import service as execution_service
+from app.backend.execution.batch_service import build_workspace_batch_plan
+from app.backend.execution.run_state import ReproductionLog, _planned_events
+from app.backend.validation.move_validation import materialize_module_parallel_moves
+from app.backend.validation.hongye.log_validator import HongYeLogValidator
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_runtime_contains_original_checkminlog_module() -> None:
     """运行目录包含原始 MoveStateSim 及 CheckMinLog 所需依赖。"""
-    runtime = ROOT / "realtime_scheduler" / "backend" / "validation" / "hongye" / "runtime"
+    runtime = ROOT / "app" / "backend" / "validation" / "hongye" / "runtime"
     required = {"MoveStateSim.exe", "MoveStateSim.exe.config", "Newtonsoft.Json.dll", "SchedulerStandardInterface.dll", "SchStateLib.dll"}
     assert required == {path.name for path in runtime.iterdir() if path.is_file()}
 
@@ -142,7 +142,7 @@ def test_batch_plan_defaults_to_hongye_without_time_fluctuation() -> None:
 
 def test_frontend_merges_run_actions_with_strategy_and_restores_settings_dialog() -> None:
     """开始运行应与策略合并，运行设置恢复为齿轮触发的弹窗。"""
-    template = (ROOT / "realtime_scheduler" / "frontend" / "config_editor.html").read_text(encoding="utf-8")
+    template = (ROOT / "app" / "frontend" / "config_editor.html").read_text(encoding="utf-8")
     sidebar = template.split('<aside class="side" id="scheduleSide">', 1)[1].split("</aside>", 1)[0]
     assert 'id="runSettingsFields"' not in template
     assert 'class="panel run-launch-panel"' not in template
@@ -164,12 +164,12 @@ def test_frontend_merges_run_actions_with_strategy_and_restores_settings_dialog(
     assert "取消勾选后仅忽略该类型的触发时机和次数" in template
     assert "HongYe 校验共享配额" in template
     assert 'requestJson("/api/preferences/run-settings"' in (
-        ROOT / "realtime_scheduler" / "frontend" / "src" / "config_editor.ts"
+        ROOT / "app" / "frontend" / "src" / "config_editor.ts"
     ).read_text(encoding="utf-8")
 
 
 def test_all_recompute_notifications_are_recorded() -> None:
     """服务实现不应再按兼容模式抑制 AlgUpdateMove。"""
-    source = (ROOT / "realtime_scheduler" / "backend" / "execution" / "service.py").read_text(encoding="utf-8")
+    source = (ROOT / "app" / "backend" / "execution" / "service.py").read_text(encoding="utf-8")
     assert "if not compatibility_mode:\n                for notification" not in source
     assert 'reproduction.add(\n                    "AlgUpdateMove"' in source

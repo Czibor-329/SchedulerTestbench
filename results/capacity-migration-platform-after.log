@@ -1,0 +1,38 @@
+
+=== milp: D:\project\milp\venv\Scripts\python.exe -m pytest tests -q -k theory_capacity ===
+........................................................................ [ 38%]
+.....F.................................................................. [ 76%]
+............................................                             [100%]
+================================== FAILURES ===================================
+_______ test_theory_capacity_solver_works_without_algorithm_repository ________
+
+    def test_theory_capacity_solver_works_without_algorithm_repository():
+        """在隔离解释器中禁止算法命名空间，仍能导入平台求解器并解出手算周期。"""
+        script = """
+    import sys
+    sys.path.insert(0, sys.argv[1])
+    sys.modules['src'] = None
+    from app.backend.theory_capacity.solver import CapacityModel, WaitingConstraint, analyze_capacity
+    model = CapacityModel('单事件', ('A',), (WaitingConstraint('A', 'A', 12.5, 1, '节拍'),), 1)
+    report = analyze_capacity(model)
+    assert abs(report.period_seconds - 12.5) < 1e-6
+    assert abs(report.physical_wafers_per_hour - 288) < 1e-5
+    assert not any(name.startswith('src.') for name in sys.modules)
+    """
+        completed = subprocess.run([sys.executable, '-I', '-c', script, str(PLATFORM_ROOT)],
+            capture_output=True, text=True, check=False)
+>       assert completed.returncode == 0, completed.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "<string>", line 6, in <module>
+E         TypeError: CapacityModel.__init__() missing 1 required positional argument: 'resource_work_seconds'
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['D:\\project\\milp\\venv\\Scripts\\python.exe', '-I', '-c', "\nimport sys\nsys.path.insert(0, s... in <module>\nTypeError: CapacityModel.__init__() missing 1 required positional argument: \'resource_work_seconds\'\n').returncode
+
+tests\test_theory_capacity_entrypoints.py:27: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_theory_capacity_entrypoints.py::test_theory_capacity_solver_works_without_algorithm_repository
+1 failed, 187 passed, 467 deselected in 85.73s (0:01:25)
+
+=== �����׼����� ===
+platform: ʧ�ܣ��˳��� 1��

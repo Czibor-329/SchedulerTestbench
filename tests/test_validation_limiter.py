@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import multiprocessing
 
-from realtime_scheduler.backend.execution.validation_limiter import (
+from app.backend.execution.validation_limiter import (
     BatchValidationLimiter,
 )
 

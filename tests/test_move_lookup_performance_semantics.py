@@ -2,9 +2,9 @@
 
 import random
 
-from realtime_scheduler.backend.validation import move_validation
-from realtime_scheduler.backend.validation.move_validation_helpers import _IndexedMoves, _related_move
-from realtime_scheduler.backend.execution.run_state import _copy_move_list
+from app.backend.validation import move_validation
+from app.backend.validation.move_validation_helpers import _IndexedMoves, _related_move
+from app.backend.execution.run_state import _copy_move_list
 
 
 def test_index_matches_full_scan_with_dependencies_ambiguity_and_time_tolerance():
@@ -41,7 +41,7 @@ def test_move_copy_isolates_nested_extensions_and_preserves_types():
 def test_reproduction_output_keeps_nested_data_isolated():
     """日志复制保留扩展字段类型并隔离后续的输入修改。"""
     from copy import deepcopy
-    from realtime_scheduler.backend.execution.run_state import ReproductionLog
+    from app.backend.execution.run_state import ReproductionLog
 
     info = {"MoveList": [{"MoveID": 1, "MatIDList": [2], "Extension": {3: [4]}}], "Feedback": [{"detail": [5]}]}
     expected = deepcopy(info)

@@ -12,7 +12,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 ALGORITHM_ROOT = ROOT / "alg"
 DEVICE_PATH = ALGORITHM_ROOT / "dataset" / "input_data" / "s1-1c2p-reschedule.json"
-DATASET_ROOT = ROOT / "realtime_scheduler" / "data" / "datasets"
+DATASET_ROOT = ROOT / "app" / "data" / "datasets"
+
+
+def device_recording() -> list[dict]:
+    """读取包含 AlgInit 的只读重算设备夹具，返回每个测试独立的事件副本。"""
+    return json.loads(DEVICE_PATH.read_text(encoding="utf-8"))
 
 
 def dataset_device_path(device_name: str) -> Path:

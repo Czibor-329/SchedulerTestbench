@@ -5,7 +5,7 @@
 ## 快速开始
 
 ```powershell
-python -m realtime_scheduler.backend.main --open
+python -m app.backend.main --open
 ```
 
 浏览器会打开本地控制台；默认地址为 <http://127.0.0.1:8765/config_editor.html>。服务默认只监听本机。用 `Ctrl+C` 停止服务。
@@ -37,7 +37,7 @@ D:\scheduler-algorithms\other_alg\<算法名称>\src\infer\scheduler.py
 
 ```powershell
 $env:CT_ALGORITHM_ROOT = "D:\scheduler-algorithms"
-python -m realtime_scheduler.backend.main --open
+python -m app.backend.main --open
 ```
 
 该变量会同时改变内置和外部算法的查找位置。若仍需要内置算法，请在新根目录保留它们所需的文件。

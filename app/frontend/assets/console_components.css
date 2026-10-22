@@ -1,0 +1,316 @@
+/**
+ * 调度控制台的 Spark 组件主题。
+ * 在基础布局和 console_shell.css 之后加载，使用外壳定义的语义颜色。
+ * 仅覆盖卡片、编辑器及弹窗的外观；保留原有交互布局、错误语义和拓扑设备状态。
+ */
+
+/* 内容卡片：白色表面、大圆角与轻阴影。 */
+.panel {
+  border-color: transparent;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.panel-head { padding: 23px 24px 20px; border-bottom-color: var(--line); }
+.panel-head h2 { color: var(--ink); font-size: 20px; font-weight: 700; }
+.panel-body { padding: 24px; }
+.run-selection-panel-head { padding: 22px 24px; border-bottom: 0; }
+.workspace-panel-body { padding: 24px; }
+.result-panel .panel-body { padding: 0; }
+/* 结果区底部并排三个出口：日志与全部甘特图等宽，指标 CSV 按内容宽度收在右侧。 */
+.result-panel .result-actions { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; margin: 0; padding: 18px 24px; border-top: 1px solid var(--line); background: #fafcf9; }
+.result-panel .result-error-panel { margin: 18px 24px; }
+
+/* 运行策略以深森林绿形成重点区；选择项和运行状态使用浅色文字。 */
+#scheduleSide > .panel { color: #fff; background: var(--brand); }
+#scheduleSide > .panel > .panel-head { border-bottom-color: rgb(255 255 255 / 10%); }
+#scheduleSide .panel-head h2 { color: #fff; }
+/* 卡头内的次要操作（选择测试）沿用深色卡上的半透明按钮，保持与卡内其它按钮一致。 */
+#scheduleSide > .panel > .panel-head .btn { border-color: rgb(255 255 255 / 22%); color: #fff; background: rgb(255 255 255 / 8%); }
+#scheduleSide > .panel > .panel-head .btn:hover:not(:disabled) { border-color: #abc5b7; color: #fff; background: rgb(255 255 255 / 15%); }
+#scheduleSide > .panel > .panel-head .btn:disabled { color: #93ac9e; border-color: rgb(255 255 255 / 14%); background: rgb(255 255 255 / 4%); }
+#scheduleSide #runStrategyFields { padding: 22px 24px; }
+#scheduleSide .strategy-options { gap: 10px; }
+#scheduleSide .strategy-card {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-color: rgb(255 255 255 / 17%);
+  border-radius: 13px;
+  color: #dae8df;
+  background: rgb(255 255 255 / 4%);
+  font-size: 16px;
+}
+#scheduleSide .strategy-card input { flex: none; margin: 0; accent-color: var(--accent); }
+#scheduleSide .strategy-card b { font-weight: 600; }
+#scheduleSide .strategy-card:hover:not(:has(input:disabled)) { background: rgb(255 255 255 / 9%); }
+#scheduleSide .strategy-card:has(input:checked) {
+  border-color: var(--accent);
+  color: #fff;
+  background: rgb(180 241 5 / 10%);
+}
+#scheduleSide .strategy-card:has(input:disabled) { color: #93ac9e; cursor: not-allowed; }
+#scheduleSide .strategy-card:focus-within { outline-color: rgb(180 241 5 / 40%); }
+#scheduleSide .field label { color: #e0ece5; }
+#scheduleSide .hint { color: #abc5b7; }
+#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) {
+  gap: 10px;
+  padding: 14px;
+  border-color: rgb(255 255 255 / 14%);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 5%);
+}
+#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) strong { color: #f0f7f3; }
+#scheduleSide .heuristic-settings-card small { color: #abc5b7; }
+#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) .btn {
+  flex: none;
+  border-color: rgb(255 255 255 / 22%);
+  color: #fff;
+  background: rgb(255 255 255 / 8%);
+}
+#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) .btn:hover {
+  border-color: #abc5b7;
+  background: rgb(255 255 255 / 15%);
+}
+#scheduleSide .run-box { padding: 22px 24px 24px; border-top: 1px solid rgb(255 255 255 / 10%); background: transparent; }
+#scheduleSide .run-actions { grid-template-columns: minmax(0, 1fr) 46px; gap: 10px; }
+#scheduleSide .run-actions .btn.batch:not(.cancel) {
+  min-height: 48px;
+  border-color: var(--accent);
+  border-radius: 14px;
+  color: var(--brand-dark);
+  background: var(--accent);
+  font-weight: 750;
+  box-shadow: none;
+}
+#scheduleSide .run-actions .btn.batch:not(.cancel):hover:not(:disabled) { border-color: #c1f824; background: #c1f824; }
+#scheduleSide .run-actions .btn.batch.cancel { border-color: #f3abb4; color: #fff; background: #963242; }
+#scheduleSide .run-actions .btn.batch.cancel:hover { background: #ab3a4c; }
+#scheduleSide .run-box .run-settings-button {
+  width: 46px;
+  min-width: 46px;
+  height: 48px;
+  border-color: rgb(255 255 255 / 25%);
+  border-radius: 14px;
+  color: #fff;
+  background: rgb(255 255 255 / 8%);
+  box-shadow: none;
+}
+#scheduleSide .run-box .run-settings-button:hover { background: rgb(255 255 255 / 16%); }
+#scheduleSide .run-box .run-settings-button.is-customized::after { border-color: var(--brand); background: var(--accent); }
+#scheduleSide .run-status-card {
+  gap: 10px;
+  margin-top: 18px;
+  padding: 14px;
+  border-color: rgb(255 255 255 / 10%);
+  border-radius: 14px;
+  color: #e3eee7;
+  background: rgb(0 0 0 / 12%);
+}
+#scheduleSide .run-status-head strong { color: #e3eee7; font-size: 14px; }
+#scheduleSide .run-status-head time { color: #abc5b7; font-size: 13px; }
+#scheduleSide .run-status-indicator { background: #abc5b7; box-shadow: 0 0 0 3px rgb(171 197 183 / 14%); }
+#scheduleSide .run-status-card.running .run-status-indicator { background: var(--accent); box-shadow: 0 0 0 3px rgb(180 241 5 / 14%); }
+#scheduleSide .run-status-card.failed .run-status-indicator { background: #ff8fa0; }
+#scheduleSide .run-status-card.cancelled .run-status-indicator { background: #ffc47d; }
+#scheduleSide :is(.run-status-event, .run-status-empty) { color: #c9ded1; background: rgb(255 255 255 / 7%); }
+#scheduleSide .run-status-event::before, #scheduleSide .run-status-event.skipped::before { color: #abc5b7; }
+#scheduleSide .run-status-event.succeeded::before { color: #8fdeac; }
+#scheduleSide .run-status-event.failed::before { color: #ff8fa0; }
+#scheduleSide .run-status-event.cancelled::before { color: #ffc47d; }
+#scheduleSide .run-status-event.running::before { border-color: #547864; border-top-color: var(--accent); }
+
+/* 测试结果继续保留成功、失败和取消的状态区分。 */
+.batch-results { gap: 12px; margin-top: 0; }
+.batch-result { gap: 10px; padding: 14px; border-radius: 16px; border-color: var(--line); background: var(--soft); }
+.batch-result.running { border-color: #b6d392; background: #f3f8e9; }
+.batch-result.succeeded { border-color: #cee8d8; background: #f4faf6; }
+.batch-result.failed { border-color: #edc4cb; background: #fff6f7; }
+.batch-result.cancelled { border-color: #ecd8b4; background: #fffbf2; }
+.batch-result[data-batch-test-card]:hover { border-color: #a3bba9; box-shadow: 0 4px 14px rgb(11 19 15 / 5%); }
+.batch-result[data-batch-test-card].details-open { border-color: var(--brand); box-shadow: 0 0 0 2px rgb(7 47 31 / 9%); }
+.batch-result-title strong { font-family: inherit; font-size: 13px; font-weight: 650; }
+.batch-result-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.batch-result-meta { display: flex; min-width: 0; justify-content: space-between; gap: 4px; }
+.batch-result-meta .btn { min-height: 27px; padding: 4px 6px; font-size: 10px; }
+.batch-result-meta .batch-status { margin-right: auto; font-weight: 500; }
+.batch-result-summary { color: #596d61; }
+.batch-status { color: #5d7065; background: #e6ece8; }
+.batch-result.running .batch-status { background: #dcecc6; }
+.batch-metric-tag { border-color: var(--line); color: var(--ink); }
+.batch-metric-tag.recompute { border-color: #d4e2d7; color: #436f51; background: #edf4ee; }
+.batch-test-details-body { gap: 16px; }
+.batch-test-detail-round { border-color: var(--line); border-radius: 20px; box-shadow: var(--shadow); }
+.batch-test-detail-round-head { padding: 14px 18px; border-color: var(--line); background: #fff; }
+.batch-test-detail-round-number { border-color: #d9e7cc; color: var(--brand); background: var(--brand-soft); }
+.batch-test-detail-round-head strong, .batch-test-detail-cjob-head strong, .batch-test-detail-field strong { color: var(--ink); }
+.batch-test-detail-cjobs { gap: 12px; padding: 16px; background: var(--soft); }
+.batch-test-detail-cjob { border-color: var(--line); border-radius: 14px; }
+.batch-test-detail-cjob-head span, .batch-test-detail-pjobs { color: var(--muted); background: var(--soft); }
+.batch-test-detail-pjobs { border-color: var(--line); }
+.batch-test-detail-pjob-name strong { color: var(--brand); }
+.result-error-panel { border-radius: 16px; background: var(--red-soft); box-shadow: none; }
+
+/* 用例列表和分轮编辑器使用相同的中性层级，不改变编辑字段的排列。 */
+.catalog-toolbar { gap: 14px; padding: 22px 24px; }
+.test-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.test-list-row { min-width: 0; min-height: 80px; padding: 18px 24px; }
+.test-list-row:nth-child(odd) { border-right: 1px solid var(--line); }
+.test-list-row:last-child { border-bottom: 1px solid var(--line); }
+.test-list-name { overflow-wrap: anywhere; }
+.test-list-row:hover { background: #f6f9f4; }
+.test-list-row-pending { color: var(--brand); background: var(--brand-soft); }
+.test-list-name strong { color: var(--ink); font-size: 16px; font-weight: 650; }
+.test-list-baseline { color: var(--muted); font-size: 13px; font-weight: 500; }
+.test-editor-actions { gap: 16px; padding: 20px 24px; }
+.test-editor-inline-metadata .field > label { color: var(--muted); }
+.recompute-panel > .panel-body { padding: 22px; }
+.round-card, .edit-card { border-color: var(--line); border-radius: 18px; background: var(--soft); }
+.round-head { padding: 14px 16px; border-color: var(--line); background: #eef3ed; }
+.round-number { border-radius: 11px; color: var(--brand); background: #dfeecf; }
+.round-time-editor { color: var(--muted); }
+.cjob-list { gap: 14px; padding: 14px; }
+.cjob-card { border-color: var(--line); border-radius: 14px; }
+.cjob-head { padding: 13px 14px; background: #fafcf9; }
+.pjob-row { padding: 12px 14px; border-color: var(--line); }
+.readonly-pill { color: #5d7065; background: #edf2ed; }
+.pjob-route-picker { border-color: #d6dfd8; border-radius: 12px; }
+.pjob-route-open { border-color: #d6dfd8; border-radius: 0 11px 11px 0; background: var(--soft); }
+.pjob-route-current-path { color: var(--muted); }
+.empty, .empty-group-hint { border-color: #d3ded4; border-radius: 16px; background: var(--soft); }
+
+/* 路径、设备与清洁编辑容器沿用领域语义，去掉历史蓝色装饰。 */
+/* 路径卡头已不含标题，筛选按左、主操作按右铺满整行，与用例工具栏保持一致。 */
+.route-panel-head { justify-content: space-between; border-radius: 24px 24px 0 0; }
+.route-panel-actions { width: 100%; justify-content: space-between; }
+.route-meta { border-color: var(--line); background: var(--soft); }
+.route-update-card, .device-config-notice { border-color: #d7e5cf; color: #506954; background: #f1f6ed; box-shadow: none; }
+.route-update-card strong { color: var(--brand); }
+.route-process-group, .clean-type-group { border-color: var(--line); border-radius: 18px; background: var(--soft); }
+.route-process-head, .clean-type-head { padding: 16px; background: #eaf1e7; }
+.route-process-head:hover, .clean-type-head:hover { background: #e3eddf; }
+.route-type-group, .route-summary-card, .clean-card { border-color: var(--line); border-radius: 14px; }
+.route-type-head { background: #f8faf7; }
+.route-type-head:hover, .route-summary-head:hover { background: #f2f6ee; }
+.route-summary-primary strong, .route-count, .context-clean-head strong, .context-clean-item strong { color: var(--ink); }
+.route-group-body, .context-clean-head, .context-clean-item { border-color: var(--line); }
+.route-summary-card.is-editing { border-color: #9fb99f; box-shadow: 0 0 0 2px rgb(7 47 31 / 7%); }
+.route-table th, .context-clean-head, .route-instance-buffer > label { color: var(--muted); background: #f5f8f3; }
+.route-table tbody tr:hover td { background: #f1f6ed; }
+.route-property-tag.buffer-forced { border-color: #ccdebe; color: #446130; background: #f1f6e9; }
+.route-clean-section, .step-clean-section, .route-instance-buffer { border-color: var(--line); border-radius: 14px; }
+.device-config-heading { padding: 20px 24px; border-color: transparent; border-radius: 24px; }
+.device-config-heading-actions { width: 100%; min-width: 0; flex-wrap: wrap; gap: 10px; }
+.device-config-save-state { order: -1; margin-right: auto; text-align: left; }
+.device-config-heading .device-config-save-state { text-align: left; justify-items: start; }
+.device-timing-panel-head { flex-wrap: wrap; }
+.device-config-entity-picker { width: min(100%, 336px); grid-template-columns: 42px minmax(0, 1fr) 42px; }
+.device-config-picker { min-width: 0; }
+.device-config-nav { top: calc(var(--console-header-height) + 10px); padding: 7px; border-color: transparent; border-radius: 18px; box-shadow: var(--shadow); }
+.device-config-nav-item { border-radius: 12px; color: var(--muted); }
+.device-config-nav-item.active { border-color: #dbe8d1; color: var(--brand); background: var(--brand-soft); }
+.device-config-nav-item.active small { color: #708569; }
+.device-config-step-button { border-color: #d6dfd8; border-radius: 12px; color: var(--brand); }
+.device-config-step-button:hover:not(:disabled) { border-color: #9fb99f; }
+.device-timing-overview, .device-time-section { border-color: var(--line); border-radius: 16px; }
+.device-time-section > header, .device-time-table tbody th { background: #fafcf9; }
+.device-time-section > header > span { color: #547044; background: var(--brand-soft); }
+.device-time-table thead th { color: var(--muted); background: #f0f5ed; }
+.device-time-table th, .device-time-table td { border-color: var(--line); }
+.management-section input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.management-section select, .run-settings-parallel-grid input {
+  border: 1px solid #dce4dd; border-radius: 10px; outline: none;
+}
+.management-section input:focus, .management-section select:focus, .run-settings-parallel-grid input:focus {
+  border-color: #93ae82; box-shadow: 0 0 0 3px rgb(7 47 31 / 7%);
+}
+
+/* 弹窗与右侧抽屉共享白色表面；只换外观，不覆盖尺寸、滚动和关闭机制。 */
+dialog:not(.drawer-layer), dialog#testDraftDialog {
+  border-color: transparent;
+  border-radius: 24px;
+  color: var(--ink);
+  background: #fff;
+  box-shadow: 0 24px 80px rgb(5 28 18 / 20%);
+}
+dialog::backdrop, dialog#testDraftDialog::backdrop, .drawer-layer::backdrop { background: rgb(5 28 18 / 38%); }
+.drawer { border-color: var(--line); background: var(--soft); box-shadow: -18px 0 48px rgb(5 28 18 / 15%); }
+.drawer-head { padding: 22px 24px; }
+.drawer-head h2 { color: var(--ink); }
+.drawer-body { gap: 16px; padding: 20px 24px 28px; }
+.data-transfer-dialog-body, .clean-dialog-body { padding: 24px; }
+.data-transfer-dialog-body h3 { color: var(--ink); }
+.data-transfer-option { padding: 16px; border-color: var(--line); border-radius: 16px; color: var(--ink); }
+.data-transfer-option:hover:not(:disabled), .data-transfer-option:focus-visible { border-color: #a8bf9b; background: #f7faf4; box-shadow: var(--shadow); }
+.data-transfer-option-arrow { color: var(--muted); }
+.data-transfer-progress-head { color: var(--muted); }
+.data-transfer-progress-track { background: #e9f0e4; }
+.run-settings-dialog-head, .batch-selection-dialog-head, .pjob-route-dialog-head, .analysis-options-head {
+  padding: 22px 24px;
+  border-color: var(--line);
+  background: #f5f8f2;
+}
+.run-settings-dialog-head h3, .batch-selection-dialog-head h3, .analysis-options-head h3 { color: var(--ink); }
+.run-settings-section-head, .heuristic-option-group > h4, .heuristic-weight-toggle strong,
+.search-tree-option-group-head h4, .analysis-options-section-head { color: var(--ink); }
+.heuristic-weight-grid > label, .heuristic-loadlock-label,
+.search-tree-options-dialog-body .field label, .analysis-options-controls label { color: #4b6152; }
+.run-setting-option, .heuristic-option-group, .search-tree-option-group { border-color: var(--line); border-radius: 14px; background: #f9fbf7; }
+.run-setting-option:hover { border-color: #b9cdb0; background: #f4f8ef; }
+.run-setting-option:has(input:checked) { border-color: #b4ce9f; background: #f0f6e8; box-shadow: none; }
+.run-setting-option:focus-within { outline-color: rgb(7 47 31 / 15%); }
+.batch-selection-item, .analysis-test-options label, .analysis-metric-options label { border-color: var(--line); border-radius: 12px; color: var(--ink); }
+.batch-selection-item:hover { border-color: #b9cdb0; background: #f7faf3; }
+.batch-selection-item:has(input:checked) { border-color: #b4ce9f; background: #f0f6e8; }
+.batch-selection-item:focus-within { outline-color: rgb(7 47 31 / 15%); }
+.clean-module-option input:checked + span { border-color: #a3bf90; color: var(--brand); background: #edf5e4; box-shadow: none; }
+.pjob-route-card-list, .pjob-route-dialog-empty { background: var(--soft); }
+.pjob-route-card { border-color: var(--line); border-radius: 14px; }
+.pjob-route-card:hover { border-color: #b1c5a8; background: #fbfdf9; box-shadow: var(--shadow); }
+.pjob-route-card.selected { border-color: #9fbc90; background: #f1f6e9; box-shadow: inset 3px 0 var(--brand); }
+.pjob-route-card-path, .pjob-route-detail-head strong, .pjob-route-edit-head strong { color: var(--ink); }
+.pjob-route-detail-head, .pjob-route-edit-head { background: #f6f9f3; }
+
+/* 按信息层级校准阅读字号；画布与拓扑标注保持原来的绘制尺度。 */
+.panel-head p, .hint, .workspace-status, .empty-group-hint,
+.data-transfer-option small, .data-transfer-status, .data-transfer-progress-head,
+.heuristic-settings-card small, .search-tree-option-group-head p,
+.run-status-event, .run-status-empty, .batch-selection-summary,
+.device-config-save-state, .test-list-name > span { font-size: 13px; }
+.data-transfer-option strong, .search-tree-settings-card strong,
+.heuristic-settings-card strong, .heuristic-weight-toggle strong,
+.round-title strong, .cjob-title strong, .route-summary-primary strong { font-size: 16px; }
+.management-section :is(.readonly-pill, .round-time-editor, .pjob-route-current-path,
+  .context-clean-head small, .context-clean-item small, .clean-module-field > small,
+  .cjob-task-id, .pjob-identity span, .pjob-field > span, .cjob-controls .field label,
+  .route-property-tag, .device-config-nav-item small) { font-size: 13px; }
+.management-section :is(.context-clean-head strong, .context-clean-item strong,
+  .pjob-identity strong, .route-type-head strong, .clean-card-title strong,
+  .clean-module-option span, .device-config-nav-item strong) { font-size: 15px; }
+.management-section :is(.route-table, .device-time-table) { font-size: 14px; }
+.management-section :is(.route-table th, .route-table td, .device-time-table th, .device-time-table td) { padding: 12px; }
+
+/* 窄屏减少表面内距，继续使用原有组件的响应式排列。 */
+@media (max-width: 700px) {
+  .panel, .device-config-heading { border-radius: 20px; }
+  .panel-head, .run-selection-panel-head, .panel-body, .workspace-panel-body,
+  .catalog-toolbar, .test-editor-actions, .device-config-heading { padding: 18px; }
+  .recompute-panel > .panel-body { padding: 14px; }
+  .test-list-row { padding: 16px 18px; }
+  .batch-result { padding: 13px; }
+  #scheduleSide #runStrategyFields { padding: 18px; }
+  #scheduleSide .run-box { padding: 18px; }
+  .drawer-head, .drawer-body, .data-transfer-dialog-body, .clean-dialog-body { padding: 18px; }
+  .run-settings-dialog-head, .batch-selection-dialog-head, .pjob-route-dialog-head,
+  .analysis-options-head { padding: 18px; }
+  .round-head { padding: 12px; }
+  .cjob-list { padding: 10px; }
+  .result-panel .panel-body { padding: 0; }
+  .result-panel .result-actions { grid-template-columns: minmax(0, 1fr); padding: 16px 18px; }
+}
+@media (max-width: 1200px) {
+  .test-list { grid-template-columns: minmax(0, 1fr); }
+  .test-list-row:nth-child(odd) { border-right: 0; }
+}

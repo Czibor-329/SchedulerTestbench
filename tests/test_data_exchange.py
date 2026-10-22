@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from realtime_scheduler.backend import application as server
+from app.backend import application as server
 
 
 def _device(station_name: str = "LP1") -> dict:

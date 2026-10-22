@@ -1,0 +1,1872 @@
+{
+  "comparison": [
+    {
+      "test": "P10",
+      "validation": "passed",
+      "completed": 200,
+      "actual": {
+        "throughputPerHour": 38.995504684876266,
+        "throughputSampleCount": 120,
+        "throughputReason": ""
+      },
+      "theory_period": 101.8,
+      "theory_capacity": 35.363,
+      "completion_intervals": [
+        [
+          92.27,
+          92
+        ],
+        [
+          92.57,
+          92
+        ],
+        [
+          91.17,
+          10
+        ],
+        [
+          91.27,
+          4
+        ],
+        [
+          51.43,
+          1
+        ]
+      ],
+      "artifact_id": "a148d5ca22e04ece9350175beac9c25f"
+    },
+    {
+      "test": "P20",
+      "validation": "passed",
+      "completed": 200,
+      "actual": {
+        "throughputPerHour": 38.995504684876266,
+        "throughputSampleCount": 120,
+        "throughputReason": ""
+      },
+      "theory_period": 101.8,
+      "theory_capacity": 35.363,
+      "completion_intervals": [
+        [
+          92.27,
+          92
+        ],
+        [
+          92.57,
+          92
+        ],
+        [
+          91.17,
+          10
+        ],
+        [
+          91.27,
+          4
+        ],
+        [
+          51.43,
+          1
+        ]
+      ],
+      "artifact_id": "2da04859a38b4e18be185c7d21feaaf9"
+    },
+    {
+      "test": "P30",
+      "validation": "passed",
+      "completed": 200,
+      "actual": {
+        "throughputPerHour": 38.995504684876266,
+        "throughputSampleCount": 120,
+        "throughputReason": ""
+      },
+      "theory_period": 101.8,
+      "theory_capacity": 35.363,
+      "completion_intervals": [
+        [
+          92.27,
+          92
+        ],
+        [
+          92.57,
+          92
+        ],
+        [
+          91.17,
+          10
+        ],
+        [
+          91.27,
+          4
+        ],
+        [
+          51.43,
+          1
+        ]
+      ],
+      "artifact_id": "a4cad18a37e84350a9aba1c68e696ef9"
+    },
+    {
+      "test": "P40",
+      "validation": "passed",
+      "completed": 200,
+      "actual": {
+        "throughputPerHour": 38.995504684876266,
+        "throughputSampleCount": 120,
+        "throughputReason": ""
+      },
+      "theory_period": 101.8,
+      "theory_capacity": 35.363,
+      "completion_intervals": [
+        [
+          92.27,
+          92
+        ],
+        [
+          92.57,
+          92
+        ],
+        [
+          91.17,
+          10
+        ],
+        [
+          91.27,
+          4
+        ],
+        [
+          51.43,
+          1
+        ]
+      ],
+      "artifact_id": "c94710c5c92946bdaac5b0f3cea1e086"
+    },
+    {
+      "test": "P80",
+      "validation": "passed",
+      "completed": 200,
+      "actual": {
+        "throughputPerHour": 36.97648740488389,
+        "throughputSampleCount": 120,
+        "throughputReason": ""
+      },
+      "theory_period": 101.8,
+      "theory_capacity": 35.363,
+      "completion_intervals": [
+        [
+          97.36,
+          191
+        ],
+        [
+          97.46,
+          4
+        ],
+        [
+          97.26,
+          3
+        ],
+        [
+          91.28,
+          1
+        ]
+      ],
+      "artifact_id": "88d64dffd67448e384b7656989ac3a12"
+    },
+    {
+      "test": "P120",
+      "validation": "passed",
+      "completed": 200,
+      "actual": {
+        "throughputPerHour": 26.20866220553165,
+        "throughputSampleCount": 120,
+        "throughputReason": ""
+      },
+      "theory_period": 137.77,
+      "theory_capacity": 26.131,
+      "completion_intervals": [
+        [
+          137.36,
+          191
+        ],
+        [
+          137.46,
+          4
+        ],
+        [
+          137.26,
+          3
+        ],
+        [
+          131.28,
+          1
+        ]
+      ],
+      "artifact_id": "3a52ba8c03654be383789f3cd95fd333"
+    },
+    {
+      "test": "P160",
+      "validation": "passed",
+      "completed": 200,
+      "actual": {
+        "throughputPerHour": 20.29779496407942,
+        "throughputSampleCount": 120,
+        "throughputReason": ""
+      },
+      "theory_period": 177.77,
+      "theory_capacity": 20.251,
+      "completion_intervals": [
+        [
+          177.36,
+          191
+        ],
+        [
+          177.46,
+          4
+        ],
+        [
+          177.26,
+          3
+        ],
+        [
+          171.28,
+          1
+        ]
+      ],
+      "artifact_id": "e093093dea224066a1abe5a008248068"
+    },
+    {
+      "test": "P200",
+      "validation": "passed",
+      "completed": 200,
+      "actual": {
+        "throughputPerHour": 16.562448481967206,
+        "throughputSampleCount": 120,
+        "throughputReason": ""
+      },
+      "theory_period": 217.77,
+      "theory_capacity": 16.531,
+      "completion_intervals": [
+        [
+          217.36,
+          191
+        ],
+        [
+          217.46,
+          4
+        ],
+        [
+          217.26,
+          3
+        ],
+        [
+          211.28,
+          1
+        ]
+      ],
+      "artifact_id": "b744c57022e44f6aaa72ffbb5eac0213"
+    },
+    {
+      "test": "P240",
+      "validation": "passed",
+      "completed": 200,
+      "actual": {
+        "throughputPerHour": 13.988233046552935,
+        "throughputSampleCount": 120,
+        "throughputReason": ""
+      },
+      "theory_period": 257.77,
+      "theory_capacity": 13.966,
+      "completion_intervals": [
+        [
+          257.36,
+          191
+        ],
+        [
+          257.46,
+          4
+        ],
+        [
+          257.26,
+          3
+        ],
+        [
+          251.28,
+          1
+        ]
+      ],
+      "artifact_id": "b25731e081a04761ac620f15058441f5"
+    }
+  ],
+  "p10_moves_2000_2200": [
+    {
+      "MoveType": 7,
+      "MoveID": 615,
+      "StartTime": 2000.0299999999952,
+      "EndTime": 2001.0599999999952,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        613,
+        614
+      ]
+    },
+    {
+      "MoveType": 10,
+      "MoveID": 616,
+      "StartTime": 2001.0599999999952,
+      "EndTime": 2020.3199999999952,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        2
+      ],
+      "LastState": "ATR",
+      "CurState": "VTR",
+      "PreMoveID": [
+        615
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 617,
+      "StartTime": 2020.3199999999952,
+      "EndTime": 2021.189999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 1,
+      "RelatedRobotType": 1,
+      "PreMoveID": [
+        616
+      ]
+    },
+    {
+      "MoveType": 0,
+      "MoveID": 618,
+      "StartTime": 2021.189999999995,
+      "EndTime": 2027.019999999995,
+      "ModuleName": "VTR",
+      "Robot": "VTR",
+      "RobotSlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "LA"
+      ],
+      "SrcSlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        3
+      ],
+      "PreMoveID": [
+        599,
+        614,
+        617
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 619,
+      "StartTime": 2027.019999999995,
+      "EndTime": 2027.899999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        617,
+        618
+      ]
+    },
+    {
+      "MoveType": 5,
+      "MoveID": 620,
+      "StartTime": 2027.019999999995,
+      "EndTime": 2028.669999999995,
+      "ModuleName": "VTR",
+      "Robot": "VTR",
+      "RobotSlotList": [
+        1
+      ],
+      "SlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "LA"
+      ],
+      "DestStationList": [
+        "PM1"
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        597,
+        618
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 621,
+      "StartTime": 2027.019999999995,
+      "EndTime": 2030.849999999995,
+      "ModuleName": "PM1",
+      "Station": "PM1",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 2,
+      "RelatedRobotType": 1,
+      "PreMoveID": [
+        596,
+        618
+      ]
+    },
+    {
+      "MoveType": 4,
+      "MoveID": 622,
+      "StartTime": 2030.849999999995,
+      "EndTime": 2043.6299999999949,
+      "ModuleName": "VTR",
+      "Robot": "VTR",
+      "SlotList": [
+        1,
+        1
+      ],
+      "MatIDList": [
+        22,
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1",
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        5,
+        4
+      ],
+      "RecvMatStepIDList": [
+        5
+      ],
+      "SendMatStepIDList": [
+        4
+      ],
+      "StationList": [
+        "PM1",
+        "PM1"
+      ],
+      "StnRecvSlotList": [
+        1
+      ],
+      "StnSendSlotList": [
+        1
+      ],
+      "RecvMatList": [
+        22
+      ],
+      "SendMatList": [
+        23
+      ],
+      "RecvSlotList": [
+        2
+      ],
+      "SendSlotList": [
+        1
+      ],
+      "SwapMode": 0,
+      "PreMoveID": [
+        596,
+        620,
+        621
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 623,
+      "StartTime": 2043.6299999999949,
+      "EndTime": 2044.3799999999949,
+      "ModuleName": "PM1",
+      "Station": "PM1",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        621,
+        622
+      ]
+    },
+    {
+      "MoveType": 5,
+      "MoveID": 625,
+      "StartTime": 2043.6299999999949,
+      "EndTime": 2045.279999999995,
+      "ModuleName": "VTR",
+      "Robot": "VTR",
+      "RobotSlotList": [
+        2
+      ],
+      "SlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "PM1"
+      ],
+      "DestStationList": [
+        "LA"
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        620,
+        622
+      ]
+    },
+    {
+      "MoveType": 9,
+      "MoveID": 624,
+      "StartTime": 2044.3799999999949,
+      "EndTime": 2054.3799999999947,
+      "ModuleName": "PM1",
+      "Station": "PM1",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        4
+      ],
+      "ProcessRecipe": "扩充Route46_Step4__r1-t1-c1-p1",
+      "PreMoveID": [
+        623
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 626,
+      "StartTime": 2044.409999999995,
+      "EndTime": 2045.279999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 0,
+      "RelatedRobotType": 1,
+      "PreMoveID": [
+        619,
+        622
+      ]
+    },
+    {
+      "MoveType": 1,
+      "MoveID": 627,
+      "StartTime": 2045.279999999995,
+      "EndTime": 2050.579999999995,
+      "ModuleName": "VTR",
+      "Robot": "VTR",
+      "RobotSlotList": [
+        2
+      ],
+      "SlotList": [
+        1
+      ],
+      "DestStationList": [
+        "LA"
+      ],
+      "DestSlotList": [
+        1
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        6
+      ],
+      "PreMoveID": [
+        625,
+        626
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 628,
+      "StartTime": 2050.579999999995,
+      "EndTime": 2051.459999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        626,
+        627
+      ]
+    },
+    {
+      "MoveType": 10,
+      "MoveID": 629,
+      "StartTime": 2051.459999999995,
+      "EndTime": 2070.759999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        6
+      ],
+      "LastState": "VTR",
+      "CurState": "ATR",
+      "PreMoveID": [
+        628
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 630,
+      "StartTime": 2070.759999999995,
+      "EndTime": 2071.399999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 1,
+      "RelatedRobotType": 0,
+      "PreMoveID": [
+        629
+      ]
+    },
+    {
+      "MoveType": 0,
+      "MoveID": 631,
+      "StartTime": 2071.399999999995,
+      "EndTime": 2075.549999999995,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "LA"
+      ],
+      "SrcSlotList": [
+        1
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        7
+      ],
+      "PreMoveID": [
+        614,
+        627,
+        630
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 632,
+      "StartTime": 2075.549999999995,
+      "EndTime": 2076.5799999999954,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        630,
+        631
+      ]
+    },
+    {
+      "MoveType": 5,
+      "MoveID": 633,
+      "StartTime": 2075.549999999995,
+      "EndTime": 2076.649999999995,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SlotList": [
+        22
+      ],
+      "SrcStationList": [
+        "LA"
+      ],
+      "DestStationList": [
+        "LP1"
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        612,
+        631
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 634,
+      "StartTime": 2075.549999999995,
+      "EndTime": 2076.649999999995,
+      "ModuleName": "LP1",
+      "Station": "LP1",
+      "SlotList": [
+        22
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 0,
+      "RelatedRobotType": 0,
+      "PreMoveID": [
+        611,
+        631
+      ]
+    },
+    {
+      "MoveType": 1,
+      "MoveID": 635,
+      "StartTime": 2076.649999999995,
+      "EndTime": 2080.749999999995,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SlotList": [
+        22
+      ],
+      "DestStationList": [
+        "LP1"
+      ],
+      "DestSlotList": [
+        22
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        8
+      ],
+      "PreMoveID": [
+        633,
+        634
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 636,
+      "StartTime": 2080.749999999995,
+      "EndTime": 2081.849999999995,
+      "ModuleName": "LP1",
+      "Station": "LP1",
+      "SlotList": [
+        22
+      ],
+      "MatIDList": [
+        22
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        634,
+        635
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 637,
+      "StartTime": 2081.849999999995,
+      "EndTime": 2082.949999999995,
+      "ModuleName": "LP1",
+      "Station": "LP1",
+      "SlotList": [
+        24
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 1,
+      "RelatedRobotType": 0,
+      "PreMoveID": [
+        636
+      ]
+    },
+    {
+      "MoveType": 0,
+      "MoveID": 638,
+      "StartTime": 2082.949999999995,
+      "EndTime": 2087.099999999995,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "LP1"
+      ],
+      "SrcSlotList": [
+        24
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        1
+      ],
+      "PreMoveID": [
+        635,
+        637
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 639,
+      "StartTime": 2087.099999999995,
+      "EndTime": 2088.199999999995,
+      "ModuleName": "LP1",
+      "Station": "LP1",
+      "SlotList": [
+        24
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        637,
+        638
+      ]
+    },
+    {
+      "MoveType": 5,
+      "MoveID": 640,
+      "StartTime": 2087.099999999995,
+      "EndTime": 2088.199999999995,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "LP1"
+      ],
+      "DestStationList": [
+        "LA"
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        633,
+        638
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 641,
+      "StartTime": 2087.559999999995,
+      "EndTime": 2088.199999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 0,
+      "RelatedRobotType": 0,
+      "PreMoveID": [
+        632,
+        638
+      ]
+    },
+    {
+      "MoveType": 1,
+      "MoveID": 642,
+      "StartTime": 2088.199999999995,
+      "EndTime": 2092.2999999999947,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SlotList": [
+        1
+      ],
+      "DestStationList": [
+        "LA"
+      ],
+      "DestSlotList": [
+        1
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        2
+      ],
+      "PreMoveID": [
+        640,
+        641
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 643,
+      "StartTime": 2092.2999999999947,
+      "EndTime": 2093.329999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        641,
+        642
+      ]
+    },
+    {
+      "MoveType": 10,
+      "MoveID": 644,
+      "StartTime": 2093.329999999995,
+      "EndTime": 2112.589999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        2
+      ],
+      "LastState": "ATR",
+      "CurState": "VTR",
+      "PreMoveID": [
+        643
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 645,
+      "StartTime": 2112.589999999995,
+      "EndTime": 2113.459999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 1,
+      "RelatedRobotType": 1,
+      "PreMoveID": [
+        644
+      ]
+    },
+    {
+      "MoveType": 0,
+      "MoveID": 646,
+      "StartTime": 2113.459999999995,
+      "EndTime": 2119.289999999995,
+      "ModuleName": "VTR",
+      "Robot": "VTR",
+      "RobotSlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "LA"
+      ],
+      "SrcSlotList": [
+        1
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        3
+      ],
+      "PreMoveID": [
+        627,
+        642,
+        645
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 647,
+      "StartTime": 2119.289999999995,
+      "EndTime": 2120.169999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        645,
+        646
+      ]
+    },
+    {
+      "MoveType": 5,
+      "MoveID": 648,
+      "StartTime": 2119.289999999995,
+      "EndTime": 2120.939999999995,
+      "ModuleName": "VTR",
+      "Robot": "VTR",
+      "RobotSlotList": [
+        1
+      ],
+      "SlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "LA"
+      ],
+      "DestStationList": [
+        "PM1"
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        625,
+        646
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 649,
+      "StartTime": 2119.289999999995,
+      "EndTime": 2123.119999999995,
+      "ModuleName": "PM1",
+      "Station": "PM1",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 2,
+      "RelatedRobotType": 1,
+      "PreMoveID": [
+        624,
+        646
+      ]
+    },
+    {
+      "MoveType": 4,
+      "MoveID": 650,
+      "StartTime": 2123.119999999995,
+      "EndTime": 2135.899999999995,
+      "ModuleName": "VTR",
+      "Robot": "VTR",
+      "SlotList": [
+        1,
+        1
+      ],
+      "MatIDList": [
+        23,
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1",
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        5,
+        4
+      ],
+      "RecvMatStepIDList": [
+        5
+      ],
+      "SendMatStepIDList": [
+        4
+      ],
+      "StationList": [
+        "PM1",
+        "PM1"
+      ],
+      "StnRecvSlotList": [
+        1
+      ],
+      "StnSendSlotList": [
+        1
+      ],
+      "RecvMatList": [
+        23
+      ],
+      "SendMatList": [
+        24
+      ],
+      "RecvSlotList": [
+        2
+      ],
+      "SendSlotList": [
+        1
+      ],
+      "SwapMode": 0,
+      "PreMoveID": [
+        624,
+        648,
+        649
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 651,
+      "StartTime": 2135.899999999995,
+      "EndTime": 2136.649999999995,
+      "ModuleName": "PM1",
+      "Station": "PM1",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        649,
+        650
+      ]
+    },
+    {
+      "MoveType": 5,
+      "MoveID": 653,
+      "StartTime": 2135.899999999995,
+      "EndTime": 2137.549999999995,
+      "ModuleName": "VTR",
+      "Robot": "VTR",
+      "RobotSlotList": [
+        2
+      ],
+      "SlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "PM1"
+      ],
+      "DestStationList": [
+        "LA"
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        648,
+        650
+      ]
+    },
+    {
+      "MoveType": 9,
+      "MoveID": 652,
+      "StartTime": 2136.649999999995,
+      "EndTime": 2146.649999999995,
+      "ModuleName": "PM1",
+      "Station": "PM1",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        24
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        4
+      ],
+      "ProcessRecipe": "扩充Route46_Step4__r1-t1-c1-p1",
+      "PreMoveID": [
+        651
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 654,
+      "StartTime": 2136.6799999999953,
+      "EndTime": 2137.549999999995,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 0,
+      "RelatedRobotType": 1,
+      "PreMoveID": [
+        647,
+        650
+      ]
+    },
+    {
+      "MoveType": 1,
+      "MoveID": 655,
+      "StartTime": 2137.549999999995,
+      "EndTime": 2142.8499999999954,
+      "ModuleName": "VTR",
+      "Robot": "VTR",
+      "RobotSlotList": [
+        2
+      ],
+      "SlotList": [
+        1
+      ],
+      "DestStationList": [
+        "LA"
+      ],
+      "DestSlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        6
+      ],
+      "PreMoveID": [
+        653,
+        654
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 656,
+      "StartTime": 2142.8499999999954,
+      "EndTime": 2143.7299999999955,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        654,
+        655
+      ]
+    },
+    {
+      "MoveType": 10,
+      "MoveID": 657,
+      "StartTime": 2143.7299999999955,
+      "EndTime": 2163.0299999999957,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        6
+      ],
+      "LastState": "VTR",
+      "CurState": "ATR",
+      "PreMoveID": [
+        656
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 658,
+      "StartTime": 2163.0299999999957,
+      "EndTime": 2163.6699999999955,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 1,
+      "RelatedRobotType": 0,
+      "PreMoveID": [
+        657
+      ]
+    },
+    {
+      "MoveType": 0,
+      "MoveID": 659,
+      "StartTime": 2163.6699999999955,
+      "EndTime": 2167.8199999999956,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "LA"
+      ],
+      "SrcSlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        7
+      ],
+      "PreMoveID": [
+        642,
+        655,
+        658
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 660,
+      "StartTime": 2167.8199999999956,
+      "EndTime": 2168.849999999996,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        658,
+        659
+      ]
+    },
+    {
+      "MoveType": 5,
+      "MoveID": 661,
+      "StartTime": 2167.8199999999956,
+      "EndTime": 2168.9199999999955,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SlotList": [
+        23
+      ],
+      "SrcStationList": [
+        "LA"
+      ],
+      "DestStationList": [
+        "LP1"
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        640,
+        659
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 662,
+      "StartTime": 2167.8199999999956,
+      "EndTime": 2168.9199999999955,
+      "ModuleName": "LP1",
+      "Station": "LP1",
+      "SlotList": [
+        23
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 0,
+      "RelatedRobotType": 0,
+      "PreMoveID": [
+        639,
+        659
+      ]
+    },
+    {
+      "MoveType": 1,
+      "MoveID": 663,
+      "StartTime": 2168.9199999999955,
+      "EndTime": 2173.0199999999954,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SlotList": [
+        23
+      ],
+      "DestStationList": [
+        "LP1"
+      ],
+      "DestSlotList": [
+        23
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        8
+      ],
+      "PreMoveID": [
+        661,
+        662
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 664,
+      "StartTime": 2173.0199999999954,
+      "EndTime": 2174.1199999999953,
+      "ModuleName": "LP1",
+      "Station": "LP1",
+      "SlotList": [
+        23
+      ],
+      "MatIDList": [
+        23
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        662,
+        663
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 665,
+      "StartTime": 2174.1199999999953,
+      "EndTime": 2175.2199999999953,
+      "ModuleName": "LP1",
+      "Station": "LP1",
+      "SlotList": [
+        25
+      ],
+      "MatIDList": [
+        25
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 1,
+      "RelatedRobotType": 0,
+      "PreMoveID": [
+        664
+      ]
+    },
+    {
+      "MoveType": 0,
+      "MoveID": 666,
+      "StartTime": 2175.2199999999953,
+      "EndTime": 2179.3699999999953,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "LP1"
+      ],
+      "SrcSlotList": [
+        25
+      ],
+      "MatIDList": [
+        25
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        1
+      ],
+      "PreMoveID": [
+        663,
+        665
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 667,
+      "StartTime": 2179.3699999999953,
+      "EndTime": 2180.4699999999953,
+      "ModuleName": "LP1",
+      "Station": "LP1",
+      "SlotList": [
+        25
+      ],
+      "MatIDList": [
+        25
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        665,
+        666
+      ]
+    },
+    {
+      "MoveType": 5,
+      "MoveID": 668,
+      "StartTime": 2179.3699999999953,
+      "EndTime": 2180.4699999999953,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SlotList": [
+        1
+      ],
+      "SrcStationList": [
+        "LP1"
+      ],
+      "DestStationList": [
+        "LA"
+      ],
+      "MatIDList": [
+        25
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        661,
+        666
+      ]
+    },
+    {
+      "MoveType": 6,
+      "MoveID": 669,
+      "StartTime": 2179.8299999999954,
+      "EndTime": 2180.4699999999953,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        25
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "RelatedActionType": 0,
+      "RelatedRobotType": 0,
+      "PreMoveID": [
+        660,
+        666
+      ]
+    },
+    {
+      "MoveType": 1,
+      "MoveID": 670,
+      "StartTime": 2180.4699999999953,
+      "EndTime": 2184.569999999995,
+      "ModuleName": "ATR",
+      "Robot": "ATR",
+      "RobotSlotList": [
+        1
+      ],
+      "SlotList": [
+        1
+      ],
+      "DestStationList": [
+        "LA"
+      ],
+      "DestSlotList": [
+        1
+      ],
+      "MatIDList": [
+        25
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        2
+      ],
+      "PreMoveID": [
+        668,
+        669
+      ]
+    },
+    {
+      "MoveType": 7,
+      "MoveID": 671,
+      "StartTime": 2184.569999999995,
+      "EndTime": 2185.5999999999954,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        25
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "PreMoveID": [
+        669,
+        670
+      ]
+    },
+    {
+      "MoveType": 10,
+      "MoveID": 672,
+      "StartTime": 2185.5999999999954,
+      "EndTime": 2204.8599999999956,
+      "ModuleName": "LA",
+      "Station": "LA",
+      "SlotList": [
+        1
+      ],
+      "MatIDList": [
+        25
+      ],
+      "PJobName": [
+        "1.C1.P1"
+      ],
+      "StepIDList": [
+        2
+      ],
+      "LastState": "ATR",
+      "CurState": "VTR",
+      "PreMoveID": [
+        671
+      ]
+    }
+  ],
+  "lp1_steady_period_formula": {
+    "theory": "max(101.80, P + 17.77)",
+    "execution": "max(92.27, P + 17.36)"
+  },
+  "excess_seconds": {
+    "serialized_overlapping_actions": 8.02,
+    "same_loadport_empty_transfer": 1.1,
+    "swap_semantics": 0.41,
+    "total": 9.53
+  },
+  "scope": {
+    "device": "PSE300",
+    "group": "exp",
+    "route": "LP → LA → PM1 → LA → LP",
+    "products_per_test": 200,
+    "execution_timing_enabled": false,
+    "validation": "platform builtin; HongYe not run",
+    "production_changes": false
+  },
+  "overlap_breakdown_seconds": {
+    "LA_pick_close": 0.88,
+    "LA_to_PM1_transfer_overlaps_PM1_prepare": 1.65,
+    "PM1_complete": 0.75,
+    "LA_place_prepare": 0.87,
+    "LA_ATR_pick_complete": 1.03,
+    "LP1_place_prepare": 1.1,
+    "LP1_pick_complete": 1.1,
+    "LA_ATR_place_prepare": 0.64
+  }
+}

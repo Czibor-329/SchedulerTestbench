@@ -1,0 +1,1138 @@
+"""本地调度平台 HTTP 与静态资源传输边界。"""
+
+from __future__ import annotations
+
+from urllib.parse import quote
+
+from app.backend.bootstrap import *
+from app.backend.execution.run_state import *
+from app.backend.execution.service import *
+from app.backend.execution.batch_service import DEFAULT_BATCH_WORKERS
+from app.backend.execution.batch_results import build_failure_result_artifact
+from app.backend.execution.validation_limiter import DEFAULT_VALIDATION_WORKERS
+from app.backend.preferences.repository import *
+from app.backend.workspace.repository import *
+from app.backend.workspace.catalog_service import *
+from app.backend.workspace.exchange_service import *
+from app.backend.workspace.transfer_jobs import *
+from app.backend.company_capacity_baselines import *
+from app.backend.artifacts.repository import *
+from app.backend.artifacts.deadlock_diagnostic import *
+from app.backend.schedule_analysis_service import analyze_schedule_request
+from app.backend.theory_capacity_presets import read_theory_capacity_preset
+from app.backend.theory_capacity_service import (
+    read_theory_capacity_derivation,
+    read_theory_capacity_route_index,
+    read_theory_capacity_scan,
+)
+from app.backend.analysis_jobs import (
+    cancel_test_group_analysis_job,
+    create_test_group_analysis_job,
+    read_test_group_analysis_job,
+)
+from app.backend.wiring import *
+
+
+def _download_content_disposition(download_name: str) -> str:
+    """生成兼容旧客户端且支持中文文件名的下载响应头。"""
+    name_path = Path(download_name)
+    suffix = re.sub(r"[^A-Za-z0-9.]", "", name_path.suffix)
+    fallback_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", name_path.stem).strip("-.") or "download"
+    fallback = f"{fallback_stem}{suffix}"
+    encoded_name = quote(download_name, safe="")
+    return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{encoded_name}'
+
+
+def _evaluate_replay_action_context(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """解析回放请求并调用对应算法，返回诊断导出与页面共用的完整上下文。"""
+    if not BUILTIN_ALGORITHM_AVAILABLE:
+        raise RuntimeError("当前部署未提供 Machine，无法评估回放动作")
+    result_id = str(payload.get("resultId") or "").strip()
+    saved_result = read_result(result_id) if result_id else None
+    if result_id and saved_result is None:
+        raise ValueError("结果不存在或已过期")
+    moves = normalize_move_payload(
+        saved_result
+        if saved_result is not None
+        else payload.get("moves", payload.get("result")),
+    )
+    raw_plan = payload.get("plan")
+    replay_context = (
+        saved_result.get("ReplayContext")
+        if isinstance(saved_result, Mapping)
+        else None
+    )
+    if not isinstance(raw_plan, Mapping) and isinstance(replay_context, Mapping):
+        raw_plan = replay_context.get("plan")
+    if not isinstance(raw_plan, Mapping):
+        raise ValueError("缺少生成该 MoveList 的完整计划，无法重建 Machine")
+    replay_time = _finite_number(payload.get("time"), 0.0)
+    replay_updates = (
+        replay_context.get("updates") or []
+        if isinstance(replay_context, Mapping)
+        else payload.get("updates") or []
+    )
+    replay_machine = ReplayMachine(raw_plan, moves, replay_updates)
+    update_params = replay_machine.replay_update_at(replay_time)
+    replay_move_states = [
+        {
+            "MoveID": move.get("MoveID"),
+            "MoveState": (
+                "Done"
+                if float(move.get("EndTime") or 0.0)
+                <= replay_time + TIME_TOLERANCE
+                else "Running"
+            ),
+        }
+        for move in moves
+        if float(move.get("StartTime") or 0.0)
+        <= replay_time + TIME_TOLERANCE
+    ]
+    plan_strategy = str(raw_plan.get("strategy") or "")
+    action_context = {
+        "schemaVersion": 1,
+        "Strategy": plan_strategy,
+        "CurrentTime": replay_time,
+        "ToolTopo": raw_plan["device"],
+        "UpdateParams": update_params,
+        "MoveList": moves,
+        "MoveStates": replay_move_states,
+    }
+    algorithm_action_diagnostics = None
+    if payload.get("includeActions", True):
+        if plan_strategy.startswith(OTHER_ALGORITHM_STRATEGY_PREFIX):
+            algorithm_id = plan_strategy.removeprefix(OTHER_ALGORITHM_STRATEGY_PREFIX)
+            with algorithm_session(algorithm_id):
+                algorithm_init(raw_plan["device"])
+                algorithm_action_diagnostics = algorithm_get_replay_actions(action_context)
+        elif plan_strategy in builtin_supported_algorithms:
+            algorithm_action_diagnostics = json.loads(
+                builtin_algorithm_api.get_replay_actions(
+                    json.dumps(action_context, ensure_ascii=False)
+                )
+            )
+    replay_machine.algorithm_action_diagnostics = (
+        algorithm_action_diagnostics
+        if isinstance(algorithm_action_diagnostics, Mapping)
+        else None
+    )
+    available_updates = [
+        update
+        for update in replay_updates
+        if isinstance(update, Mapping)
+        and _finite_number(update.get("CurrentTime"), 0.0)
+        <= replay_time + TIME_TOLERANCE
+    ]
+    return {
+        "resultId": result_id,
+        "time": replay_time,
+        "plan": raw_plan,
+        "moves": moves,
+        "updateParams": update_params,
+        "moveStates": replay_move_states,
+        "decision": replay_machine.evaluate_actions(replay_time) if payload.get("includeActions", True) else {},
+        "recomputeRound": max(1, len(available_updates)),
+    }
+
+class ConfigEditorHandler(BaseHTTPRequestHandler):
+    """暴露调度控制台、设备测试集、甘特图和运行 API 的本地 HTTP 处理器。"""
+
+    server_version = "CTConfigEditor/1.0"
+
+    def handle_one_request(self) -> None:
+        """记录单次 HTTP 请求起点，供统一响应性能头计算端到端服务耗时。"""
+        self._request_started_performance = time.perf_counter()
+        super().handle_one_request()
+
+    def do_GET(self) -> None:
+        """处理页面、健康检查和内存结果读取。"""
+        parsed_url = urlparse(self.path)
+        path = unquote(parsed_url.path)
+        if path in {"/", "/config_editor.html"}:
+            self._send_file(EDITOR_PATH, "text/html; charset=utf-8")
+            return
+        if path == "/movelist_gantt_viewer.html":
+            self._send_file(VIEWER_PATH, "text/html; charset=utf-8")
+            return
+        if path == "/documentation.html":
+            self._send_file(DOCUMENTATION_PAGE_PATH, "text/html; charset=utf-8")
+            return
+        if path == "/route_editor_logic.js":
+            self._send_file(ROUTE_EDITOR_LOGIC_PATH, "text/javascript; charset=utf-8")
+            return
+        if path.startswith("/assets/"):
+            self._send_frontend_asset(path.removeprefix("/assets/"))
+            return
+        if path == "/api/preferences/run-settings":
+            try:
+                self._send_json({"ok": True, "runSettings": read_run_preferences()})
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/health":
+            builtin_algorithms = discover_builtin_algorithms()
+            other_algorithms = discover_other_algorithms()
+            builtin_strategy_errors = {
+                str(algorithm["strategy"]): str(algorithm["unavailableReason"])
+                for algorithm in builtin_algorithms
+                if not algorithm["available"]
+            }
+            strategy_availability = {
+                str(algorithm["strategy"]): bool(algorithm["available"])
+                for algorithm in builtin_algorithms
+            }
+            self._send_json({
+                "ok": True,
+                "service": "ct-config-editor",
+                "schemaVersion": API_SCHEMA_VERSION,
+                "algorithmRepositoryAvailable": BUILTIN_ALGORITHM_AVAILABLE,
+                "strategies": strategy_availability,
+                "strategyModels": {},
+                "strategyErrors": builtin_strategy_errors,
+                "algorithmMetadata": algorithm_metadata_for_health(
+                    builtin_algorithms,
+                    other_algorithms,
+                ),
+                "algorithms": [*builtin_algorithms, *other_algorithms],
+                "otherAlgorithms": other_algorithms,
+            })
+            return
+        if path == "/api/documentation":
+            try:
+                document = load_documentation(documentation_directory())
+            except DocumentationError as error:
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.NOT_FOUND,
+                )
+                return
+            self._send_json({"ok": True, "document": document})
+            return
+        if path.startswith("/api/workspace-transfers/"):
+            transfer_parts = [part for part in path.split("/") if part]
+            if (
+                len(transfer_parts) == 4
+                and transfer_parts[:2] == ["api", "workspace-transfers"]
+                and transfer_parts[3] == "download"
+            ):
+                try:
+                    content, download_name = download_workspace_transfer(transfer_parts[2])
+                    self._send_bytes(content, "application/zip", download_name)
+                except LookupError as error:
+                    self._send_json({"ok": False, "error": str(error)}, HTTPStatus.NOT_FOUND)
+                except ValueError as error:
+                    self._send_json({"ok": False, "error": str(error)}, HTTPStatus.CONFLICT)
+                return
+            if (
+                len(transfer_parts) == 3
+                and transfer_parts[:2] == ["api", "workspace-transfers"]
+            ):
+                transfer = read_workspace_transfer(transfer_parts[2])
+                if transfer is None:
+                    self._send_json({"ok": False, "error": "交换任务不存在或已过期"}, HTTPStatus.NOT_FOUND)
+                else:
+                    self._send_json({"ok": True, "transfer": transfer})
+                return
+        analysis_job_parts = [part for part in path.split("/") if part]
+        if (
+            len(analysis_job_parts) == 3
+            and analysis_job_parts[:2] == ["api", "analysis-jobs"]
+        ):
+            job = read_test_group_analysis_job(analysis_job_parts[2])
+            if job is None:
+                self._send_json(
+                    {"ok": False, "error": "分析任务不存在或已过期"},
+                    HTTPStatus.NOT_FOUND,
+                )
+            else:
+                self._send_json({"ok": True, "job": job})
+            return
+        if path == "/api/preferences/analysis-settings":
+            try:
+                self._send_json({"ok": True, "analysisSettings": read_analysis_preferences()})
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/search-telemetry":
+            if not BUILTIN_ALGORITHM_AVAILABLE:
+                self._send_json(
+                    {"ok": False, "error": "本地算法仓库未加载，无法读取搜索遥测"},
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
+                return
+            try:
+                query = parse_qs(parsed_url.query)
+                raw_revision = (query.get("since") or [None])[0]
+                since_revision = (
+                    None if raw_revision in {None, ""} else int(raw_revision)
+                )
+                self._send_json({
+                    "ok": True,
+                    "telemetry": builtin_algorithm_api.get_search_telemetry(
+                        since_revision
+                    ),
+                })
+            except (TypeError, ValueError) as error:
+                self._send_json(
+                    {"ok": False, "error": f"since 必须是整数：{error}"},
+                    HTTPStatus.BAD_REQUEST,
+                )
+            return
+        if path == "/api/workspaces":
+            try:
+                devices = list_workspace_devices()
+                self._send_json({"ok": True, "devices": devices})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path == "/api/company-capacity-baselines":
+            try:
+                self._send_json({"ok": True, "baselines": read_company_capacity_baselines()})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path == "/api/theory-capacity/preset":
+            try:
+                query = parse_qs(parsed_url.query)
+                self._send_json(read_theory_capacity_preset(
+                    (query.get("device") or [""])[0],
+                    kind=(query.get("kind") or ["single-node"])[0],
+                    lock=(query.get("lock") or ["shared-bidirectional"])[0],
+                    first_seconds=(query.get("first") or [None])[0],
+                    last_seconds=(query.get("last") or [None])[0],
+                    step_seconds=(query.get("step") or [None])[0],
+                    process_seconds=(query.get("process") or [None])[0],
+                    cleaning_values={key: query[key][0] for key in (
+                        "mode", "clean", "wafers", "jobs", "alternation", "pre_seconds", "post_seconds",
+                        "wac_seconds", "wac_interval", "dummy_seconds", "dummy_visits", "dummy_inventory"
+                    ) if key in query},
+                ))
+            except ValueError as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+        if path == "/api/theory-capacity/route-index":
+            try:
+                query = parse_qs(parsed_url.query)
+                device_id = str((query.get("device") or [""])[0]).strip()
+                if not device_id:
+                    raise ValueError("必须指定设备")
+                self._send_json(read_theory_capacity_route_index(device_id))
+            except ValueError as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/theory-capacity/scan":
+            try:
+                query = parse_qs(parsed_url.query)
+                device_id = str((query.get("device") or [""])[0]).strip()
+                if not device_id:
+                    raise ValueError("必须指定设备")
+                self._send_json(read_theory_capacity_scan(
+                    device_id,
+                    kinds=(query.get("kinds") or [""])[0],
+                    locks=(query.get("locks") or [""])[0],
+                    cleans=(query.get("cleans") or [""])[0],
+                    first_seconds=(query.get("first") or [None])[0],
+                    last_seconds=(query.get("last") or [None])[0],
+                    step_seconds=(query.get("step") or [None])[0],
+                ))
+            except ValueError as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path == "/api/theory-capacity/derivation":
+            try:
+                query = parse_qs(parsed_url.query)
+                device_id = str((query.get("device") or [""])[0]).strip()
+                test_id = str((query.get("test") or [""])[0]).strip()
+                route_name = str((query.get("route") or [""])[0]).strip()
+                if not device_id or not (test_id or route_name):
+                    raise ValueError("必须指定设备，以及测试或路径模板")
+                self._send_json(read_theory_capacity_derivation(
+                    device_id, test_id=test_id, route_name=route_name,
+                ))
+            except ValueError as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+            return
+        if path.startswith("/api/workspaces/"):
+            parts = [part for part in path.split("/") if part]
+            if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "export":
+                try:
+                    content, download_name = export_workspace_device(parts[2])
+                    self._send_bytes(content, "application/zip", download_name)
+                except Exception as error:  # noqa: BLE001
+                    self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+                return
+            if (
+                len(parts) == 6
+                and parts[:2] == ["api", "workspaces"]
+                and parts[3] == "tests"
+                and parts[5] == "export"
+            ):
+                try:
+                    content, download_name = export_workspace_test(parts[2], parts[4])
+                    self._send_bytes(content, "application/zip", download_name)
+                except Exception as error:  # noqa: BLE001
+                    self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+                return
+            if len(parts) == 5 and parts[:2] == ["api", "workspaces"] and parts[3] == "tests":
+                try:
+                    self._send_json({"ok": True, "test": get_workspace_test(parts[2], parts[4])})
+                except Exception as error:  # noqa: BLE001
+                    self._send_json({"ok": False, "error": str(error)}, HTTPStatus.NOT_FOUND)
+                return
+            if len(parts) == 3:
+                try:
+                    self._send_json({"ok": True, "device": get_workspace_device_overview(parts[2])})
+                except Exception as error:  # noqa: BLE001
+                    self._send_json({"ok": False, "error": str(error)}, HTTPStatus.NOT_FOUND)
+                return
+        if path.startswith("/api/results/"):
+            result_id = path.rsplit("/", 1)[-1]
+            view = parse_qs(parsed_url.query).get("view", [""])[0]
+            if view == "replay-context":
+                result = read_replay_context(result_id)
+            elif view in {"", "movelist"}:
+                result = read_result(result_id, include_replay_context=view != "movelist")
+            else:
+                self._send_json({"ok": False, "error": "不支持的结果视图"}, HTTPStatus.BAD_REQUEST)
+                return
+            if result is None:
+                self._send_json({"ok": False, "error": "结果不存在或已过期"}, HTTPStatus.NOT_FOUND)
+            else:
+                self._send_json(result)
+            return
+        artifact_parts = [part for part in path.split("/") if part]
+        if len(artifact_parts) == 4 and artifact_parts[:2] == ["api", "artifacts"]:
+            if artifact_parts[3] == "summary":
+                result = read_result_summary(artifact_parts[2])
+            elif artifact_parts[3] == "manifest":
+                result = read_run_manifest(artifact_parts[2])
+            else:
+                result = None
+            if result is None:
+                self._send_json({"ok": False, "error": "运行制品不存在或已过期"}, HTTPStatus.NOT_FOUND)
+            else:
+                self._send_json(result)
+            return
+        if path.startswith("/api/logs/"):
+            log_id = path.rsplit("/", 1)[-1]
+            reproduction_log = read_reproduction_log(log_id)
+            if reproduction_log is None:
+                self._send_json({"ok": False, "error": "日志不存在或已过期"}, HTTPStatus.NOT_FOUND)
+            else:
+                self._send_json(
+                    reproduction_log,
+                    top_level_item_per_line=True,
+                )
+            return
+        run_parts = [part for part in path.split("/") if part]
+        if len(run_parts) == 3 and run_parts[:2] == ["api", "runs"]:
+            run = _single_run_snapshot(run_parts[2])
+            if run is None:
+                self._send_json({"ok": False, "error": "单测任务不存在或尚未开始"}, HTTPStatus.NOT_FOUND)
+            else:
+                self._send_json(run)
+            return
+        batch_parts = run_parts
+        if len(batch_parts) == 4 and batch_parts[:2] == ["api", "run-batches"] and batch_parts[3] == "logs":
+            try:
+                content, download_name = build_workspace_batch_log_archive(batch_parts[2])
+                self._send_bytes(content, "application/zip", download_name)
+            except LookupError as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.NOT_FOUND)
+            except ValueError as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path.startswith("/api/run-batches/"):
+            batch = read_workspace_batch_run(path.rsplit("/", 1)[-1])
+            if batch is None:
+                self._send_json({"ok": False, "error": "批量任务不存在或已过期"}, HTTPStatus.NOT_FOUND)
+            else:
+                self._send_json(batch)
+            return
+        self._send_json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)
+
+    def do_POST(self) -> None:
+        """接收控制台配置并同步运行后端策略。"""
+        path = unquote(urlparse(self.path).path)
+        if path == "/api/analysis-jobs":
+            try:
+                job = create_test_group_analysis_job(self._read_json_object())
+                self._send_json({"ok": True, "job": job}, HTTPStatus.ACCEPTED)
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        analysis_job_parts = [part for part in path.split("/") if part]
+        if (
+            len(analysis_job_parts) == 4
+            and analysis_job_parts[:2] == ["api", "analysis-jobs"]
+            and analysis_job_parts[3] == "cancel"
+        ):
+            try:
+                job = cancel_test_group_analysis_job(analysis_job_parts[2])
+                self._send_json({"ok": True, "job": job}, HTTPStatus.ACCEPTED)
+            except LookupError as error:
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.NOT_FOUND)
+            return
+        if path == "/api/workspace-transfers":
+            try:
+                payload = self._read_json_object()
+                transfer = create_workspace_transfer(
+                    str(payload.get("direction") or ""),
+                    str(payload.get("kind") or ""),
+                    str(payload.get("deviceId") or ""),
+                    str(payload.get("testId") or ""),
+                )
+                self._send_json(
+                    {"ok": True, "transfer": transfer},
+                    HTTPStatus.ACCEPTED,
+                )
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path == "/api/company-capacity-baselines/import":
+            try:
+                summary = import_company_capacity_baselines(
+                    self._read_binary_body(2 * 1024 * 1024),
+                )
+                self._send_json({"ok": True, **summary})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        transfer_parts = [part for part in path.split("/") if part]
+        if (
+            len(transfer_parts) == 4
+            and transfer_parts[:2] == ["api", "workspace-transfers"]
+            and transfer_parts[3] == "content"
+        ):
+            try:
+                transfer = upload_workspace_transfer(
+                    transfer_parts[2],
+                    self._read_binary_body(DATA_EXCHANGE_MAX_ARCHIVE_BYTES),
+                )
+                self._send_json(
+                    {"ok": True, "transfer": transfer},
+                    HTTPStatus.ACCEPTED,
+                )
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path == "/api/workspaces/import/device":
+            try:
+                device, created_device, imported_tests = import_workspace_device_archive(
+                    self._read_binary_body(DATA_EXCHANGE_MAX_ARCHIVE_BYTES),
+                )
+                self._send_json({
+                    "ok": True,
+                    "device": {
+                        "id": device["id"],
+                        "name": device.get("name") or "未命名设备",
+                        "testCount": len(device.get("tests") or []),
+                    },
+                    "createdDevice": bool(created_device),
+                    "importedTests": imported_tests,
+                })
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        import_test_parts = [part for part in path.split("/") if part]
+        if (
+            len(import_test_parts) == 4
+            and import_test_parts[:2] == ["api", "workspaces"]
+            and import_test_parts[3] == "import-test"
+        ):
+            try:
+                test_case, created = import_workspace_test_archive(
+                    import_test_parts[2],
+                    self._read_binary_body(DATA_EXCHANGE_MAX_ARCHIVE_BYTES),
+                )
+                self._send_json({"ok": True, "created": created, "test": test_case})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path == "/api/model-checkpoints":
+            try:
+                filename = unquote(str(self.headers.get("X-Checkpoint-Filename") or ""))
+                checkpoint_path = save_model_checkpoint(
+                    filename,
+                    self._read_binary_body(MAX_CHECKPOINT_BYTES),
+                )
+                self._send_json({"ok": True, "modelPath": str(checkpoint_path)})
+            except (OSError, ValueError) as error:
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.BAD_REQUEST,
+                )
+            return
+        if path == "/api/search-control":
+            try:
+                if not BUILTIN_ALGORITHM_AVAILABLE:
+                    raise RuntimeError("本地算法仓库未加载，无法控制搜索")
+                payload = self._read_json_object()
+                result = builtin_algorithm_api.control_search(
+                    str(payload.get("command") or ""),
+                    payload.get("actionKey"),
+                )
+                self._send_json({"ok": True, **result})
+            except (RuntimeError, TypeError, ValueError) as error:
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.BAD_REQUEST,
+                )
+            return
+        if path == "/api/analysis/replay-decision":
+            try:
+                payload = self._read_json_object()
+                context = _evaluate_replay_action_context(payload)
+                self._send_json({"ok": True, "decision": context["decision"]})
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.BAD_REQUEST,
+                )
+            return
+        if path == "/api/analysis/deadlock-diagnostic":
+            try:
+                payload = self._read_json_object()
+                context = _evaluate_replay_action_context(payload)
+                snapshot = payload.get("snapshot")
+                if snapshot is not None and not isinstance(snapshot, Mapping):
+                    raise ValueError("snapshot 必须是 JSON 对象或 null")
+                bundle = build_deadlock_diagnostic_bundle(
+                    replay_time=context["time"],
+                    plan=context["plan"],
+                    moves=context["moves"],
+                    update_params=context["updateParams"],
+                    move_states=context["moveStates"],
+                    decision=context["decision"],
+                    recompute_round=context["recomputeRound"],
+                    playback_snapshot=snapshot,
+                    result_id=context["resultId"],
+                )
+                content, download_name = serialize_deadlock_diagnostic_bundle(
+                    bundle,
+                    replay_time=context["time"],
+                    result_id=context["resultId"],
+                )
+                self._send_bytes(
+                    content,
+                    "application/json; charset=utf-8",
+                    download_name,
+                )
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.BAD_REQUEST,
+                )
+            return
+        if path == "/api/analysis/schedule":
+            try:
+                payload = self._read_json_object()
+                self._send_json(analyze_schedule_request(payload))
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.BAD_REQUEST,
+                )
+            return
+        if path == "/api/analysis/test-group":
+            try:
+                payload = self._read_json_object()
+                cases = payload.get("cases")
+                if not isinstance(cases, list):
+                    raise ValueError("cases 必须是数组")
+                if not all(isinstance(item, Mapping) for item in cases):
+                    raise ValueError("cases 的每一项都必须是 JSON 对象")
+                self._send_json({
+                    "ok": True,
+                    "analysis": analyze_test_group_performance(cases),
+                })
+            except Exception as error:  # noqa: BLE001
+                self._send_json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.BAD_REQUEST,
+                )
+            return
+        if path == "/api/run-batch":
+            try:
+                payload = self._read_json_object()
+                device_id = str(payload.get("deviceId") or "")
+                strategy = str(payload.get("strategy") or "heuristic")
+                options = payload.get("options")
+                if not isinstance(options, Mapping):
+                    options = {}
+                test_ids = payload.get("testIds")
+                if test_ids is not None and not isinstance(test_ids, list):
+                    raise ValueError("testIds 必须是测试 ID 数组")
+                result = start_workspace_test_batch(
+                    device_id,
+                    str(payload.get("group") or ""),
+                    strategy,
+                    options,
+                    hongye_check=bool(payload.get("hongYeCheck", True)),
+                    skip_baseline=bool(payload.get("skipBaseline")),
+                    execution_timing_enabled=bool(payload.get("executionTimingEnabled", False)),
+                    maximum_workers=int(payload.get("maximumWorkers", DEFAULT_BATCH_WORKERS)),
+                    validation_workers=int(payload.get("validationWorkers", DEFAULT_VALIDATION_WORKERS)),
+                    clean_validation_types=payload.get("cleanValidationTypes") if isinstance(payload.get("cleanValidationTypes"), list) else None,
+                    use_process_isolation=True,
+                    test_ids=test_ids,
+                )
+                self._send_json(result, HTTPStatus.ACCEPTED)
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path == "/api/workspaces/devices":
+            try:
+                payload = self._read_json_object()
+                device, created = import_workspace_device(
+                    str(payload.get("name") or "未命名设备"), payload.get("device"),
+                )
+                self._send_json({"ok": True, "created": created, "device": {
+                    "id": device["id"],
+                    "name": device["name"],
+                    "testCount": len(device.get("tests") or []),
+                }})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        workspace_parts = [part for part in path.split("/") if part]
+        if len(workspace_parts) == 4 and workspace_parts[:2] == ["api", "workspaces"] and workspace_parts[3] == "groups":
+            try:
+                payload = self._read_json_object()
+                groups = create_workspace_test_group(workspace_parts[2], str(payload.get("name") or ""))
+                self._send_json({"ok": True, "groups": groups}, HTTPStatus.CREATED)
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if len(workspace_parts) == 4 and workspace_parts[:2] == ["api", "workspaces"] and workspace_parts[3] == "tests":
+            try:
+                payload = self._read_json_object()
+                test_case = create_workspace_test(workspace_parts[2], payload)
+                self._send_json({"ok": True, "test": test_case}, HTTPStatus.CREATED)
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path != "/api/run":
+            self._send_json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)
+            return
+        payload: Any = None
+        replay_plan: Optional[Dict[str, Any]] = None
+        baseline_response: Optional[Dict[str, Any]] = None
+        client_run_id = ""
+        run_identity: Dict[str, Any] = {}
+        artifact_committed = False
+        request_started = time.perf_counter()
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length <= 0 or length > MAX_REQUEST_BYTES:
+                raise ValueError("请求为空或超过大小限制")
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, Mapping):
+                raise ValueError("请求体必须是 JSON 对象")
+            workspace_device_id = str(payload.get("workspaceDeviceId") or "")
+            workspace_test_id = str(payload.get("workspaceTestId") or "")
+            strategy = str(payload.get("strategy") or "heuristic")
+            client_run_id = str(payload.get("clientRunId") or "").strip()
+            run_identity = {
+                "deviceId": workspace_device_id,
+                "testId": workspace_test_id,
+                "deviceName": str(payload.get("deviceName") or ""),
+                "testName": str(payload.get("testCaseName") or "当前测试"),
+                "strategy": strategy,
+                "clientRunId": client_run_id,
+                "startedAt": _workspace_timestamp(),
+            }
+            if client_run_id:
+                _start_single_run(
+                    client_run_id,
+                    strategy,
+                    str(payload.get("testCaseName") or payload.get("deviceName") or "当前测试"),
+                )
+            if workspace_device_id and workspace_test_id:
+                device, test_case = get_workspace_run_context(
+                    workspace_device_id,
+                    workspace_test_id,
+                )
+                run_identity.update({
+                    "deviceName": str(device.get("name") or ""),
+                    "testName": str(test_case.get("name") or "当前测试"),
+                    "group": str(test_case.get("group") or ""),
+                })
+                selected_plan = deepcopy(dict(payload))
+                runtime_device = deepcopy(device.get("device"))
+                if isinstance(runtime_device, dict):
+                    apply_robot_slot_selection(runtime_device, device.get("robotSlots"))
+                    selected_plan["device"] = runtime_device
+                replay_plan = deepcopy(selected_plan)
+                if client_run_id:
+                    with _monitor_single_run(client_run_id, strategy):
+                        result, baseline, run_error = _execute_workspace_test_with_baseline(
+                            device,
+                            test_case,
+                            strategy,
+                            dict(payload.get("options") or {}),
+                            selected_plan=selected_plan,
+                            hongye_check=bool(payload.get("hongYeCheck", True)),
+                            skip_baseline=bool(payload.get("skipBaseline")),
+                        )
+                else:
+                    result, baseline, run_error = _execute_workspace_test_with_baseline(
+                        device,
+                        test_case,
+                        strategy,
+                        dict(payload.get("options") or {}),
+                        selected_plan=selected_plan,
+                        hongye_check=bool(payload.get("hongYeCheck", True)),
+                        skip_baseline=bool(payload.get("skipBaseline")),
+                    )
+                baseline_response = deepcopy(baseline)
+                if run_error is not None or result is None:
+                    raise run_error or RuntimeError("运行未返回结果")
+                result.update(_baseline_comparison(result, baseline))
+            else:
+                replay_plan = deepcopy(dict(payload))
+                if client_run_id:
+                    with _monitor_single_run(client_run_id, strategy):
+                        result = execute_plan(payload)
+                else:
+                    result = execute_plan(payload)
+            artifact = deepcopy(dict(result["output"]))
+            artifact["RunMetricsMetadata"] = {
+                "cpuTimeMs": max(
+                    0.0,
+                    float(result.get("cpuTimeMs", result.get("totalElapsedMs", 0.0))),
+                ),
+                # updates 与每次算法 update 一一对应，包含首排 update #1。
+                "recomputeCount": len(list(result.get("updates") or [])),
+            }
+            if replay_plan is not None:
+                artifact["ReplayContext"] = {
+                    "schema": "machine-replay-context-v1",
+                    "plan": replay_plan,
+                    "updates": deepcopy(list(result.get("updates") or [])),
+                }
+            response = {
+                key: value
+                for key, value in result.items()
+                if key not in {"output", "reproductionLog"}
+            }
+            response.update(save_run_artifacts(
+                artifact,
+                result["reproductionLog"],
+                {**run_identity, **{
+                    key: value for key, value in response.items()
+                    if key not in {"updates", "logs"}
+                }, "status": "succeeded"},
+                execution_logs=result.get("logs") or [],
+            ))
+            artifact_committed = True
+            if client_run_id:
+                _finish_single_run(client_run_id, "completed")
+            self._send_json(response)
+        except LoggedPlanError as error:
+            if client_run_id:
+                _finish_single_run(client_run_id, "failed", str(error))
+            response = {"ok": False, "error": str(error)}
+            if baseline_response is not None:
+                response["baseline"] = baseline_response
+            response.update(_logged_failure_result_fields(
+                error,
+                replay_plan=replay_plan,
+                persist=False,
+            ))
+            strategy = str(payload.get("strategy") or "") if isinstance(payload, Mapping) else ""
+            if strategy.casefold().startswith("other_alg:"):
+                elapsed_ms = (time.perf_counter() - request_started) * 1000.0
+                moves = list((error.failure_output or {}).get("MoveList") or [])
+                response.update({
+                    "metricsAvailable": True,
+                    "totalElapsedMs": elapsed_ms,
+                    "cpuTimeMs": elapsed_ms,
+                    "validation": "failed",
+                    "robotWaferDwellTime": _robot_wafer_dwell_time(moves),
+                })
+                if baseline_response is not None and "makespan" in response:
+                    response.update(_baseline_comparison(response, baseline_response))
+            response.update(save_run_artifacts(
+                build_failure_result_artifact(error, replay_plan, run_metrics=response),
+                error.reproduction_log,
+                {**run_identity, **response, "status": "failed"},
+                execution_logs=[str(error)],
+            ))
+            self._send_json(response, HTTPStatus.BAD_REQUEST)
+        except Exception as error:  # noqa: BLE001
+            if artifact_committed:
+                # 输出已经原子保存，响应传输错误不代表算法运行失败，也不重复归档。
+                raise
+            reproduction = ReproductionLog()
+            reproduction.add("Input", [deepcopy(dict(payload))] if isinstance(payload, Mapping) else [])
+            reproduction.add("AlgOutput", _alg_output_info(feedback=[{
+                "Level": "Error",
+                "Type": type(error).__name__,
+                "Message": str(error),
+            }]))
+            cancelled_error_type = globals().get("SearchCancelledError")
+            cancelled = (
+                isinstance(error, UserRunCancelledError)
+                or cancelled_error_type is not None
+                and isinstance(error, cancelled_error_type)
+            )
+            if cancelled:
+                response = {"ok": False, "cancelled": True, "error": "运行已取消"}
+            else:
+                response = {"ok": False, "error": str(error) or type(error).__name__}
+            if client_run_id:
+                _finish_single_run(
+                    client_run_id,
+                    "cancelled" if cancelled else "failed",
+                    response["error"],
+                )
+            if baseline_response is not None:
+                response["baseline"] = baseline_response
+            response.update(save_run_artifacts(
+                None,
+                reproduction.entries,
+                {**run_identity, **response, "status": "cancelled" if cancelled else "failed"},
+                execution_logs=[response["error"]],
+            ))
+            self._send_json(response, HTTPStatus.BAD_REQUEST)
+
+    def do_PUT(self) -> None:
+        """保存测试、路径模板、机器手槽位或测试组别。"""
+        path = unquote(urlparse(self.path).path)
+        if path == "/api/preferences/run-settings":
+            try:
+                payload = self._read_json_object()
+                settings = update_run_preferences(payload.get("runSettings"))
+                self._send_json({"ok": True, "runSettings": settings})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path == "/api/preferences/analysis-settings":
+            try:
+                payload = self._read_json_object()
+                settings = update_analysis_preferences(payload.get("analysisSettings"))
+                self._send_json({"ok": True, "analysisSettings": settings})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        parts = [part for part in path.split("/") if part]
+        if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "device-timing":
+            try:
+                payload = self._read_json_object()
+                device_data = update_workspace_device_timing(
+                    parts[2], payload.get("timing"),
+                )
+                self._send_json({"ok": True, "device": device_data})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "robot-slots":
+            try:
+                payload = self._read_json_object()
+                robot_slots = update_workspace_robot_slots(
+                    parts[2], payload.get("robotSlots"),
+                )
+                self._send_json({"ok": True, "robotSlots": robot_slots})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "routes":
+            try:
+                payload = self._read_json_object()
+                result = update_workspace_routes(parts[2], payload, include_tests=False)
+                self._send_json({"ok": True, **result})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "groups":
+            try:
+                payload = self._read_json_object()
+                result = rename_workspace_test_group(
+                    parts[2], str(payload.get("oldName") or ""), str(payload.get("name") or ""),
+                )
+                self._send_json({"ok": True, **result})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if len(parts) != 5 or parts[:2] != ["api", "workspaces"] or parts[3] != "tests":
+            self._send_json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)
+            return
+        try:
+            payload = self._read_json_object()
+            test_case = update_workspace_test(parts[2], parts[4], payload)
+            self._send_json({"ok": True, "test": test_case})
+        except Exception as error:  # noqa: BLE001
+            self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+
+    def do_DELETE(self) -> None:
+        """删除导出文件、设备下指定测试集或测试组，并返回剩余数据。"""
+        path = unquote(urlparse(self.path).path)
+        if path == "/api/exports":
+            try:
+                deleted_counts = clear_exported_artifacts()
+                self._send_json({"ok": True, "deleted": deleted_counts})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+        if path.startswith("/api/run-batches/"):
+            batch = cancel_workspace_batch_run(path.rsplit("/", 1)[-1])
+            if batch is None:
+                self._send_json({"ok": False, "error": "批量任务不存在或已过期"}, HTTPStatus.NOT_FOUND)
+            else:
+                self._send_json(batch)
+            return
+        if path.startswith("/api/runs/"):
+            run = _cancel_single_run(path.rsplit("/", 1)[-1])
+            if run is None:
+                self._send_json({"ok": False, "error": "单测任务不存在或尚未开始"}, HTTPStatus.NOT_FOUND)
+            else:
+                self._send_json(run)
+            return
+        parts = [part for part in path.split("/") if part]
+        if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[2] == "devices":
+            try:
+                deleted = delete_workspace_device(parts[3])
+                self._send_json({"ok": True, "deleted": deleted})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "groups":
+            try:
+                payload = self._read_json_object()
+                result = delete_workspace_test_group(parts[2], str(payload.get("name") or ""))
+                self._send_json({"ok": True, **result})
+            except Exception as error:  # noqa: BLE001
+                self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if len(parts) != 5 or parts[:2] != ["api", "workspaces"] or parts[3] != "tests":
+            self._send_json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)
+            return
+        try:
+            remaining_tests = delete_workspace_test(parts[2], parts[4])
+            self._send_json({"ok": True, "tests": remaining_tests})
+        except Exception as error:  # noqa: BLE001
+            self._send_json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+
+    def log_message(self, format_string: str, *args: Any) -> None:
+        """按开关输出 HTTP 访问日志，默认不干扰业务阶段日志。"""
+        log_http_access(f"{self.address_string()} {format_string % args}")
+
+    def _send_file(self, path: Path, content_type: str) -> None:
+        """发送白名单中的静态文件。"""
+        if not path.is_file():
+            self._send_json({"ok": False, "error": f"文件不存在：{path}"}, HTTPStatus.NOT_FOUND)
+            return
+        content = path.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
+        self._send_performance_headers(len(content))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def _send_bytes(self, content: bytes, content_type: str, download_name: str) -> None:
+        """发送一次性生成的二进制下载内容。"""
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Disposition", _download_content_disposition(download_name))
+        self._send_performance_headers(len(content))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def _send_frontend_asset(self, asset_name: str) -> None:
+        """发送构建后的前端资源：允许 assets 下的子目录（如自托管字体），拒绝目录穿越和未知类型。"""
+        content_types = {
+            ".css": "text/css; charset=utf-8",
+            ".js": "text/javascript; charset=utf-8",
+            ".map": "application/json; charset=utf-8",
+            ".woff2": "font/woff2",
+            ".woff": "font/woff",
+        }
+        asset_root = FRONTEND_ASSET_DIR.resolve()
+        asset_path = (asset_root / asset_name).resolve()
+        if not asset_path.is_relative_to(asset_root):
+            self._send_json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)
+            return
+        content_type = content_types.get(asset_path.suffix.lower())
+        if content_type is None:
+            self._send_json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)
+            return
+        self._send_file(asset_path, content_type)
+
+    def _read_json_object(self) -> Dict[str, Any]:
+        """读取受大小限制的 JSON 对象请求体。"""
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0 or length > MAX_REQUEST_BYTES:
+            raise ValueError("请求为空或超过大小限制")
+        payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        if not isinstance(payload, Mapping):
+            raise ValueError("请求体必须是 JSON 对象")
+        return dict(payload)
+
+    def _read_binary_body(self, maximum_bytes: int) -> bytes:
+        """读取有明确上限的二进制请求体，供本机模型文件上传使用。"""
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0 or length > maximum_bytes:
+            raise ValueError("文件为空或超过大小限制")
+        return self.rfile.read(length)
+
+    def _send_performance_headers(self, response_bytes: int) -> None:
+        """附加当前请求的服务耗时和响应体积，便于浏览器与基准工具采集。"""
+        started = getattr(self, "_request_started_performance", time.perf_counter())
+        elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
+        self.send_header("Server-Timing", f"app;dur={elapsed_ms:.3f}")
+        self.send_header("X-Response-Bytes", str(max(0, int(response_bytes))))
+
+    def _send_json(
+        self,
+        payload: Any,
+        status: HTTPStatus = HTTPStatus.OK,
+        download_name: Optional[str] = None,
+        top_level_item_per_line: bool = False,
+    ) -> None:
+        """以 UTF-8 JSON 返回 API 结果。"""
+        if top_level_item_per_line:
+            content_text = format_reproduction_log(payload)
+        else:
+            content_text = json.dumps(payload, ensure_ascii=False, allow_nan=False)
+        content = content_text.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
+        self._send_performance_headers(len(content))
+        if download_name:
+            self.send_header("Content-Disposition", _download_content_disposition(download_name))
+        self.end_headers()
+        self.wfile.write(content)
+
+
+
+__all__ = tuple(name for name in globals() if not name.startswith('__'))

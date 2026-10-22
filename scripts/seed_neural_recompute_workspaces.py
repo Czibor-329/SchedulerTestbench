@@ -18,14 +18,14 @@ from typing import Any, Dict, Iterable, List, Mapping, Sequence
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from realtime_scheduler.backend import application as scheduler_server
-from realtime_scheduler.backend.workspace.repository import (
+from app.backend import application as scheduler_server
+from app.backend.workspace.repository import (
     _workspace_route_test_config,
 )
 from src.task_data.generator import PM_POOL_6, expand_topo_pms
 
 
-DATASET_ROOT = ROOT / "realtime_scheduler" / "data" / "datasets"
+DATASET_ROOT = ROOT / "app" / "data" / "datasets"
 
 
 def _dataset_device_path(device_name: str) -> Path:

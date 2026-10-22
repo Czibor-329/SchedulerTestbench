@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
-from realtime_scheduler.backend import application as batch_service
-from realtime_scheduler.backend import application as server
+from app.backend import application as batch_service
+from app.backend import application as server
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -347,7 +347,7 @@ def test_workspace_migration_keeps_duplicate_when_one_test_uses_conflicting_conf
 
 def test_route_template_and_test_route_editors_use_separate_ui_states() -> None:
     """模板局部保存、模板选择和测试参数编辑应是三个清晰且可返回的界面状态。"""
-    frontend = ROOT / "realtime_scheduler" / "frontend"
+    frontend = ROOT / "app" / "frontend"
     template = (frontend / "config_editor.html").read_text(encoding="utf-8")
     source = (frontend / "src" / "config_editor.ts").read_text(encoding="utf-8")
 

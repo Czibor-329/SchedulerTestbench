@@ -6,7 +6,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from realtime_scheduler.backend.analysis_jobs import (
+from app.backend.analysis_jobs import (
     create_test_group_analysis_job,
     read_test_group_analysis_job,
 )
@@ -39,7 +39,7 @@ class AnalysisJobTests(unittest.TestCase):
         }
 
         with patch(
-            "realtime_scheduler.backend.analysis_jobs.read_result",
+            "app.backend.analysis_jobs.read_result",
             side_effect=lambda result_id: saved_results.get(result_id),
         ):
             job = create_test_group_analysis_job(payload)

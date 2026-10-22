@@ -18,11 +18,11 @@ from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
-import realtime_scheduler.backend.application as config_server
-from realtime_scheduler.backend.algorithms.interface import discover_other_algorithms
-from realtime_scheduler.backend.execution.plan_builder import _runtime_clean, build_process_recipes
+import app.backend.application as config_server
+from app.backend.algorithms.interface import discover_other_algorithms
+from app.backend.execution.plan_builder import _runtime_clean, build_process_recipes
 from src.compiler import compile_problem
-from realtime_scheduler.backend.application import (
+from app.backend.application import (
     BuildState,
     LoggedPlanError,
     build_round_update,
@@ -42,11 +42,11 @@ from tests.support.plan_fixtures import DEVICE_PATH, job as _job, route as _rout
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EDITOR_PATH = ROOT / "realtime_scheduler" / "frontend" / "config_editor.html"
-DOCUMENTATION_PAGE_PATH = ROOT / "realtime_scheduler" / "frontend" / "documentation.html"
-EDITOR_STYLE_PATH = ROOT / "realtime_scheduler" / "frontend" / "assets" / "config_editor.css"
-EDITOR_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "config_editor.ts"
-DOCUMENTATION_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "documentation_page.ts"
+EDITOR_PATH = ROOT / "app" / "frontend" / "config_editor.html"
+DOCUMENTATION_PAGE_PATH = ROOT / "app" / "frontend" / "documentation.html"
+EDITOR_STYLE_PATH = ROOT / "app" / "frontend" / "assets" / "config_editor.css"
+EDITOR_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "config_editor.ts"
+DOCUMENTATION_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "documentation_page.ts"
 
 
 def _editor_source() -> str:
@@ -267,7 +267,7 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         self.assertIn('method: "DELETE"', html)
         self.assertIn("■ 终止调度", html)
         self.assertIn('cancelled: "已终止"', html)
-        viewer = (ROOT / "realtime_scheduler" / "frontend" / "movelist_gantt_viewer.html").read_text(encoding="utf-8")
+        viewer = (ROOT / "app" / "frontend" / "movelist_gantt_viewer.html").read_text(encoding="utf-8")
         self.assertIn('getAll("src")', viewer)
         self.assertIn("Promise.allSettled", viewer)
         self.assertNotIn('id="recipeList"', html)
@@ -275,7 +275,7 @@ class ConfigEditorFrontendTests(unittest.TestCase):
     def test_gantt_cleaning_process_uses_sky_blue(self) -> None:
         """甘特图应把无片或带清洁元数据的 ProcessMove 显示为天蓝色。"""
         viewer = (
-            ROOT / "realtime_scheduler" / "frontend" / "movelist_gantt_viewer.html"
+            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
         ).read_text(encoding="utf-8")
 
         self.assertIn('const CLEAN_PROCESS_COLOR = "#38BDF8";', viewer)
@@ -286,7 +286,7 @@ class ConfigEditorFrontendTests(unittest.TestCase):
     def test_gantt_keeps_and_renders_zero_duration_moves(self) -> None:
         """甘特图应保留零时长动作，并将其绘制为边界内可点击的最小宽度标记。"""
         viewer = (
-            ROOT / "realtime_scheduler" / "frontend" / "movelist_gantt_viewer.html"
+            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
         ).read_text(encoding="utf-8")
 
         self.assertIn("rec.end >= rec.start", viewer)
@@ -305,10 +305,10 @@ class ConfigEditorFrontendTests(unittest.TestCase):
     def test_gantt_reconstructs_recompute_log_prefix(self) -> None:
         """甘特图导入 input_data 日志时应拼回重算前已开始的动作。"""
         viewer = (
-            ROOT / "realtime_scheduler" / "frontend" / "movelist_gantt_viewer.html"
+            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
         ).read_text(encoding="utf-8")
         compare = (
-            ROOT / "realtime_scheduler" / "frontend" / "src" / "gantt_execution_compare.ts"
+            ROOT / "app" / "frontend" / "src" / "gantt_execution_compare.ts"
         ).read_text(encoding="utf-8")
 
         self.assertIn("function reconstructInputLogMoveList(entries)", viewer)
@@ -321,7 +321,7 @@ class ConfigEditorFrontendTests(unittest.TestCase):
     def test_gantt_compares_actual_move_times_with_the_plan(self) -> None:
         """甘特图应提供执行时间差异跳转、时长过滤和原计划时间提示。"""
         viewer = (
-            ROOT / "realtime_scheduler" / "frontend" / "movelist_gantt_viewer.html"
+            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
         ).read_text(encoding="utf-8")
 
         self.assertIn('src="/assets/gantt_execution_compare.js"', viewer)
@@ -330,39 +330,50 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         self.assertIn('id="nextDiffBtn"', viewer)
         self.assertIn("function timeWithPlan(current, planned, estimated = false)", viewer)
         self.assertIn("hasExecutionTimeDifference(bar.rec, durationOnly)", viewer)
-        self.assertIn("function describeMove(raw)", viewer)
-        self.assertIn("max-width: 320px", viewer)
-        self.assertIn('class="tooltip-description"', viewer)
-        self.assertIn('class="tooltip-description">${escapeHtml(describeMove(raw))}', viewer)
-        self.assertIn('旋转${destination ? `到 ${destination}` : ""}', viewer)
-        self.assertNotIn("Move描述:", viewer)
-        self.assertIn("case 4:", viewer)
-        self.assertIn("const robot = firstTooltipText(raw && raw.Robot", viewer)
-        self.assertIn("dom.tooltip.innerHTML = header + rows + description", viewer)
-        self.assertNotIn("GanttMoveSemantics", viewer)
+
+    def test_gantt_uses_shared_move_descriptions_in_tooltip_and_selection(self) -> None:
+        """悬浮和选中详情共用当前可测试的 Move 语义模块，页面只负责安全显示。"""
+        viewer = (
+            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('src="/assets/gantt_move_semantics.js"', viewer)
+        self.assertIn('id="tooltip"', viewer)
+        self.assertIn('id="moveDescription"', viewer)
+        self.assertGreaterEqual(
+            len(re.findall(r"escapeHtml\(\s*GanttMoveSemantics\.describeMove\(", viewer)),
+            2,
+            "悬浮提示和选中详情都必须转义共用语义模块返回的纯文本",
+        )
+        self.assertNotIn("function describeMove(raw)", viewer)
 
     def test_result_preview_and_group_analysis_use_main_area(self) -> None:
         """结果预览应保持简洁，并提供独立的测试组分析入口。"""
         html = _editor_source()
+        table_source = (EDITOR_PATH.parent / "src" / "result_table.ts").read_text(encoding="utf-8")
         schedule = html.split('<div class="tab-view active" data-tab-view="schedule">', 1)[1]
-        schedule = schedule.split('<div class="tab-view" data-tab-view="test-management">', 1)[0]
+        schedule = schedule.split('<div class="tab-view" data-tab-view="analysis">', 1)[0]
+        analysis = html.split('<div class="tab-view" data-tab-view="analysis">', 1)[1]
+        analysis = analysis.split('<div class="tab-view" data-tab-view="test-management">', 1)[0]
         sidebar = html.split('<aside class="side" id="scheduleSide">', 1)[1]
         sidebar = sidebar.split("</aside>", 1)[0]
 
         self.assertNotIn('id="runTestPreview"', schedule)
-        self.assertIn('id="runAnalysisView"', schedule)
+        self.assertIn('id="runPreviewArea"', schedule)
+        self.assertNotIn('id="testGroupAnalysisPanel"', schedule)
         self.assertNotIn('class="panel batch-selection-panel"', schedule)
-        self.assertIn('class="panel result-panel"', schedule)
+        self.assertIn('id="runResultsView"', schedule)
+        self.assertIn('data-tab-target="analysis"', html)
+        self.assertIn('id="testGroupAnalysisPanel"', analysis)
+        self.assertIn('id="generateAnalysisReportButton"', analysis)
+        self.assertNotIn('id="runPreviewArea"', analysis)
         self.assertIn("运行策略", sidebar)
         self.assertNotIn("开始运行", sidebar)
         self.assertIn("运行所选测试", sidebar)
         self.assertNotIn("结果预览", sidebar)
-        self.assertIn("container-name: result-area", html)
-        self.assertIn(".batch-results { display: grid;", html)
-        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr))", html)
-        self.assertIn("@container result-area (max-width: 1100px)", html)
-        self.assertIn("@container result-area (max-width: 720px)", html)
-        self.assertIn("@container result-area (max-width: 520px)", html)
+        self.assertIn('id="batchResults"', html)
+        self.assertIn('aria-label="运行结果分页"', table_source)
+        self.assertNotIn('data-result-table-size', table_source)
         self.assertNotIn('class="terminal-section"', html)
         self.assertNotIn('id="clearButton"', html)
         self.assertIn('id="resultErrorPanel" role="alert" hidden', html)
@@ -373,18 +384,16 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         self.assertIn("deadlock?.message", html)
         self.assertNotIn("error-artifact-strip", html)
         self.assertIn("只有错误才显示", html)
-        self.assertIn('class="batch-result-summary"', html)
-        self.assertIn('class="batch-metric-tags"', html)
-        self.assertIn("batch-metric-tag production", html)
-        self.assertIn("batch-metric-tag recompute", html)
-        self.assertNotIn('class="batch-result-metrics"', html)
-        self.assertIn('const displayId = `t${index + 1}`', html)
-        self.assertIn("产能 ${throughput.toFixed(1)} 片/h", html)
-        self.assertIn("平均重算 ${hasMetrics && hasAverageRecomputeTime", html)
+        self.assertIn('scope="col">测试名称', table_source)
+        self.assertIn('scope="col">状态', table_source)
+        self.assertIn("产能", table_source)
+        self.assertIn("平均重算", table_source)
+        self.assertIn('aria-controls="batchTestDetails"', table_source)
         self.assertNotIn("已跳过基线", html)
         self.assertNotIn('id="testGroupAnalysisButton"', html)
-        self.assertIn('id="analysisReportViewButton"', html)
-        self.assertIn('id="testGroupAnalysisPanel"', html)
+        self.assertNotIn('id="analysisReportViewButton"', html)
+        self.assertIn('id="generateAnalysisReportButton"', analysis)
+        self.assertIn('id="testGroupAnalysisPanel"', analysis)
         self.assertIn("renderTestGroupAnalysis", html)
         self.assertIn("testGroupSummaryCsv", html)
         self.assertNotIn('data-batch-item-index="${index}"', html)
@@ -403,14 +412,14 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         page = EDITOR_PATH.read_text(encoding="utf-8")
         workspace_source = (
             ROOT
-            / "realtime_scheduler"
+            / "app"
             / "frontend"
             / "src"
             / "workspace_visualizer.ts"
         ).read_text(encoding="utf-8")
         group_view_source = (
             ROOT
-            / "realtime_scheduler"
+            / "app"
             / "frontend"
             / "src"
             / "group_analysis_view.ts"
@@ -422,7 +431,7 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         self.assertIn('id="visualPlaybackEmpty"', page)
         self.assertNotIn('id="visualTopologyToggle"', page)
         self.assertIn('id="visualTopologyPlayback" hidden', page)
-        analysis_view = page.split('id="runAnalysisView"', 1)[1].split('data-tab-view="test-management"', 1)[0]
+        analysis_view = page.split('<div class="tab-view" data-tab-view="analysis">', 1)[1].split('<div class="tab-view" data-tab-view="test-management">', 1)[0]
         self.assertNotIn('id="visualTopologyPlayback"', analysis_view)
         topology_playback = page.split('id="visualTopologyPlayback"', 1)[1]
         self.assertIn('id="visualTimeline"', topology_playback)
@@ -451,7 +460,9 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         self.assertIn("this.elements.groupAnalysis.hidden = true", workspace_source)
         self.assertIn("visualizationWorkspace.showGroupAnalysis(panelMarkup)", editor_source)
         self.assertIn('panel.querySelector("[data-return-run-results]")', editor_source)
-        self.assertIn('setRunResultView("results")', editor_source)
+        self.assertIn('switchTab("analysis")', editor_source)
+        self.assertIn('switchTab("schedule")', editor_source)
+        self.assertNotIn("setRunResultView", editor_source)
         self.assertIn('requestSearchControl(command)', editor_source)
         self.assertIn("async function controlSearchTelemetry(command)", editor_source)
         self.assertNotIn("visualizationWorkspace.beginLiveSolve", editor_source)
@@ -464,9 +475,11 @@ class ConfigEditorFrontendTests(unittest.TestCase):
             '<span class="eyebrow">测试组结果分析</span>',
         ):
             self.assertNotIn(removed_content, group_view_source)
-        self.assertIn('class="group-analysis-head"', group_view_source)
+        self.assertIn('aria-label="本次分析指标"', group_view_source)
         self.assertNotIn('<div class="group-kpi-grid">', group_view_source)
-        self.assertIn('<section class="group-analysis-table-wrap">', group_view_source)
+        self.assertIn('aria-label="逐测试分析报告，可横向滚动"', group_view_source)
+        self.assertIn('scope="col"', group_view_source)
+        self.assertIn('scope="row"', group_view_source)
         self.assertIn('data-return-run-results', group_view_source)
         self.assertIn('返回运行结果', group_view_source)
         self.assertNotIn('参考测试：', group_view_source)
@@ -482,14 +495,14 @@ class ConfigEditorFrontendTests(unittest.TestCase):
         """MoveList 与测试组统计应由后端统一计算，页面只能请求 API。"""
         workspace_source = (
             ROOT
-            / "realtime_scheduler"
+            / "app"
             / "frontend"
             / "src"
             / "workspace_visualizer.ts"
         ).read_text(encoding="utf-8")
         api_source = (
             ROOT
-            / "realtime_scheduler"
+            / "app"
             / "frontend"
             / "src"
             / "api_client.ts"

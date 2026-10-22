@@ -1,6 +1,6 @@
 """验证单腔 PJob 隔离与双腔全局 WAC 待办的边界。"""
 
-from realtime_scheduler.backend.validation.move_validation import (
+from app.backend.validation.move_validation import (
     MachineState,
     MaterialState,
     MoveStateReplay,

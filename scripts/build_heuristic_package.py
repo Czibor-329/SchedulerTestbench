@@ -24,10 +24,6 @@ ARCHIVE_PREFIX = "alg-heuristic"
 ZIP_TIMESTAMP_MINIMUM_YEAR = 1980
 EXCLUDED_RUNTIME_FILES = frozenset({
     PurePosixPath("src/task_data/generator.py"),
-    PurePosixPath("src/task_data/macro_rule_scenarios.py"),
-    PurePosixPath("src/schedule/strategies/dual_actor_e2e.py"),
-    PurePosixPath("src/schedule/strategies/e2e_ctq.py"),
-    PurePosixPath("src/schedule/strategies/global_wafer.py"),
     PurePosixPath("src/schedule/strategies/loadlock_macro.py"),
     PurePosixPath("src/schedule/strategies/milp.py"),
     PurePosixPath("src/schedule/strategies/schedule_alphago_model.py"),
@@ -49,8 +45,8 @@ PACKAGE_README = r"""# CT Scheduler Heuristic 部署包
 - `requirements.txt`：唯一第三方运行依赖 NumPy。
 - `PACKAGE_INFO.json`：源码提交、构建日期和运行环境信息。
 
-不包含 Git 历史、虚拟环境、训练数据、测试、模型、`other_alg`、E2E、
-双 Actor、MILP 或 LoadLock Macro 实现。
+不包含 Git 历史、虚拟环境、训练数据、测试、模型、`other_alg`、
+MILP 或 LoadLock Macro 实现。
 
 ## 安装
 
@@ -76,14 +72,14 @@ python -m venv .venv
 然后运行：
 
 ```powershell
-.\alg\.venv\Scripts\python.exe -m realtime_scheduler.backend.main --open
+.\alg\.venv\Scripts\python.exe -m app.backend.main --open
 ```
 
 也可以放在任意目录，通过环境变量指定：
 
 ```powershell
 $env:CT_ALGORITHM_ROOT = "D:\path\to\alg"
-python -m realtime_scheduler.backend.main --open
+python -m app.backend.main --open
 ```
 
 标准接口只接受 `heuristic`；传入其他算法名会明确报错。

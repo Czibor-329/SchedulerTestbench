@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import unittest
 
-from realtime_scheduler.backend.analysis import (
+from app.backend.analysis import (
     analyze_schedule_performance,
     analyze_test_group_performance,
     build_schedule_analysis_context,

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from realtime_scheduler.backend.preferences.repository import (
+from app.backend.preferences.repository import (
     read_analysis_preferences,
     read_run_preferences,
     update_analysis_preferences,

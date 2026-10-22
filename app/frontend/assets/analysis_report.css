@@ -1,0 +1,30 @@
+/**
+ * 分析报告使用 Spark 原版共享表格组件，只有外层一处表面边界。
+ * 报告专属规则仅处理空状态入口、指标区、数值对齐和宽表固定列；不影响回放画布和指标计算。
+ * 分析报告作为工作空间下的独立页签，版面由 switchTab 的 editor-mode 与侧栏隐藏统一控制。
+ */
+.analysis-report-generate { margin-top: 10px; }
+.test-group-analysis.table-card-custom { display: block; padding: 0; }
+.group-analysis-head { padding: 22px 24px; }
+.group-analysis-heading { flex: 1; min-width: 200px; }
+.group-analysis-heading h2 { margin: 0; color: var(--ink); font-size: 21px; font-weight: 700; }
+.group-analysis-heading p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
+.group-analysis-selection { gap: 8px; padding: 14px 24px; border-bottom: 1px solid var(--line); }
+.group-analysis-selection span { padding: 3px 10px; border: 0; border-radius: 6px; color: #57705f; background: #f0f4ed; font-size: 13px; font-weight: 500; }
+.group-analysis-warning { margin: 16px 24px; }
+.group-analysis-table-scroll { max-height: min(720px, calc(100dvh - 300px)); overflow: auto; scrollbar-gutter: auto; }
+.table-custom.group-analysis-table { border-collapse: separate; border-spacing: 0; font-size: 16px; }
+.table-custom.group-analysis-table th, .table-custom.group-analysis-table td { padding: 16px 20px; border-right: 0; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
+.table-custom.group-analysis-table thead th { top: 0; background: #f8faf9; color: var(--muted); box-shadow: inset 0 -1px var(--line); font-size: 14px; font-weight: 600; letter-spacing: 0; }
+.table-custom.group-analysis-table th:first-child { min-width: 180px; color: #203a2c; text-align: left; font-weight: 600; box-shadow: 1px 0 var(--line); }
+.table-custom.group-analysis-table thead th:first-child { background: #f8faf9; color: var(--muted); }
+.table-custom.group-analysis-table tbody tr:nth-child(even) > * { background: #fff; }
+.table-custom.group-analysis-table tbody tr:hover > * { background: #f9fcec; }
+.table-custom.group-analysis-table tbody tr.is-incomplete > * { color: #99433e; background: #fdf4f3; }
+.table-custom.group-analysis-table .gain { color: var(--green); }
+.table-custom.group-analysis-table .loss { color: var(--red); }
+@media (max-width: 760px) {
+  .group-analysis-head { align-items: flex-start; padding: 18px; }
+  .group-analysis-selection { padding: 12px 18px; }
+  .group-analysis-actions { justify-content: flex-start; }
+}

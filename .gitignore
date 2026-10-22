@@ -29,5 +29,5 @@ reasonix.toml
 *.zip
 
 /tmp
-/realtime_scheduler/data/documentation
+/app/data/documentation
 /outputs

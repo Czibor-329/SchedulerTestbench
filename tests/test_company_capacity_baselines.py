@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from realtime_scheduler.backend.company_capacity_baselines import (
+from app.backend.company_capacity_baselines import (
     COMPANY_CAPACITY_BASELINE_FILE_NAME,
     COMPANY_CAPACITY_DIRECTORY_NAME,
     COMPANY_CAPACITY_LEGACY_BASELINE_FILE_NAME,

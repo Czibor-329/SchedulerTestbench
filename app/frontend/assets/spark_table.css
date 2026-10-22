@@ -1,0 +1,233 @@
+/**
+ * Spark Admin v1.0.0 原版共享表格样式。
+ * 来源：用户提供的 spark-admin-v1.0.0.zip / assets/css/main.css 第 18 节。
+ * 仅抽取已使用的表格、表头工具栏、状态、操作和分页规则；保留原版类名和结构。
+ * 颜色变量映射到 console_shell.css，字号按当前可读性要求提高到 14–16px。
+ * 中文表头取消大写与字间距；表头背景只作用于 thead，保留 tbody 行标题语义。
+ * 不包含模板的全局 Bootstrap、图标、外部字体、演示头像及业务脚本。
+ */
+.table-card-custom {
+    background-color: #FFFFFF;
+    border-radius: 18px;
+    border: 1px solid rgba(11, 19, 15, 0.06) !important;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    margin-bottom: 1.25rem !important;
+    width: 100%;
+}
+
+.table-custom {
+    width: 100%;
+    margin-bottom: 0;
+    vertical-align: middle;
+    border-collapse: collapse;
+}
+
+.table-custom th,
+.table-custom td {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid rgba(11, 19, 15, 0.05);
+    white-space: nowrap;
+}
+
+.table-custom thead th {
+    background-color: #F8FAF9;
+    color: var(--muted);
+    font-size: 14px;
+    text-transform: none;
+    font-weight: 700;
+    letter-spacing: normal;
+    border-bottom: 1px solid rgba(11, 19, 15, 0.08);
+}
+
+.table-custom tbody tr {
+    transition: background-color 0.2s ease-in-out;
+}
+
+.table-custom tbody tr:hover {
+    background-color: rgba(180, 241, 5, 0.03); /* Soft brand-lime-glow transparent hover */
+}
+
+.table-custom tbody tr:last-child td,
+.table-custom tbody tr:last-child th {
+    border-bottom: none;
+}
+
+/* User/Product visual info cell */
+.table-user-name {
+    font-weight: 700;
+    color: var(--ink);
+    font-size: 16px;
+}
+
+.table-user-sub {
+    font-size: 14px;
+    color: var(--muted);
+}
+
+/* Badge styles */
+.badge-table {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    font-size: 14px;
+    font-weight: 700;
+    border-radius: 50rem;
+}
+
+.badge-table::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50rem;
+}
+
+.badge-table.success {
+    background-color: rgba(34, 197, 94, 0.1);
+    color: var(--green);
+}
+.badge-table.success::before {
+    background-color: var(--green);
+}
+
+.badge-table.pending {
+    background-color: rgba(249, 115, 22, 0.1);
+    color: #d9791c;
+}
+.badge-table.pending::before {
+    background-color: #d9791c;
+}
+
+.badge-table.failed {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: var(--red);
+}
+.badge-table.failed::before {
+    background-color: var(--red);
+}
+
+/* Table Controls Top bar */
+.table-header-control {
+    background-color: #FFFFFF;
+    padding: 1.25rem;
+    border-bottom: 1px solid rgba(11, 19, 15, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+/* Table Actions dropdown/filters */
+.table-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.btn-table-action {
+    background-color: #FFFFFF;
+    border: 1px solid rgba(11, 19, 15, 0.1);
+    color: var(--brand-dark);
+    font-size: 15px;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: all 0.2s ease-in-out;
+}
+
+.btn-table-action:hover {
+    background-color: #F8FAF9;
+    border-color: var(--brand);
+}
+
+/* Action button items in table cell */
+.table-btn-action {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    border: 1px solid rgba(11, 19, 15, 0.08);
+    background-color: #FFFFFF;
+    color: var(--brand-dark);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    transition: all 0.2s ease-in-out;
+    text-decoration: none;
+}
+
+.table-btn-action:hover {
+    background-color: var(--brand);
+    color: #FFFFFF;
+    border-color: var(--brand);
+}
+
+.table-btn-action.delete:hover {
+    background-color: var(--red);
+    color: #FFFFFF;
+    border-color: var(--red);
+}
+
+/* Table Footer Pagination */
+.table-footer-control {
+    background-color: #FFFFFF;
+    padding: 1.25rem;
+    border-top: 1px solid rgba(11, 19, 15, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.table-pagination-info {
+    font-size: 15px;
+    color: var(--muted);
+}
+
+/* Custom column styles */
+.table-order-id {
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.table-product-name {
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.table-amount {
+    font-weight: 700;
+    color: var(--ink);
+}
+
+/* Custom Table pagination overrides */
+.table-footer-control .pagination .page-link {
+    border-radius: 10px;
+    color: var(--brand-dark);
+    background-color: transparent;
+    transition: all 0.25s ease-in-out;
+}
+
+.table-footer-control .pagination .page-link:hover {
+    background-color: #F8FAF9;
+    color: var(--brand);
+}
+
+.table-footer-control .pagination .page-item.active .page-link {
+    background-color: var(--brand) !important;
+    color: #FFFFFF !important;
+}
+
+.table-footer-control .pagination .page-item.disabled .page-link {
+    opacity: 0.5;
+    color: var(--muted);
+    pointer-events: none;
+}
+

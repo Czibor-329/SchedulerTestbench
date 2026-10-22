@@ -1,0 +1,194 @@
+/**
+ * Shadcn Admin 浅色主题适配：最后加载，统一现有领域控件的视觉契约。
+ * 参考用户提供的 shadcn-admin-v1.0.0.zip 的 theme.css、Button 和 Input；
+ * 使用其 Slate 色阶、8px 控件圆角、细描边与焦点环，不引入 React 或替换业务节点。
+ * 本文件只拥有配色和控件外观；布局、响应式、画布状态色与交互由原模块负责。
+ */
+:root {
+  --bg: #fff; --surface: #fff; --soft: #f8fafc;
+  --ink: #020617; --muted: #64748b; --line: #e2e8f0;
+  --brand: #0f172a; --brand-dark: #1e293b; --brand-soft: #f1f5f9; --accent: #0f172a;
+  --radius: 10px; --control-radius: 8px; --focus-ring: #94a3b8;
+  --shadow: 0 1px 3px rgb(15 23 42 / 6%);
+  --tblr-primary: #0f172a; --tblr-primary-rgb: 15, 23, 42;
+  --tblr-body-color: #020617; --tblr-body-bg: #fff;
+}
+body { background: var(--bg); }
+/* 白色导航与浅灰选中项保持现有展开、折叠和抽屉几何。 */
+.console-topbar { background: rgb(255 255 255 / 96%); }
+.primary-sidebar { color: var(--ink); background: var(--surface); border-right: 1px solid var(--line); }
+.sidebar-brand:hover, .console-breadcrumb strong { color: var(--ink); }
+.sidebar-brand-mark { color: var(--surface); background: var(--brand); border-radius: var(--control-radius); }
+.sidebar-brand-mark svg { width: 20px; height: 20px; }
+.sidebar-brand:hover .sidebar-brand-mark svg { transform: none; }
+.sidebar-section-label, .sidebar-footer-label { color: var(--muted); }
+.primary-sidebar :is(.tab, .sidebar-subtab) { color: var(--brand-dark); border-radius: var(--control-radius); font-weight: 500; }
+.primary-sidebar :is(.tab, .sidebar-subtab):hover,
+.primary-sidebar :is(.tab, .sidebar-subtab).active { color: var(--ink); background: var(--brand-soft); }
+.primary-sidebar :is(.tab, .sidebar-subtab).active::before { content: none; }
+.primary-sidebar :is(.tab, .sidebar-subtab).active svg { color: currentColor; }
+.sidebar-footer, .sidebar-collapsed .sidebar-nav-group + .sidebar-nav-group { border-color: var(--line); }
+.sidebar-footer .frontend-version, .sidebar-close { color: var(--muted); border-color: var(--line); background: var(--soft); }
+.console-menu-toggle, .console-help-link { border-color: var(--line); border-radius: var(--control-radius); box-shadow: none; }
+.console-menu-toggle:hover, .console-help-link:hover { color: var(--ink); background: var(--brand-soft); }
+
+/* 表单和按钮使用模板的 36px 标准高度，保留图标专用按钮的尺寸。 */
+body :is(.field input, .field select, .field textarea, .compact-select-trigger),
+.management-section input, .management-section select, .run-settings-parallel-grid input {
+  border-color: var(--line); border-radius: var(--control-radius); color: var(--ink); background: var(--surface);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+}
+body :is(.field input, .field select, .compact-select-trigger) { min-height: 36px; font-size: 14px; }
+body .field label { color: var(--brand-dark); }
+.compact-select-value { color: var(--ink); font-size: 14px; }
+.compact-select-trigger:hover:not(:disabled) { border-color: var(--focus-ring); }
+.compact-select-menu { border-color: var(--line); border-radius: var(--control-radius); box-shadow: 0 4px 12px rgb(15 23 42 / 10%); }
+.compact-select-option { min-height: 34px; padding-block: 7px; border-radius: 4px; color: var(--ink); font-size: 14px; }
+.compact-select-option:hover:not(:disabled), .compact-select-option:focus-visible,
+.compact-select-option[aria-selected="true"] { color: var(--ink); background: var(--brand-soft); }
+.btn { min-height: 36px; padding: 7px 12px; color: var(--ink); border-color: var(--line); border-radius: var(--control-radius); background: var(--surface); font-size: 14px; font-weight: 500; box-shadow: 0 1px 2px rgb(15 23 42 / 5%); }
+.btn:hover:not(:disabled) { color: var(--ink); border-color: var(--line); background: var(--brand-soft); }
+.btn.primary { color: #fff; border-color: var(--brand); background: var(--brand); }
+.btn.primary:hover:not(:disabled) { color: #fff; border-color: var(--brand-dark); background: var(--brand-dark); }
+.btn.small { min-height: 32px; font-size: 14px; }
+.btn.danger { color: var(--red); border-color: #fecdd3; background: #fff; }
+.btn.danger:hover:not(:disabled) { color: var(--red); border-color: #fecdd3; background: var(--red-soft); }
+.workspace-icon-button { padding: 0; border-radius: var(--control-radius); }
+:is(button, a, input, select, textarea):focus-visible,
+.result-table .table-btn-action:focus-visible, .result-table-pagination button:focus-visible {
+  outline: 2px solid var(--focus-ring); outline-offset: 2px;
+}
+body :is(.field input, .field select, .field textarea):focus,
+.management-section input:focus, .management-section select:focus,
+.run-settings-parallel-grid input:focus, .compact-select.is-open .compact-select-trigger {
+  border-color: var(--focus-ring); box-shadow: 0 0 0 3px rgb(148 163 184 / 35%);
+}
+body :is(input, select, textarea)[aria-invalid="true"] { border-color: var(--red); }
+body :is(input, select, textarea, button):disabled { opacity: .5; cursor: not-allowed; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); }
+
+/* 卡片与编辑器继续保留原有排列、尺寸和领域错误提示。 */
+.panel, .device-config-heading, .table-card-custom { border-color: var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.panel-head h2 { font-weight: 600; }
+.result-panel .result-actions, .route-type-head, .route-table th,
+.context-clean-head, .route-instance-buffer > label { background: var(--soft); }
+.workspace-device-summary .chip { color: var(--brand-dark); border-color: var(--line); background: var(--brand-soft); border-radius: 6px; }
+.route-update-card, .device-config-notice { color: var(--brand-dark); border-color: var(--line); background: var(--soft); }
+.route-process-group, .clean-type-group, .route-type-group, .route-summary-card,
+.clean-card, .route-clean-section, .step-clean-section, .route-instance-buffer,
+.batch-test-detail-round, .pjob-route-card { border-radius: var(--radius); }
+.route-process-head, .clean-type-head { background: var(--brand-soft); }
+.route-process-head:hover, .clean-type-head:hover, .route-type-head:hover,
+.route-summary-head:hover, .route-table tbody tr:hover td { background: var(--soft); }
+.route-summary-card.is-editing { border-color: var(--focus-ring); box-shadow: 0 0 0 2px rgb(148 163 184 / 20%); }
+.sidebar-backdrop:not([hidden]) { background: rgb(2 6 23 / 40%); }
+.test-list-row:hover, .cjob-head, .device-time-section > header,
+.device-time-table tbody th { background: var(--soft); }
+.round-head, .device-time-table thead th { background: var(--brand-soft); }
+.round-number, .readonly-pill, .route-property-tag.buffer-forced,
+.device-time-section > header > span { color: var(--brand-dark); border-color: var(--line); background: var(--brand-soft); }
+.round-card, .edit-card, .cjob-card, .device-config-nav,
+.device-timing-overview, .device-time-section { border-radius: var(--radius); }
+.device-config-nav-item, .device-config-step-button, .pjob-route-picker {
+  border-color: var(--line); border-radius: var(--control-radius);
+}
+.device-config-nav-item.active { border-color: var(--line); }
+.device-config-nav-item.active small { color: var(--muted); }
+.device-config-step-button:hover:not(:disabled) { border-color: var(--focus-ring); }
+.management-section input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+  border-color: var(--line); border-radius: var(--control-radius);
+}
+.management-section input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus { border-color: var(--focus-ring); }
+.route-panel-head { border-radius: var(--radius) var(--radius) 0 0; }
+
+/* 策略区改为与模板卡片一致的白色表面，主运行按钮仍明确突出。 */
+#scheduleSide > .panel { color: var(--ink); background: var(--surface); }
+#scheduleSide > .panel > .panel-head, #scheduleSide .run-box { border-color: var(--line); }
+#scheduleSide .panel-head h2, #scheduleSide .field label,
+#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) strong,
+#scheduleSide .run-status-head strong { color: var(--ink); }
+#scheduleSide .hint, #scheduleSide .heuristic-settings-card small,
+#scheduleSide .run-status-head time { color: var(--muted); }
+#scheduleSide .strategy-card,
+#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card),
+#scheduleSide .run-status-card {
+  color: var(--ink); border-color: var(--line); border-radius: var(--control-radius); background: var(--surface);
+}
+#scheduleSide .strategy-card:hover:not(:has(input:disabled)) { background: var(--soft); }
+#scheduleSide .strategy-card:has(input:checked) { color: var(--ink); border-color: var(--brand); background: var(--brand-soft); }
+#scheduleSide .strategy-card:has(input:disabled) { color: var(--muted); opacity: .5; }
+#scheduleSide .strategy-card:focus-within { outline-color: var(--focus-ring); }
+#scheduleSide > .panel > .panel-head .btn,
+#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) .btn,
+#scheduleSide .run-box .run-settings-button { color: var(--ink); border-color: var(--line); border-radius: var(--control-radius); background: var(--surface); }
+#scheduleSide > .panel > .panel-head .btn:hover:not(:disabled),
+#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) .btn:hover:not(:disabled),
+#scheduleSide .run-box .run-settings-button:hover:not(:disabled) { color: var(--ink); border-color: var(--line); background: var(--brand-soft); }
+#scheduleSide .run-actions .btn.batch:not(.cancel) { color: #fff; border-color: var(--brand); border-radius: var(--control-radius); background: var(--brand); font-weight: 500; }
+#scheduleSide .run-actions .btn.batch:not(.cancel):hover:not(:disabled) { border-color: var(--brand-dark); background: var(--brand-dark); }
+#scheduleSide :is(.run-status-event, .run-status-empty) { color: var(--muted); background: var(--soft); }
+#scheduleSide .run-status-event::before, #scheduleSide .run-status-event.skipped::before { color: var(--muted); }
+#scheduleSide .run-status-event.succeeded::before { color: var(--green); }
+#scheduleSide .run-status-event.failed::before { color: var(--red); }
+#scheduleSide .run-status-event.cancelled::before { color: #b45309; }
+#scheduleSide .run-status-event.running::before { border-color: var(--line); border-top-color: var(--brand); }
+#scheduleSide .run-status-indicator { background: var(--muted); box-shadow: none; }
+#scheduleSide .run-status-card.running .run-status-indicator { background: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+
+/* 表格保持列宽与分页，只调整边界、悬停色和操作按钮。 */
+.table-card-custom { border: 1px solid var(--line) !important; }
+.table-custom :is(th, td), .table-header-control, .table-footer-control { border-color: var(--line); }
+.table-custom thead th { background: var(--soft); font-weight: 500; border-color: var(--line); }
+.table-custom tbody tr:hover { background: var(--brand-soft); }
+.table-btn-action, .btn-table-action, .result-table-page-summary select,
+.result-table-pagination .page-link { border-color: var(--line); border-radius: var(--control-radius); }
+.table-btn-action:hover, .btn-table-action:hover { color: var(--ink); border-color: var(--line); background: var(--brand-soft); }
+.table-footer-control .pagination .page-link:hover { background: var(--brand-soft); }
+.result-table .badge-table.neutral { background: var(--brand-soft); }
+.result-table-menu { border-radius: var(--control-radius); box-shadow: 0 4px 12px rgb(15 23 42 / 10%); }
+.group-analysis-selection span { color: var(--muted); background: var(--brand-soft); }
+.table-custom.group-analysis-table thead th,
+.table-custom.group-analysis-table thead th:first-child { background: var(--soft); }
+.table-custom.group-analysis-table tbody th:first-child { color: var(--ink); }
+.table-custom.group-analysis-table tbody tr:not(.is-incomplete):hover > * { background: var(--brand-soft); }
+#theoryCapacityView {
+  --text-main: var(--ink); --text-muted-green: var(--muted);
+  --radius-xxl: var(--radius); --radius-lg: var(--control-radius); --shadow-md: var(--shadow);
+}
+#theoryCapacityView .card { border: 1px solid var(--line); }
+#theoryCapacityView .form-control-custom { border-color: var(--line); }
+#theoryCapacityView .form-control-custom:focus { border-color: var(--focus-ring); box-shadow: 0 0 0 3px rgb(148 163 184 / 35%); }
+#theoryCapacityView .card-header p, .theory-unit, .theory-capacity-number,
+.theory-resource-grid small { color: var(--muted); }
+
+/* 弹窗、选择卡和顶栏工具继承相同的边框与焦点规范。 */
+dialog:not(.drawer-layer), dialog#testDraftDialog { border-color: var(--line); border-radius: var(--radius); box-shadow: 0 20px 60px rgb(15 23 42 / 18%); }
+dialog::backdrop, dialog#testDraftDialog::backdrop, .drawer-layer::backdrop { background: rgb(2 6 23 / 50%); }
+.drawer { background: var(--surface); }
+.run-settings-dialog-head, .batch-selection-dialog-head, .pjob-route-dialog-head,
+.analysis-options-head, .pjob-route-detail-head, .pjob-route-edit-head { background: var(--soft); }
+.run-setting-option, .heuristic-option-group, .search-tree-option-group,
+.batch-selection-item, .analysis-test-options label, .analysis-metric-options label,
+.data-transfer-option { border-color: var(--line); border-radius: var(--control-radius); background: var(--surface); }
+.run-setting-option:hover, .batch-selection-item:hover, .pjob-route-card:hover,
+.data-transfer-option:hover:not(:disabled) { border-color: var(--focus-ring); background: var(--soft); }
+.run-setting-option:has(input:checked), .batch-selection-item:has(input:checked),
+.pjob-route-card.selected, .clean-module-option input:checked + span { color: var(--ink); border-color: var(--brand); background: var(--brand-soft); }
+.data-transfer-progress-track { background: var(--brand-soft); }
+.console-gantt-controls .toolbar-group { border-color: var(--line); border-radius: var(--control-radius); background: var(--soft); }
+.console-gantt-controls button,
+.console-gantt-controls :is(input[type="search"], input[type="number"], input[type="text"], select),
+.console-replay-controls :is(.timeline-play, .timeline-speed select, .playback-log-import .btn),
+.console-gantt-toolbar :is(.console-menu-toggle, .console-help-link) { border-color: var(--line); border-radius: var(--control-radius); }
+.console-gantt-controls button:hover:not(:disabled) { border-color: var(--line); background: var(--brand-soft); }
+.console-gantt-controls button.primary:hover:not(:disabled) { background: var(--brand-dark); }
+.console-replay-controls :is(.timeline-current, .timeline-total) { color: var(--muted); }
+/* 桌面普通页面统一内容边距；回放画布由 console_shell.css 铺满导航右侧视口。 */
+@media (min-width: 1001px) {
+  body { --console-page-padding: 120px; }
+  body .console-topbar { padding-inline: var(--console-page-padding); }
+  body .layout { padding-inline: var(--console-page-padding); }
+}
+@media (max-width: 767px) {
+  body :is(.field input, .field select, .field textarea) { font-size: 16px; }
+}

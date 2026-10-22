@@ -18,11 +18,11 @@ from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
-import realtime_scheduler.backend.application as config_server
-from realtime_scheduler.backend.algorithms.interface import discover_other_algorithms
-from realtime_scheduler.backend.execution.plan_builder import _runtime_clean, build_process_recipes
+import app.backend.application as config_server
+from app.backend.algorithms.interface import discover_other_algorithms
+from app.backend.execution.plan_builder import _runtime_clean, build_process_recipes
 from src.compiler import compile_problem
-from realtime_scheduler.backend.application import (
+from app.backend.application import (
     BuildState,
     LoggedPlanError,
     build_round_update,
@@ -42,11 +42,11 @@ from tests.support.plan_fixtures import DEVICE_PATH, job as _job, route as _rout
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EDITOR_PATH = ROOT / "realtime_scheduler" / "frontend" / "config_editor.html"
-DOCUMENTATION_PAGE_PATH = ROOT / "realtime_scheduler" / "frontend" / "documentation.html"
-EDITOR_STYLE_PATH = ROOT / "realtime_scheduler" / "frontend" / "assets" / "config_editor.css"
-EDITOR_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "config_editor.ts"
-DOCUMENTATION_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "documentation_page.ts"
+EDITOR_PATH = ROOT / "app" / "frontend" / "config_editor.html"
+DOCUMENTATION_PAGE_PATH = ROOT / "app" / "frontend" / "documentation.html"
+EDITOR_STYLE_PATH = ROOT / "app" / "frontend" / "assets" / "config_editor.css"
+EDITOR_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "config_editor.ts"
+DOCUMENTATION_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "documentation_page.ts"
 
 
 def _editor_source() -> str:
@@ -458,7 +458,7 @@ class ConfigEditorPlanTests(unittest.TestCase):
 
     def test_clean_types_expand_to_scheduler_conditions(self) -> None:
         """五类精简 Clean 应展开为正确任务、触发变量和 Dummy 参数。"""
-        pre = _runtime_clean({"name": "Pre", "cleanType": "preclean", "recipeTime": 10})
+        pre = _runtime_clean({"name": "Pre", "cleanType": "preclean", "recipeTime": 10, "upper": 9999})
         post = _runtime_clean({"name": "Post", "cleanType": "postclean", "recipeTime": 11})
         wac = _runtime_clean({
             "name": "Wac", "cleanType": "wacclean",
@@ -475,6 +475,11 @@ class ConfigEditorPlanTests(unittest.TestCase):
 
         self.assertEqual("PreClean", pre["taskName"])
         self.assertEqual("PostClean", post["taskName"])
+        self.assertEqual(9999.0, pre["upper"])
+        self.assertEqual(999999.0, post["upper"])
+        self.assertEqual(99999.0, dummy["upper"])
+        self.assertEqual(99999.0, dummy_wac["upper"])
+        self.assertEqual(9999.0, wac["upper"])
         self.assertEqual(("ProcessCount", 7), (wac["stateVariable"], wac["lower"]))
         self.assertEqual(("WacClean", ["ProcessCount"]), (wac["taskName"], wac["updateStateVariables"]))
         self.assertEqual(("PreDummyClean", 4), (dummy["taskName"], dummy["materialCount"]))

@@ -18,11 +18,11 @@ from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
-import realtime_scheduler.backend.application as config_server
-import realtime_scheduler.backend.algorithms.interface as algorithm_interface
-from realtime_scheduler.backend.execution.plan_builder import _runtime_clean, build_process_recipes
+import app.backend.application as config_server
+import app.backend.algorithms.interface as algorithm_interface
+from app.backend.execution.plan_builder import _runtime_clean, build_process_recipes
 from src.compiler import compile_problem
-from realtime_scheduler.backend.application import (
+from app.backend.application import (
     BuildState,
     LoggedPlanError,
     build_round_update,
@@ -42,11 +42,11 @@ from tests.support.plan_fixtures import DEVICE_PATH, PSE300_DEVICE_PATH, job as 
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EDITOR_PATH = ROOT / "realtime_scheduler" / "frontend" / "config_editor.html"
-DOCUMENTATION_PAGE_PATH = ROOT / "realtime_scheduler" / "frontend" / "documentation.html"
-EDITOR_STYLE_PATH = ROOT / "realtime_scheduler" / "frontend" / "assets" / "config_editor.css"
-EDITOR_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "config_editor.ts"
-DOCUMENTATION_SCRIPT_PATH = ROOT / "realtime_scheduler" / "frontend" / "src" / "documentation_page.ts"
+EDITOR_PATH = ROOT / "app" / "frontend" / "config_editor.html"
+DOCUMENTATION_PAGE_PATH = ROOT / "app" / "frontend" / "documentation.html"
+EDITOR_STYLE_PATH = ROOT / "app" / "frontend" / "assets" / "config_editor.css"
+EDITOR_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "config_editor.ts"
+DOCUMENTATION_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "documentation_page.ts"
 
 
 def _editor_source() -> str:
@@ -644,54 +644,6 @@ class ConfigEditorDeviceTests(unittest.TestCase):
                 )
                 last_event_type = move["MoveType"]
 
-    @unittest.skipUnless(
-        (ROOT / "alg" / "results" / "models" / "e2e_ctq_policy.npz").is_file(),
-        "默认 E2E 模型未随仓库交付",
-    )
-    def test_e2e_ctq_persists_decision_trace_for_topology_playback(self) -> None:
-        """E2E 候选评分应进入结果文件，运行摘要只保留轨迹计数。"""
-        from src.schedule.strategies.e2e_ctq import DEFAULT_MODEL_PATH, load_e2e_ctq_policy
-
-        plan = {
-            "deviceName": DEVICE_PATH.name,
-            "device": self.device,
-            "strategy": "e2e-ctq",
-            "roundCount": 1,
-            "options": {},
-            "recipes": [{
-                "name": "DecisionTraceRecipe",
-                "time": 40,
-                "modules": ["PM1", "PM2"],
-                "weight": {},
-            }],
-            "cleans": [],
-            "routes": [_route(
-                "DecisionTraceRoute",
-                "PM1,PM2",
-                "DecisionTraceRecipe",
-            )],
-            "rounds": [{
-                "currentTime": 0,
-                "jobs": [{
-                    **_job("DecisionTraceJob", "DecisionTraceRoute", "LP1"),
-                    "waferCount": 2,
-                }],
-            }],
-        }
-        policy = load_e2e_ctq_policy(DEFAULT_MODEL_PATH)
-
-        with patch("src.api._load_policy", return_value=policy):
-            result = execute_plan(plan)
-
-        trace = result["output"]["DecisionTrace"]
-        self.assertGreater(len(trace), 0)
-        self.assertEqual("e2e-ctq-decision-trace-v1", result["output"]["DecisionTraceMeta"]["schema"])
-        self.assertGreaterEqual(trace[0]["candidateCount"], 1)
-        self.assertIn("policyPreference", trace[0]["candidates"][0])
-        diagnostics = result["rounds"][0]["strategyDiagnostics"]
-        self.assertNotIn("decisionTrace", diagnostics)
-        self.assertEqual(len(trace), diagnostics["decisionTraceCount"])
-
     def test_local_standard_algorithm_calls_formal_init_and_update(self) -> None:
         """前端选择 other_alg 算法后应通过本地正式 init/update 入口完成首排。"""
         plan = {
@@ -728,7 +680,7 @@ class ConfigEditorDeviceTests(unittest.TestCase):
         }
 
         with (
-            patch("realtime_scheduler.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
+            patch("app.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
             patch.object(config_server, "algorithm_session", return_value=nullcontext()),
             patch.object(config_server, "algorithm_init") as init_entry,
             patch.object(config_server, "algorithm_update", return_value=external_output) as update_entry,
@@ -787,7 +739,7 @@ class ConfigEditorDeviceTests(unittest.TestCase):
         ]
 
         with (
-            patch("realtime_scheduler.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
+            patch("app.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
             patch.object(config_server, "algorithm_session", return_value=nullcontext()),
             patch.object(config_server, "algorithm_init") as init_entry,
             patch.object(
@@ -812,7 +764,7 @@ class ConfigEditorDeviceTests(unittest.TestCase):
         self.assertEqual(3, len(third_update["ControlJobs"]))
         self.assertEqual("ATR", second_update["Stations"]["LA"]["LastItem"])
         self.assertEqual(
-            "realtime_scheduler.backend.validation.move_validation.MachineState",
+            "app.backend.validation.move_validation.MachineState",
             result["rounds"][1]["strategyDiagnostics"]["stateSource"],
         )
         self.assertEqual(3, len(result["updates"]))
@@ -885,7 +837,7 @@ class ConfigEditorDeviceTests(unittest.TestCase):
 
         original_builder = config_server.build_round_update
         with (
-            patch("realtime_scheduler.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
+            patch("app.backend.execution.service.discover_other_algorithms", return_value=[{"id": "greedy", "strategy": "other_alg:greedy"}]),
             patch.object(config_server, "algorithm_session", return_value=nullcontext()),
             patch.object(config_server, "algorithm_init"),
             patch.object(config_server, "algorithm_update", side_effect=[first_output, second_output]) as update_entry,

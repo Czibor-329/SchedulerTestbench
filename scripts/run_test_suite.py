@@ -18,7 +18,7 @@ from typing import Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 ALGORITHM_ROOT = ROOT / "alg"
-FRONTEND_ROOT = ROOT / "realtime_scheduler" / "frontend"
+FRONTEND_ROOT = ROOT / "app" / "frontend"
 AVAILABLE_SUITES = ("platform", "algorithm", "frontend")
 
 
@@ -72,23 +72,39 @@ def _run_frontend(*, fail_fast: bool) -> int:
 
     esbuild = FRONTEND_ROOT / "node_modules" / ".bin" / "esbuild.cmd"
     if not esbuild.is_file():
-        print("前端依赖缺失，请先在 realtime_scheduler/frontend 运行 npm install。")
+        print("前端依赖缺失，请先在 app/frontend 运行 npm install。")
         return 2
     with tempfile.TemporaryDirectory(prefix="ct-frontend-tests-") as directory:
         build_root = Path(directory)
         workspace_output = build_root / "workspace_visualizer_logic.js"
         route_output = build_root / "route_editor_logic.js"
         gantt_output = build_root / "gantt_execution_compare.js"
+        gantt_semantics_output = build_root / "gantt_move_semantics.js"
         run_workspace_output = build_root / "run_workspace.js"
         result_card_run_queue_output = build_root / "result_card_run_queue.js"
+        result_table_output = build_root / "result_table.js"
+        gantt_toolbar_output = build_root / "gantt_toolbar.js"
+        theory_capacity_output = build_root / "theory_capacity.js"
+        clean_idle_time_output = build_root / "clean_idle_time.js"
         entries = (
+            (FRONTEND_ROOT / "src" / "clean_idle_time.ts", clean_idle_time_output),
             (FRONTEND_ROOT / "src" / "workspace_visualizer_test_entry.ts", workspace_output),
             (FRONTEND_ROOT / "src" / "route_editor_logic.ts", route_output),
             (FRONTEND_ROOT / "src" / "gantt_execution_compare.ts", gantt_output),
+            (FRONTEND_ROOT / "src" / "gantt_move_semantics.ts", gantt_semantics_output),
             (FRONTEND_ROOT / "src" / "run_workspace_test_entry.ts", run_workspace_output),
             (
                 FRONTEND_ROOT / "src" / "result_card_run_queue_test_entry.ts",
                 result_card_run_queue_output,
+            ),
+            (FRONTEND_ROOT / "src" / "result_table.ts", result_table_output),
+            (
+                FRONTEND_ROOT / "src" / "gantt_toolbar_test_entry.ts",
+                gantt_toolbar_output,
+            ),
+            (
+                FRONTEND_ROOT / "src" / "theory_capacity_test_entry.ts",
+                theory_capacity_output,
             ),
         )
         for source, destination in entries:
@@ -109,12 +125,17 @@ def _run_frontend(*, fail_fast: bool) -> int:
 
         environment = os.environ.copy()
         environment["CT_WORKSPACE_VISUALIZER_TEST_BUILD"] = str(workspace_output)
+        environment["CT_CLEAN_IDLE_TIME_TEST_BUILD"] = str(clean_idle_time_output)
         environment["CT_ROUTE_EDITOR_TEST_BUILD"] = str(route_output)
         environment["CT_GANTT_COMPARE_TEST_BUILD"] = str(gantt_output)
+        environment["CT_GANTT_SEMANTICS_TEST_BUILD"] = str(gantt_semantics_output)
         environment["CT_RUN_WORKSPACE_TEST_BUILD"] = str(run_workspace_output)
         environment["CT_RESULT_CARD_RUN_QUEUE_TEST_BUILD"] = str(
             result_card_run_queue_output
         )
+        environment["CT_RESULT_TABLE_TEST_BUILD"] = str(result_table_output)
+        environment["CT_GANTT_TOOLBAR_TEST_BUILD"] = str(gantt_toolbar_output)
+        environment["CT_THEORY_CAPACITY_TEST_BUILD"] = str(theory_capacity_output)
         command = [
             "node",
             "--test",
