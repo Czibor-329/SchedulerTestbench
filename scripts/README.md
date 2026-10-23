@@ -9,9 +9,9 @@
 | `run_performance_suite.py` | 在隔离服务中测量 HTTP 性能；默认报告写入 `.tmp/performance-report.json`。 |
 | `replay_config_log.py` | 通过正式执行链路复现前端导出的输入日志。 |
 
-离线 LoadLock 研究位于 `prototypes/loadlock_research/`；验收工作区 builder 位于
-`tests/support/neural_recompute_workspaces.py`。已完成的一次性数据修补、临时 PDF
-抽取和已退役的 Heuristic 打包入口已删除，可通过 Git 历史追溯。
+离线 LoadLock 研究位于 `prototypes/loadlock_research/`。已完成的一次性数据修补、
+临时 PDF 抽取、已退役的 Heuristic 打包入口和专用验收工作区 builder 已删除，
+可通过 Git 历史追溯。
 
 本地调试报告统一写入 `.tmp/`，不要在仓库根目录创建 `result`、`results`、
 `artifacts` 等结果目录。平台运行制品继续使用 `app/exports/runs/`，不改变主数据存储规则。

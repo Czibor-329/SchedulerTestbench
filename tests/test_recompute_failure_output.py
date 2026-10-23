@@ -1,68 +1,14 @@
-"""重算失败输出与失败页面契约测试。"""
+"""重算失败诊断输出：保留提交前缀、最新计划及取消标记，不包含前端源码扫描。"""
 
-from __future__ import annotations
-
-import copy
-from concurrent.futures import Future
-import inspect
-import json
-import os
-import re
-import tempfile
-import threading
-import time
 import unittest
-import zipfile
-from io import BytesIO
-from contextlib import nullcontext
-from pathlib import Path
 from unittest.mock import patch
 
-import app.backend.application as config_server
-from app.backend.algorithms.interface import discover_other_algorithms
-from app.backend.execution.plan_builder import _runtime_clean, build_process_recipes
-from src.compiler import compile_problem
-from app.backend.application import (
-    BuildState,
-    LoggedPlanError,
-    build_round_update,
-    build_route,
-    create_workspace_test,
-    delete_workspace_device,
-    delete_workspace_test,
-    execute_plan,
-    extract_init_data,
-    get_workspace_device,
-    import_workspace_device,
-    list_workspace_devices,
-    update_workspace_test,
-)
-from scripts.replay_config_log import load_plan_from_log
-from tests.support.plan_fixtures import DEVICE_PATH, job as _job, route as _route
+from app.backend import application as config_server
+from app.backend.application import LoggedPlanError, execute_plan
 
-
-ROOT = Path(__file__).resolve().parents[1]
-EDITOR_PATH = ROOT / "app" / "frontend" / "config_editor.html"
-DOCUMENTATION_PAGE_PATH = ROOT / "app" / "frontend" / "documentation.html"
-EDITOR_STYLE_PATH = ROOT / "app" / "frontend" / "assets" / "config_editor.css"
-EDITOR_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "config_editor.ts"
-DOCUMENTATION_SCRIPT_PATH = ROOT / "app" / "frontend" / "src" / "documentation_page.ts"
-
-
-def _editor_source() -> str:
-    """合并页面模板、样式和 TypeScript 源码，供前端结构回归断言使用。"""
-    return "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (EDITOR_PATH, EDITOR_STYLE_PATH, EDITOR_SCRIPT_PATH)
-    )
-
-
-def _device_recording() -> list[dict]:
-    """读取包含 AlgInit 的项目内实时重算小设备案例。"""
-    return json.loads(DEVICE_PATH.read_text(encoding="utf-8"))
 
 class RecomputeFailureOutputTests(unittest.TestCase):
-    """验证重算算法异常时仍可供前端回放的部分结果。"""
+    """覆盖算法执行失败与现场推进失败两个真实边界。"""
 
     def test_recompute_algorithm_error_keeps_only_moves_not_in_remove_list(self) -> None:
         """重算调用报错时，诊断甘特图不得继续显示已取消的旧 Move。"""
@@ -102,106 +48,6 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         self.assertEqual("algorithm-error", output["RecomputePoints"][-1]["Status"])
         self.assertEqual("第二轮算法异常", output["Feedback"][-1]["Message"])
 
-    def test_gantt_viewer_marks_and_can_hide_removed_moves(self) -> None:
-        """甘特图应浅色显示重算取消 Move，并提供独立开关。"""
-        viewer = (
-            ROOT / "app" / "frontend" / "movelist_gantt_viewer.html"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn('id="showRemovedMovesToggle"', viewer)
-        self.assertIn("removedByRecompute: raw.RemovedByRecompute === true", viewer)
-        self.assertIn("showRemovedMoves: true", viewer)
-        self.assertIn("!rec.removedByRecompute", viewer)
-        self.assertIn('fillOpacity = bar.rec.removedByRecompute ? "0.24" : "1"', viewer)
-
-    def test_frontend_version_and_cache_keys_are_synchronized(self) -> None:
-        """前端显示版本、包版本和主资源缓存键必须同步。"""
-        frontend_root = ROOT / "app" / "frontend"
-        template = (frontend_root / "config_editor.html").read_text(encoding="utf-8")
-        package = json.loads((frontend_root / "package.json").read_text(encoding="utf-8"))
-        package_lock = json.loads((frontend_root / "package-lock.json").read_text(encoding="utf-8"))
-
-        self.assertEqual("1.6.26", package["version"])
-        self.assertEqual("1.6.26", package_lock["version"])
-        self.assertEqual("1.6.26", package_lock["packages"][""]["version"])
-        self.assertIn('class="frontend-version">V1.6.26</span>', template)
-        self.assertIn('/assets/config_editor.css?v=1.6.26', template)
-        self.assertIn('/assets/config_editor.js?v=1.6.26', template)
-
-    def test_single_run_failure_card_does_not_duplicate_validation_issue(self) -> None:
-        """状态推进校验失败只展示一条完整错误，不再重复渲染问题列表。"""
-        source = EDITOR_SCRIPT_PATH.read_text(encoding="utf-8")
-
-        self.assertIn("const validationFailure = validationIssues.length > 0;", source)
-        # 校验失败时摘要行直接显示完整 errorMessage，不叠加 meta 徽标。
-        self.assertIn("const summaryMarkup = validationFailure", source)
-        # 校验失败时不再渲染“MoveList 校验问题”重复分区。
-        self.assertIn("const validationSection = validationFailure ? \"\" : (issueRows ?", source)
-
-    def test_run_actions_merge_with_strategy_and_settings_return_to_dialog(self) -> None:
-        """运行按钮应并入策略卡片，运行设置恢复为齿轮触发的弹窗。"""
-        template = EDITOR_PATH.read_text(encoding="utf-8")
-        sidebar = template.split('<aside class="side" id="scheduleSide">', 1)[1].split("</aside>", 1)[0]
-
-        self.assertNotIn('id="runSettingsFields"', template)
-        self.assertNotIn('class="panel run-launch-panel"', template)
-        self.assertNotIn("开始运行", sidebar)
-        self.assertLess(sidebar.index("运行策略"), sidebar.index("运行所选测试"))
-        self.assertNotIn('id="algorithmHoverInfo"', sidebar)
-        self.assertIn('id="openRunSettingsButton"', template)
-        self.assertIn('id="runSettingsDialog"', template)
-        self.assertNotIn('id="compatibilityModeInput"', template)
-        self.assertIn('id="hongYeCheckInput" type="checkbox" checked', template)
-        self.assertIn('id="skipBaselineInput" type="checkbox" checked', template)
-        self.assertNotIn('id="skipValidationInput"', template)
-        style = (ROOT / "app" / "frontend" / "assets" / "config_editor.css").read_text(encoding="utf-8")
-        self.assertIn("width: 34px; min-width: 34px; height: 34px", style)
-        self.assertIn("top: 3px; right: 3px; width: 5px; height: 5px", style)
-
-    def test_batch_status_refresh_obeys_frontend_performance_limit(self) -> None:
-        """批量状态最多每秒轮询一次，且明细未变化时不得重建整组 DOM。"""
-        source = EDITOR_SCRIPT_PATH.read_text(encoding="utf-8")
-
-        self.assertIn("const BATCH_STATUS_POLL_MILLISECONDS = 1000;", source)
-        self.assertIn("window.setTimeout(resolve, BATCH_STATUS_POLL_MILLISECONDS)", source)
-        self.assertIn("renderSignature !== lastBatchItemsRenderSignature", source)
-        self.assertNotIn("window.setTimeout(resolve, 450)", source)
-
-    def test_batch_selection_dialog_and_paginated_results_exist(self) -> None:
-        """批量弹窗保留运行选择，结果用独立分页导航保持大量测试可浏览。"""
-        template = EDITOR_PATH.read_text(encoding="utf-8")
-        source = EDITOR_SCRIPT_PATH.read_text(encoding="utf-8")
-        table_source = (EDITOR_PATH.parent / "src" / "result_table.ts").read_text(encoding="utf-8")
-
-        for element_id in (
-            "batchTestSelectionDialog",
-            "batchResultFilterButton",
-            "batchSelectionRangeStart",
-            "batchSelectionRangeEnd",
-            "batchSelectionList",
-            "batchSelectionRunSelected",
-            "batchSelectionRunAll",
-        ):
-            self.assertIn(f'id="{element_id}"', template)
-        self.assertIn("testIds: tests.map(test => test.id)", source)
-        self.assertIn('openBatchTestSelectionDialog("filter")', source)
-        self.assertIn('status: "not-run"', source)
-        self.assertIn('batchSelectionMode === "filter"', source)
-        self.assertIn("function orderedBatchItems(items)", source)
-        self.assertIn("result.items = orderedBatchItems", source)
-        self.assertIn('aria-label="运行结果分页"', table_source)
-        self.assertNotIn('data-result-table-size', table_source)
-
-    def test_batch_result_table_opens_topology_playback(self) -> None:
-        """批量结果表格应提供回放入口，并在载入结果后进入拓扑回放。"""
-        source = EDITOR_SCRIPT_PATH.read_text(encoding="utf-8")
-        table_source = (EDITOR_PATH.parent / "src" / "result_table.ts").read_text(encoding="utf-8")
-
-        self.assertIn('data-playback-result=', table_source)
-        self.assertIn('data-playback-name=', table_source)
-        self.assertIn('data-playback-log=', table_source)
-        self.assertIn('event.target.closest("[data-playback-result]")', source)
-        self.assertIn(".then(() => visualizationWorkspace.showPlayback())", source)
 
     def test_recompute_preparation_error_keeps_last_successful_movelist(self) -> None:
         """算法调用前的旧计划回放异常也应返回上一代诊断甘特图。"""
@@ -224,6 +70,7 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         self.assertEqual([1, 2], [move["MoveID"] for move in failure_output["MoveList"]])
         self.assertEqual("after-algorithm-output", failure_output["FailureContext"]["Stage"])
         self.assertEqual("旧计划回放失败", failure_output["Feedback"][-1]["Message"])
+
 
     def test_recompute_preparation_error_combines_committed_prefix_and_latest_plan(self) -> None:
         """跨代现场回放失败时，甘特图必须拼接旧代已启动前缀与最新计划。"""

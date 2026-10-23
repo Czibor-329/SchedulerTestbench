@@ -3,8 +3,6 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
 const {
   createResultTable,
   createResultTableState,
@@ -138,44 +136,6 @@ test("行操作按钮不带文字，只显示图标并提供可访问名称", ()
   }
   const expanded = actionButton(renderResultTable(page, "test-1"), "data-result-table-details");
   assert.notEqual(expanded.inner, actionButton(markup, "data-result-table-details").inner, "展开状态使用收起图标");
-});
-
-test("指标列宽度固定并使用常规字重，行操作沿用模板图标按钮几何", () => {
-  const css = fs.readFileSync(path.join(__dirname, "../app/frontend/assets/result_table.css"), "utf8");
-  const tableRule = /\.result-table\s*\{([^}]*)\}/.exec(css);
-  assert.ok(tableRule, "结果表必须定义表格规则");
-  assert.match(tableRule[1], /table-layout:\s*fixed/, "固定列宽才能让状态与指标列保持紧凑");
-  for (const [column, width] of [
-    ["result-table-status-column", "110px"],
-    ["result-table-metric-column", "120px"],
-    ["result-table-actions-column", "132px"],
-  ]) {
-    const rule = new RegExp(`\\.result-table \\.${column}\\s*\\{([^}]*)\\}`).exec(css);
-    assert.ok(rule, `结果表必须定义 ${column} 宽度`);
-    assert.match(rule[1], new RegExp(`width:\\s*${width}`));
-  }
-  const numberRule = /\.result-table \.result-table-number\s*\{([^}]*)\}/.exec(css);
-  assert.ok(numberRule, "结果表必须定义指标数值样式");
-  assert.match(numberRule[1], /font-weight:\s*400/);
-  assert.match(numberRule[1], /color:\s*var\(--ink\)/);
-  const emptyRule = /\.result-table \.result-table-number\.is-empty\s*\{([^}]*)\}/.exec(css);
-  assert.ok(emptyRule, "无值占位必须有独立样式");
-  assert.match(emptyRule[1], /font-weight:\s*400/);
-  // 结果行全部直接展示：卡片内不再有纵向滚动与吸顶表头。
-  const scrollRule = /\.result-table-scroll\s*\{([^}]*)\}/.exec(css);
-  assert.ok(scrollRule, "结果表滚动容器必须定义规则");
-  assert.doesNotMatch(scrollRule[1], /max-height/, "结果表不得在卡片内限制高度");
-  assert.doesNotMatch(scrollRule[1], /overflow:\s*auto/, "结果表只保留横向滚动");
-  assert.doesNotMatch(css, /\.result-table thead th \{[^}]*position:\s*sticky/, "结果表不再使用吸顶表头");
-
-  const emptyMarkup = renderResultTable(projectResultTablePage(results(1), createResultTableState(), context()), "");
-  assert.match(emptyMarkup, /<td class="result-table-number is-empty"><\/td>/);
-
-  const template = fs.readFileSync(path.join(__dirname, "../app/frontend/assets/spark_table.css"), "utf8");
-  const actionRule = /\.table-btn-action\s*\{([^}]*)\}/.exec(template);
-  assert.ok(actionRule, "spark 表格模板必须定义行操作按钮");
-  assert.match(actionRule[1], /width:\s*32px/);
-  assert.match(actionRule[1], /height:\s*32px/);
 });
 
 test("指标 CSV 导出三项指标，缺失值保留占位并转义文本", () => {

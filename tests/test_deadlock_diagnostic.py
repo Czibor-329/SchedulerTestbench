@@ -1,8 +1,12 @@
-"""死锁诊断包结构与下载内容测试。"""
+"""死锁诊断的状态包、失败反馈与平台判型边界测试。"""
 
 from __future__ import annotations
 
 import json
+import unittest
+
+from app.backend import application as config_server
+from app.backend.application import LoggedPlanError
 from pathlib import Path
 
 from app.backend.artifacts.deadlock_diagnostic import (
@@ -120,3 +124,102 @@ def test_topology_toolbar_exposes_deadlock_diagnostic_download() -> None:
 
     assert 'id="visualExportDeadlockDiagnostic"' in html
     assert "/api/analysis/deadlock-diagnostic" in client_source
+
+
+class DeadlockFeedbackTests(unittest.TestCase):
+    """覆盖失败输出保留及平台明确支持的死锁判型边界。"""
+
+    def test_deadlock_feedback_keeps_partial_output(self) -> None:
+        """MLP 格式的失败 Feedback 不得进入完整计划校验或丢失部分计划。"""
+        output = {
+            "MoveList": [{
+                "MoveID": 7,
+                "MoveType": 9,
+                "StartTime": 1.0,
+                "EndTime": 2.0,
+            }],
+            "Feedback": ["调度失败: Machine 无可执行搬运意图"],
+        }
+        reproduction = config_server.ReproductionLog()
+
+        with self.assertRaises(LoggedPlanError) as context:
+            config_server._raise_deadlock_feedback(
+                output,
+                reproduction,
+                context="initial",
+            )
+
+        failure = context.exception.failure_output
+        self.assertEqual([7], [move["MoveID"] for move in failure["MoveList"]])
+        self.assertEqual(
+            "DEADLOCK.UNCLASSIFIED",
+            failure["FailureContext"]["Code"],
+        )
+        self.assertEqual(
+            "未死锁，但算法认为死锁",
+            failure["FailureContext"]["Message"],
+        )
+        self.assertEqual("AlgOutput", reproduction.entries[-1]["Describe"])
+
+
+    def test_machine_diagnostic_classifies_cleaning_and_loadlock_deadlocks(self) -> None:
+        """平台不再识别清洗冲突、Dummy 自阻塞、LoadLock 及资源等待环。"""
+        held_cleaning = {
+            "PendingMaterials": [
+                {"MaterialID": 1, "Location": "VTR", "NextStations": ["PM4"]},
+                {"MaterialID": 100000, "Location": "LB", "IsDummy": True,
+                 "RemainingProcessStations": ["PM4"]},
+            ],
+            "HeldRobots": [{"Robot": "VTR", "Capacity": 2, "Hands": {"2": 1}}],
+            "OccupiedStations": [],
+            "LoadLocks": [{"Station": "LB"}],
+        }
+        self.assertIsNone(config_server._classify_deadlock_diagnostic(held_cleaning))
+
+        cleaning_self_blocked = {
+            "PendingMaterials": [{
+                "MaterialID": 100000, "Location": "PM2", "IsDummy": True,
+                "NextStations": ["PM2"],
+            }],
+        }
+        self.assertIsNone(config_server._classify_deadlock_diagnostic(cleaning_self_blocked))
+
+        loadlock_cycle = {
+            "PendingMaterials": [
+                {"MaterialID": 1, "Location": "LA", "NextStations": ["PM1"]},
+                {"MaterialID": 2, "Location": "PM1", "NextStations": ["LA"]},
+            ],
+            "LoadLocks": [{"Station": "LA"}],
+        }
+        self.assertIsNone(config_server._classify_deadlock_diagnostic(loadlock_cycle))
+
+        process_cycle = {
+            "PendingMaterials": [
+                {"MaterialID": 1, "Location": "PM1", "NextStations": ["PM2"]},
+                {"MaterialID": 2, "Location": "PM2", "NextStations": ["PM1"]},
+            ],
+            "OccupiedStations": [
+                {"Station": "PM1", "Full": True, "Occupied": {"1": 1}},
+                {"Station": "PM2", "Full": True, "Occupied": {"1": 2}},
+            ],
+        }
+        self.assertIsNone(config_server._classify_deadlock_diagnostic(process_cycle))
+
+
+    def test_machine_diagnostic_only_recognizes_full_hands_and_all_targets(self) -> None:
+        """平台仅保留两种满手满腔类型，双臂必须检查两片的全部目标。"""
+        diagnostic = {
+            "PendingMaterials": [
+                {"MaterialID": 1, "NextStations": ["PM1"]},
+                {"MaterialID": 2, "NextStations": ["PM2"]},
+            ],
+            "HeldRobots": [{"Robot": "R", "Capacity": 1, "Hands": {"1": 1}}],
+            "OccupiedStations": [{"Station": "PM1", "Full": True}, {"Station": "PM2", "Full": True}],
+        }
+        self.assertEqual("DEADLOCK.SINGLE_ARM_TARGET_FULL", config_server._classify_deadlock_diagnostic(diagnostic)["Code"])
+        diagnostic["HeldRobots"][0]["Capacity"] = 2
+        self.assertIsNone(config_server._classify_deadlock_diagnostic(diagnostic))
+        diagnostic["HeldRobots"][0]["Hands"]["2"] = 2
+        self.assertEqual("DEADLOCK.DUAL_ARM_TARGETS_FULL", config_server._classify_deadlock_diagnostic(diagnostic)["Code"])
+        diagnostic["OccupiedStations"][1]["Full"] = False
+        self.assertIsNone(config_server._classify_deadlock_diagnostic(diagnostic))

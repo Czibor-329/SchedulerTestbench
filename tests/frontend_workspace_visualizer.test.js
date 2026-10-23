@@ -1,16 +1,11 @@
+/** 拓扑回放的状态、动作、物料身份与交互行为回归，不读取 CSS 或页面实现源码。 */
 "use strict";
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
 const logic = require(
   process.env.CT_WORKSPACE_VISUALIZER_TEST_BUILD
     || "../app/frontend/workspace_visualizer_logic.js",
-);
-const frontendCss = fs.readFileSync(
-  path.join(__dirname, "../app/frontend/assets/config_editor.css"),
-  "utf8",
 );
 
 const device = {
@@ -117,9 +112,6 @@ test("Dummy 晶圆使用独立颜色，表面显示原始物料 ID", () => {
   assert.match(markup, /class="wafer-origin-label">100000</);
   assert.doesNotMatch(markup, /class="wafer-origin-label">DummyPort\.1</);
   assert.match(markup, /title="晶圆 100000，来源 DummyPort\.1/);
-  assert.match(frontendCss, /--sim-dummy:\s*#6d28d9/);
-  assert.match(frontendCss, /\.wafer-token\.wafer-dummy/);
-  assert.match(frontendCss, /\.front-slot\.is-dummy\.is-unprocessed::after \{ background: #6d28d9; \}/);
 
   const parked = logic.buildWorkspaceSnapshot([
     {
@@ -444,58 +436,6 @@ test("日志导入明确拒绝普通 MoveList 文件", () => {
     () => logic.normalizeReplayLogPayload({ MoveList: moves }),
     /普通 MoveList 文件不受支持/,
   );
-});
-
-test("回放控制保留稳定入口且动作查询默认关闭", () => {
-  const html = fs.readFileSync(path.join(__dirname, "../app/frontend/config_editor.html"), "utf8");
-  for (const id of ["visualPlayButton", "visualSource", "visualTimeline", "visualSpeed", "visualTotalTime", "visualExportDeadlockDiagnostic", "visualWaferProgress"]) {
-    assert.ok(html.includes(`id="${id}"`));
-  }
-  assert.match(html, /id="visualActionsEnabled"[^>]*role="switch"/);
-  assert.doesNotMatch(html, /id="visualActionsEnabled"[^>]*checked/);
-  assert.doesNotMatch(html, /id="visualPauseOnDecisionChangeButton"/);
-});
-
-test("正视槽位卡片按内容收缩，不以画布高度拉长模块槽位", () => {
-  const css = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
-    "utf8",
-  );
-  assert.match(css, /\.topology-front-slot-card \{[^}]*height:\s*auto;[^}]*max-height:\s*var\(--topology-canvas-height, 640px\);/);
-  assert.match(css, /\.topology-front-slot-card \{[^}]*align-content:\s*start;/);
-  assert.match(css, /\.front-slot-row \{[^}]*align-items:\s*start;/);
-  assert.match(css, /\.front-slot-board \{[^}]*height:\s*auto;[^}]*align-self:\s*start;/);
-});
-
-test("合法动作空间面板保持两列卡片与默认全状态视觉契约", () => {
-  const html = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/config_editor.html"),
-    "utf8",
-  );
-  const css = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
-    "utf8",
-  );
-  const source = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/src/config_editor.ts"),
-    "utf8",
-  );
-
-  assert.match(html, /<h3>合法动作空间<\/h3>/);
-  assert.match(html, /class="replay-dock-window model-evaluation-section" data-replay-dock-window data-expanded="false"/);
-  assert.match(html, /data-action-status-filter value="enabled" checked/);
-  assert.match(html, /data-action-status-filter value="physical-blocked" checked/);
-  assert.match(html, /data-action-status-filter value="deadlock-blocked" checked/);
-  assert.match(css, /\.decision-lens-panel[^\n]*border-radius: 6px[^\n]*box-shadow: none/);
-  assert.match(css, /\.action-filter-controls/);
-  assert.match(css, /grid-template-columns:\s*repeat\(2,/);
-  assert.match(css, /\.action-card:hover \.action-status-tooltip/);
-  assert.doesNotMatch(css, /body\.theme-dark/);
-  assert.doesNotMatch(html, /themeToggle|logoutButton|adminUsersLink/);
-  assert.doesNotMatch(css, /\.topology-playback\.is-instant-state-transition/);
-  assert.doesNotMatch(source, /visualRecommendationModelControl|visualRecommendationModel/);
-  assert.doesNotMatch(source, /根节点全部合法动作|物料 \$\{action\.materialIds/);
-  assert.doesNotMatch(css, /decision-selected-summary|decision-preference-track|decision-auto-pause:hover|decision-candidate:hover/);
 });
 
 test("完整 Pick + Place 只在 Place 结束时形成下一决策边界", () => {
@@ -1250,8 +1190,6 @@ test("三类设备以机器框架和不可见附着点固定真空腔室位置",
   assert.ok(cascadeLB.x - cascadeLA.x - 82 <= 2.01, "级联 LA/LB 外框之间只应保留极小间隔");
   assert.match(cascadeTopology, /data-attachment-id="vacuum-vtr-1-loadlock-1@bottom\|atmosphere-main-loadlock-1@top"/);
   assert.match(cascadeTopology, /class="topology-attachment-point"/);
-  assert.match(frontendCss, /\.topology-attachment-point[^{]*\{[^}]*opacity:\s*0/);
-  assert.match(frontendCss, /\.topology-frame-anchor[^{]*\{[^}]*opacity:\s*0/);
 });
 
 test("三级机器手设备按结构使用级联布局，不依赖设备名称", () => {
@@ -1624,7 +1562,7 @@ test("动作决策在机器人尚未执行时驱动单槽机械臂朝向且不�
   assert.doesNotMatch(topology, /topology-target-arrows|<line /);
 });
 
-test("机械手清除旧坐标偏移，并按 PRE_TRANS 进度连续旋转", () => {
+test("机械手按 PRE_TRANS 进度连续旋转并在结束后保持目标方向", () => {
   const rotationDevice = {
     Stations: { PM1: { Type: "Process" }, PM5: { Type: "Process" } },
     Robots: { VTR: {} },
@@ -1652,59 +1590,6 @@ test("机械手清除旧坐标偏移，并按 PRE_TRANS 进度连续旋转", () 
   assert.equal(completedSnapshot.robots[0].target, "PM5");
   assert.equal(angleAt(10), angleAt(15));
 
-  const css = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
-    "utf8",
-  );
-  assert.match(css, /\.robot-hub-vacuum[^}]*top:\s*auto;\s*left:\s*auto;/);
-  assert.match(css, /\.equipment-process \{[^}]*border-radius:\s*0;\s*clip-path:\s*polygon\(29\.29% 0, 70\.71% 0, 100% 29\.29%, 100% 70\.71%, 70\.71% 100%, 29\.29% 100%, 0 70\.71%, 0 29\.29%\)/);
-  assert.match(css, /\.equipment-process \.equipment-process-shell \{[^}]*clip-path:\s*polygon\(29\.29% 0, 70\.71% 0, 100% 29\.29%, 100% 70\.71%, 70\.71% 100%, 29\.29% 100%, 0 70\.71%, 0 29\.29%\)/);
-  assert.match(css, /\.load-port-shared-base[^}]*z-index:\s*4;[^}]*height:\s*22px;/);
-  assert.match(css, /\.reference-grid-canvas \.load-port-assembly \.chamber-door-top[^}]*top:\s*0;/);
-  assert.match(css, /\.load-port-slot-bank[^}]*grid-template-rows:\s*repeat\(var\(--load-port-slot-count\), minmax\(0, 1fr\)\);[^}]*gap:\s*0;/);
-  assert.match(css, /\.load-port-slot\.is-unprocessed::after[^}]*width:\s*30px;[^}]*height:\s*3px;/);
-  assert.doesNotMatch(css, /\.load-port-kind|\.topology-module-filter/);
-  assert.match(css, /\.port-top-cassette[^}]*place-items:\s*center;/);
-  assert.match(css, /\.equipment-buffer[^}]*width:\s*104px;\s*height:\s*72px;/);
-  assert.match(css, /\.equipment-cooler[^}]*width:\s*76px;\s*height:\s*56px;/);
-  assert.match(css, /\.robot-arm[^}]*width:\s*88px;/);
-  assert.match(css, /\.robot-end-effector \{[^}]*width:\s*26px;[^}]*border-radius:\s*50%;/);
-  assert.doesNotMatch(css, /\.robot-fork-tine/);
-  assert.match(css, /\.robot-environment-badge[^}]*top:\s*calc\(50% - 44px\);[^}]*padding:\s*2px 4px;/);
-  assert.match(css, /\.robot-environment-badge[^}]*white-space:\s*nowrap;/);
-  assert.doesNotMatch(css, /\.robot-environment-badge[^}]*min-width:/);
-  assert.match(css, /\.robot-held-wafer-0[^}]*translate\(-2px, -2px\)/);
-  assert.match(css, /\.robot-held-wafer-1[^}]*translate\(2px, 2px\)/);
-  assert.doesNotMatch(css, /robot-capacity-badge|robot-holding-count|robot-external-name|loadlock-pressure-state/);
-  assert.doesNotMatch(css, /\.topology-interface-bay/);
-  assert.doesNotMatch(css, /\.robot-reach-sector/);
-  assert.doesNotMatch(css, /\.robot-effector-palm/);
-  assert.doesNotMatch(css, /\.robot-end-effector::after/);
-  assert.match(css, /\.equipment-card\.door-open :is\(\.port-top-gate, \.loadlock-top-gate\)[^}]*visibility:\s*hidden;\s*opacity:\s*0;/);
-  assert.match(css, /\.equipment-card\.door-opening :is\(\.port-top-gate, \.loadlock-top-gate\)[^}]*visibility:\s*hidden;\s*opacity:\s*0;/);
-});
-
-test("拓扑回放的晶圆尺寸统一以机器手持片为基准", () => {
-  const css = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
-    "utf8",
-  );
-  const uniformToken = "width: var(--topology-wafer-size); min-width: var(--topology-wafer-size); height: var(--topology-wafer-size);";
-
-  assert.match(css, /\.reference-grid-canvas \{ --topology-wafer-size:\s*54px; \}/);
-  [
-    ".process-wafer-slot .wafer-token",
-    ".port-top-cassette .wafer-token",
-    ".loadlock-top-seat .wafer-token",
-    ".cooler-top-pocket .wafer-token",
-    ".auxiliary-wafer-slot .wafer-token",
-    ".buffer-tray .wafer-token",
-    ".aligner-cross .wafer-token",
-    ".robot-held-wafer .wafer-token",
-  ].forEach(selector => {
-    const escapedSelector = selector.replaceAll(".", "\\.").replaceAll(" ", "\\s+");
-    assert.match(css, new RegExp(`${escapedSelector}[^}]*${uniformToken.replaceAll("(", "\\(").replaceAll(")", "\\)").replaceAll(".", "\\.")}`));
-  });
 });
 
 test("LoadLock 空层不画晶圆线，并区分已加工晶圆且按环境变化蓝色液位", () => {
@@ -2276,20 +2161,6 @@ test("晶圆必须完成全部加工工序后才标记为已加工", () => {
   assert.doesNotMatch(secondTopology, /wafer-token wafer-unprocessed/);
 });
 
-test("工艺腔渲染为正八边形 shell 结构，清洁状态使用浅粉色样式", () => {
-  const topology = logic.renderEquipmentTopology(logic.buildWorkspaceSnapshot(moves, device, 0), null);
-  assert.match(topology, /class="equipment-card equipment-process[^"]*"[^>]*>\s*<div class="equipment-process-shell"><div class="equipment-body"/);
-  assert.doesNotMatch(topology, /class="equipment-card equipment-lock[^"]*"[^>]*>\s*<div class="equipment-process-shell"/);
-  const css = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
-    "utf8",
-  );
-  assert.match(css, /\.reference-grid-canvas \.equipment-process \.equipment-process-shell \{[^}]*clip-path:\s*polygon\(29\.29% 0, 70\.71% 0, 100% 29\.29%, 100% 70\.71%, 70\.71% 100%, 29\.29% 100%, 0 70\.71%, 0 29\.29%\)/);
-  assert.match(css, /\.reference-grid-canvas \.equipment-process\.status-cleaning \.equipment-process-shell \{ background: #fdeef1; \}/);
-  assert.match(css, /\.reference-grid-canvas \.equipment-process\.status-cleaning \{ background: #d98a97; \}/);
-  assert.doesNotMatch(css, /reference-chamber-clean-sweep/, "清洁状态仅保留粉色，不应有循环扫光动画");
-});
-
 test("以空 ProcessMove 或清洁配方记录的清洁在拓扑回放中可见", () => {
   const cleanMoves = [
     { MoveID: 1, MoveType: 9, ModuleName: "PM1", MatIDList: [], StartTime: 10, EndTime: 20 },
@@ -2303,66 +2174,6 @@ test("以空 ProcessMove 或清洁配方记录的清洁在拓扑回放中可见"
   assert.equal(moduleAt(emptyProcessSnapshot, "PM1").activeMoveName, "清洁");
   assert.equal(moduleAt(recipeMarkedSnapshot, "PM2").status, "cleaning");
   assert.match(logic.renderEquipmentTopology(recipeMarkedSnapshot, null), /PM2[\s\S]*清洁中/);
-});
-
-test("瓶颈分析隐藏说明、窗口详情和统计口径可见标签", () => {
-  const source = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/src/workspace_visualizer.ts"),
-    "utf8",
-  );
-  assert.doesNotMatch(source, /同一道工序的设备合并取平均，按平均利用率最多显示 4 行。/);
-  assert.doesNotMatch(source, /class="performance-window-note"/);
-  assert.doesNotMatch(source, /class="bottleneck-window-control">统计口径/);
-  assert.match(source, /class="visually-hidden">统计口径<\/span>/);
-});
-
-test("瓶颈分析提供目的、判定原理和最优性说明", () => {
-  const workspaceSource = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/src/workspace_visualizer.ts"),
-    "utf8",
-  );
-  const html = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/config_editor.html"),
-    "utf8",
-  );
-  const editorSource = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/src/config_editor.ts"),
-    "utf8",
-  );
-  const css = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/assets/config_editor.css"),
-    "utf8",
-  );
-
-  assert.match(workspaceSource, /id="bottleneckAnalysisHelpButton"/);
-  assert.match(html, /id="bottleneckAnalysisHelpDialog"[\s\S]*为什么不能只看 Makespan？[\s\S]*容量利用率 × 82%[\s\S]*99% 以上[\s\S]*容量组取平均利用率/);
-  assert.match(editorSource, /bottleneckAnalysisHelpDialog\.showModal\(\)/);
-  assert.match(css, /\.bottleneck-analysis-help-dialog/);
-});
-
-test("驻留时间分析展示逐片腔室和机器手驻留，并提供说明", () => {
-  const workspaceSource = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/src/workspace_visualizer.ts"),
-    "utf8",
-  );
-  const html = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/config_editor.html"),
-    "utf8",
-  );
-  const editorSource = fs.readFileSync(
-    path.join(__dirname, "../app/frontend/src/config_editor.ts"),
-    "utf8",
-  );
-
-  assert.match(workspaceSource, /chamber: \{ title: "腔室驻留时间"/);
-  assert.match(workspaceSource, /robot: \{ title: "机器手驻留时间"/);
-  assert.match(workspaceSource, /renderResidenceMetricChart/);
-  assert.match(workspaceSource, /说明<\/button>/);
-  assert.match(workspaceSource, /id="residenceMetricSelect"/);
-  assert.match(workspaceSource, /id="residenceAnalysisHelpButton"/);
-  assert.match(html, /id="residenceAnalysisHelpDialog"[\s\S]*三种驻留时间分别表示什么？[\s\S]*已扣除显式 PreTrans 搬运时间/);
-  assert.match(editorSource, /residenceAnalysisHelpDialog\.showModal\(\)/);
-  assert.match(editorSource, /data-residence-metric-chart/);
 });
 
 

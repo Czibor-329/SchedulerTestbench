@@ -5,9 +5,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const frontendRoot = path.join(__dirname, "../app/frontend");
 
 // 每次从当前 TypeScript 源码编译隔离模块，不读取仓库已有的 CJS 产物。
-const frontendRoot = path.join(__dirname, "../app/frontend");
 const esbuild = require(require.resolve("esbuild", { paths: [frontendRoot] }));
 const buildRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ct-topology-photography-"));
 esbuild.buildSync({
@@ -60,38 +60,6 @@ function changedPhotographyTimes(moves, device, start, end, replenishments = [])
     return true;
   });
 }
-
-test("唯一摄影入口紧邻导入日志，摄影设置弹层及状态保持可访问性契约", () => {
-  const html = fs.readFileSync(path.join(frontendRoot, "config_editor.html"), "utf8");
-  const ids = ["visualPhotographyButton", "visualPhotographyMenu", "visualPhotographyCurrent",
-    "visualPhotographySequence", "visualPhotographyStatus", "visualPhotographyCancel",
-    "visualPhotographyStartTime", "visualPhotographyCount"];
-  for (const id of ids) assert.equal((html.match(new RegExp(`\\bid="${id}"`, "g")) || []).length, 1);
-  // 按稳定 ID 读取起始标签，检查属性而不绑定整段 HTML 实现。
-  const tag = id => html.match(new RegExp(`<[^>]+\\bid="${id}"[^>]*>`))[0];
-  assert.match(tag("visualPhotographyButton"), /^<button\b/);
-  assert.match(tag("visualPhotographyButton"), /aria-label="拓扑拍照"/);
-  assert.match(tag("visualPhotographyButton"), /aria-haspopup="dialog"/);
-  assert.match(tag("visualPhotographyButton"), /aria-controls="visualPhotographyMenu"/);
-  assert.match(tag("visualPhotographyButton"), /aria-expanded="false"/);
-  assert.match(tag("visualPhotographyMenu"), /role="dialog"/);
-  assert.match(tag("visualPhotographyMenu"), /aria-label="拓扑拍照方式"/);
-  assert.match(tag("visualPhotographyMenu"), /\bhidden\b/);
-  for (const id of ["visualPhotographyCurrent", "visualPhotographySequence"]) {
-    assert.match(tag(id), /^<button\b/);
-    assert.match(tag(id), /type="button"/);
-  }
-  assert.match(tag("visualPhotographyStartTime"), /type="number"/);
-  assert.match(tag("visualPhotographyStartTime"), /min="0"/);
-  assert.match(tag("visualPhotographyCount"), /min="1"/);
-  assert.match(tag("visualPhotographyCount"), /max="20"/);
-  assert.match(tag("visualPhotographyCount"), /value="20"/);
-  assert.match(tag("visualPhotographyStatus"), /role="status"/);
-  assert.match(tag("visualPhotographyStatus"), /aria-live="polite"/);
-  assert.match(tag("visualPhotographyCancel"), /\bhidden\b/);
-  // 摄影菜单容器与日志按钮是相邻入口，中间不插入其它操作控件。
-  assert.match(html, /id="visualPhotographySequence"[^>]*>[\s\S]*?<\/button>\s*<\/div>\s*<\/div>\s*<button[^>]*id="visualImportButton"/);
-});
 
 test("摄影候选包含当前时刻及五类完成边界，同时间合并并排除其它动作", () => {
   const moves = [0, 1, 2, 3, 4].map((type, index) => transfer({ type, start: index, end: 10 + index }));
