@@ -55,22 +55,21 @@
 #scheduleSide .strategy-card:focus-within { outline-color: rgb(180 241 5 / 40%); }
 #scheduleSide .field label { color: #e0ece5; }
 #scheduleSide .hint { color: #abc5b7; }
-#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) {
+#scheduleSide .search-tree-settings-card {
   gap: 10px;
   padding: 14px;
   border-color: rgb(255 255 255 / 14%);
   border-radius: 14px;
   background: rgb(255 255 255 / 5%);
 }
-#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) strong { color: #f0f7f3; }
-#scheduleSide .heuristic-settings-card small { color: #abc5b7; }
-#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) .btn {
+#scheduleSide .search-tree-settings-card strong { color: #f0f7f3; }
+#scheduleSide .search-tree-settings-card .btn {
   flex: none;
   border-color: rgb(255 255 255 / 22%);
   color: #fff;
   background: rgb(255 255 255 / 8%);
 }
-#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) .btn:hover {
+#scheduleSide .search-tree-settings-card .btn:hover {
   border-color: #abc5b7;
   background: rgb(255 255 255 / 15%);
 }
@@ -253,11 +252,9 @@ dialog::backdrop, dialog#testDraftDialog::backdrop, .drawer-layer::backdrop { ba
   background: #f5f8f2;
 }
 .run-settings-dialog-head h3, .batch-selection-dialog-head h3, .analysis-options-head h3 { color: var(--ink); }
-.run-settings-section-head, .heuristic-option-group > h4, .heuristic-weight-toggle strong,
-.search-tree-option-group-head h4, .analysis-options-section-head { color: var(--ink); }
-.heuristic-weight-grid > label, .heuristic-loadlock-label,
+.run-settings-section-head, .search-tree-option-group-head h4, .analysis-options-section-head { color: var(--ink); }
 .search-tree-options-dialog-body .field label, .analysis-options-controls label { color: #4b6152; }
-.run-setting-option, .heuristic-option-group, .search-tree-option-group { border-color: var(--line); border-radius: 14px; background: #f9fbf7; }
+.run-setting-option, .search-tree-option-group { border-color: var(--line); border-radius: 14px; background: #f9fbf7; }
 .run-setting-option:hover { border-color: #b9cdb0; background: #f4f8ef; }
 .run-setting-option:has(input:checked) { border-color: #b4ce9f; background: #f0f6e8; box-shadow: none; }
 .run-setting-option:focus-within { outline-color: rgb(7 47 31 / 15%); }
@@ -276,11 +273,10 @@ dialog::backdrop, dialog#testDraftDialog::backdrop, .drawer-layer::backdrop { ba
 /* 按信息层级校准阅读字号；画布与拓扑标注保持原来的绘制尺度。 */
 .panel-head p, .hint, .workspace-status, .empty-group-hint,
 .data-transfer-option small, .data-transfer-status, .data-transfer-progress-head,
-.heuristic-settings-card small, .search-tree-option-group-head p,
+.search-tree-option-group-head p,
 .run-status-event, .run-status-empty, .batch-selection-summary,
 .device-config-save-state, .test-list-name > span { font-size: 13px; }
 .data-transfer-option strong, .search-tree-settings-card strong,
-.heuristic-settings-card strong, .heuristic-weight-toggle strong,
 .round-title strong, .cjob-title strong, .route-summary-primary strong { font-size: 16px; }
 .management-section :is(.readonly-pill, .round-time-editor, .pjob-route-current-path,
   .context-clean-head small, .context-clean-item small, .clean-module-field > small,

@@ -7,18 +7,18 @@
   <title>调度平台</title>
   <link rel="stylesheet" href="/assets/tabler.min.css">
   <link rel="stylesheet" href="/assets/katex.min.css?v=1.4.4">
-  <link rel="stylesheet" href="/assets/fonts.css?v=1.6.25">
-  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.25">
-  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.25">
-  <link rel="stylesheet" href="/assets/console_shell.css?v=1.6.25">
-  <link rel="stylesheet" href="/assets/console_components.css?v=1.6.25">
-  <link rel="stylesheet" href="/assets/spark_table.css?v=1.6.25">
-  <link rel="stylesheet" href="/assets/result_table.css?v=1.6.25">
-  <link rel="stylesheet" href="/assets/analysis_report.css?v=1.6.25">
-  <link rel="stylesheet" href="/assets/console_replay_toolbar.css?v=1.6.25">
-  <link rel="stylesheet" href="/assets/console_gantt_toolbar.css?v=1.6.25">
-  <link rel="stylesheet" href="/assets/theory_capacity.css?v=1.6.25">
-  <link rel="stylesheet" href="/assets/shadcn_theme.css?v=1.6.25">
+  <link rel="stylesheet" href="/assets/fonts.css?v=1.6.26">
+  <link rel="stylesheet" href="/assets/config_editor.css?v=1.6.26">
+  <link rel="stylesheet" href="/assets/run_workspace.css?v=1.6.26">
+  <link rel="stylesheet" href="/assets/console_shell.css?v=1.6.26">
+  <link rel="stylesheet" href="/assets/console_components.css?v=1.6.26">
+  <link rel="stylesheet" href="/assets/spark_table.css?v=1.6.26">
+  <link rel="stylesheet" href="/assets/result_table.css?v=1.6.26">
+  <link rel="stylesheet" href="/assets/analysis_report.css?v=1.6.26">
+  <link rel="stylesheet" href="/assets/console_replay_toolbar.css?v=1.6.26">
+  <link rel="stylesheet" href="/assets/console_gantt_toolbar.css?v=1.6.26">
+  <link rel="stylesheet" href="/assets/theory_capacity.css?v=1.6.26">
+  <link rel="stylesheet" href="/assets/shadcn_theme.css?v=1.6.26">
   <script src="/assets/vendor/apexcharts.min.js"></script>
 </head>
 <body class="theme-light" data-bs-theme="light">
@@ -65,7 +65,7 @@
       </nav>
       <div class="sidebar-footer">
         <span class="sidebar-footer-label">本地调度工作台</span>
-        <span class="frontend-version">V1.6.25</span>
+        <span class="frontend-version">V1.6.26</span>
       </div>
     </aside>
     <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="关闭导航" tabindex="-1" hidden></button>
@@ -472,12 +472,8 @@
               <div class="other-algorithm-options" id="otherAlgorithmOptions"></div>
             </div>
             <div id="loadlockOptions" class="grid" style="margin-top:14px">
-              <div class="field span-12"><label>LoadLock 管理器</label><select data-option="loadLockManager"><option value="petri-look">Petri-ETA 通用管理器（Heuristic 推荐）</option><option value="collective-look">集选 LOOK（压力方向优先）</option><option value="round-robin">轮询（服务次数均衡）</option><option value="dedicated-direction">方向分区（LA 进、LB 出）</option><option value="exchange-look">交换优先 LOOK（成品/生片配对）</option><option value="joint">当前策略联合选择 LA/LB</option></select><div class="hint">上层策略决定发哪片；这里可比较 ETA、集选、轮询、方向分区和交换优先。所有 manager 只在 Petri 安全候选内绑定具体锁；双槽交换仍由门、压力和槽位互锁复核。</div></div>
+              <div class="field span-12"><label>LoadLock 管理器</label><select data-option="loadLockManager"><option value="petri-look">Petri-ETA 通用管理器</option><option value="collective-look">集选 LOOK（压力方向优先）</option><option value="round-robin">轮询（服务次数均衡）</option><option value="dedicated-direction">方向分区（LA 进、LB 出）</option><option value="exchange-look">交换优先 LOOK（成品/生片配对）</option><option value="joint">当前策略联合选择 LA/LB</option></select><div class="hint">上层策略决定发哪片；这里可比较 ETA、集选、轮询、方向分区和交换优先。所有 manager 只在 Petri 安全候选内绑定具体锁；双槽交换仍由门、压力和槽位互锁复核。</div></div>
             </div>
-            <section id="heuristicSettings" class="heuristic-settings-card" aria-labelledby="heuristicSettingsTitle">
-              <div><strong id="heuristicSettingsTitle">Heuristic 设置</strong><small>动作选择、随机种子与 LoadLock 规则</small></div>
-              <button class="btn small" id="openHeuristicSettingsDialogButton" type="button" aria-haspopup="dialog" aria-controls="heuristicSettingsDialog">设置</button>
-            </section>
             <div id="searchTreeOptions" class="is-hidden" style="margin-top:14px">
               <section class="search-tree-settings-card" aria-labelledby="search-treeSettingsTitle">
                 <strong id="search-treeSettingsTitle">Search Tree 策略价值模型</strong>
@@ -610,39 +606,6 @@
     </form>
   </dialog>
 
-  <dialog id="heuristicSettingsDialog" aria-labelledby="heuristicSettingsDialogTitle">
-    <form class="dialog-body heuristic-settings-dialog-body" id="heuristicSettingsForm">
-      <header class="heuristic-dialog-header"><div><h3 id="heuristicSettingsDialogTitle">Heuristic 设置</h3><p>选择优先级派工或随机派工，LoadLock 规则始终生效。</p></div><span>派工</span></header>
-      <div class="heuristic-settings-content">
-        <section class="heuristic-option-group"><h4>动作选择</h4>
-          <div class="heuristic-weight-grid">
-            <label for="heuristicSelectionMode">选择方式<select id="heuristicSelectionMode"><option value="priority">优先级派工</option><option value="random">随机派工</option></select></label>
-            <label for="heuristicRandomSeed">随机种子<input id="heuristicRandomSeed" type="number" step="1" value="0"><small>相同输入和种子可复现相同计划。</small></label>
-          </div>
-          <p class="hint">随机派工从安全的 Pick、Place、Swap 中均匀选择，不使用评分权重。</p>
-        </section>
-        <section class="heuristic-option-group"><h4>LoadLock</h4>
-          <div class="heuristic-loadlock-options">
-            <div class="heuristic-loadlock-row"><span class="heuristic-loadlock-label">LoadLock 方向</span><div class="heuristic-loadlock-choices"><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockDirection" type="radio" name="heuristicLoadLockDirection" value="0"><span>固定进出</span></label><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockDirection" type="radio" name="heuristicLoadLockDirection" value="1"><span>双向</span></label></div></div>
-            <div class="heuristic-loadlock-row"><span class="heuristic-loadlock-label">LoadLock 切压片数</span><div class="heuristic-loadlock-choices"><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockCapacity" type="radio" name="heuristicLoadLockCapacity" value="0"><span>1 片</span></label><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockCapacity" type="radio" name="heuristicLoadLockCapacity" value="1"><span>2 片</span></label><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockCapacity" type="radio" name="heuristicLoadLockCapacity" value="2"><span>不限制</span></label></div></div>
-            <div class="heuristic-loadlock-row"><span class="heuristic-loadlock-label">绑定进出批次</span><div class="heuristic-loadlock-choices"><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockBindBatch" type="radio" name="heuristicLoadLockBindBatch" value="0"><span>不绑定</span></label><label class="run-setting-option heuristic-loadlock-choice"><input data-heuristic-dialog-option="loadLockBindBatch" type="radio" name="heuristicLoadLockBindBatch" value="1"><span>绑定</span></label></div></div>
-          </div>
-        </section>
-        <section class="heuristic-option-group"><label class="heuristic-weight-toggle"><input id="heuristicCustomWeightsEnabled" type="checkbox"><span><strong>启用自定义派工权重</strong><small>未启用时继续使用默认自动择优。</small></span></label>
-          <div id="heuristicWeightFields" class="heuristic-weight-grid">
-            <label>Feed 投片惩罚 <input data-heuristic-weight="feed_penalty" type="number" step="any"><small>越大越晚投片；负数会更积极投片。</small></label><label>Feed 阻塞惩罚 <input data-heuristic-weight="feed_block_penalty" type="number" min="0" step="any"><small>避免 Feed 阻塞已就绪的出片。</small></label>
-            <label>交换收益 <input data-heuristic-weight="exchange_bonus" type="number" step="any"></label><label>加工腔出片收益 <input data-heuristic-weight="process_departure_bonus" type="number" step="any"></label>
-            <label>进入加工腔收益 <input data-heuristic-weight="into_process_bonus" type="number" step="any"></label><label>排空收益 <input data-heuristic-weight="drain_bonus" type="number" step="any"></label>
-            <label>进入 Sink 收益 <input data-heuristic-weight="sink_bonus" type="number" step="any"></label><label>最早开始时间权重 <input data-heuristic-weight="earliest_start_weight" type="number" min="0" step="any"></label>
-            <label>完成时间权重 <input data-heuristic-weight="finish_time_weight" type="number" min="0" step="any"></label>
-            <label>阶段推进收益 <input data-heuristic-weight="stage_progress_bonus" type="number" min="0" step="any"></label>
-          </div>
-        </section>
-        <p class="heuristic-settings-error" id="heuristicSettingsError" role="alert"></p>
-      </div>
-      <div class="dialog-actions"><button class="btn small" id="heuristicSettingsDialogCancel" type="button">取消</button><button class="btn primary small" type="submit">保存设置</button></div>
-    </form>
-  </dialog>
 
   <dialog id="workspaceDialog" aria-labelledby="workspaceDialogTitle">
     <form method="dialog" class="dialog-body" id="workspaceDialogForm">
@@ -669,7 +632,7 @@
           <div class="run-settings-section-head"><span id="runSettingsBehaviorTitle">执行行为</span><small>控制调度推进、结果校验与基线计算</small></div>
           <div class="run-settings-toggle-grid">
             <label class="run-setting-option" for="hongYeCheckInput"><span class="run-setting-option-main"><input id="hongYeCheckInput" type="checkbox" checked><span>HongYe Check <em>推荐</em></span></span><small>使用 HongYe 原始日志二次校验；关闭后仍保留平台内置校验。</small></label>
-            <label class="run-setting-option" for="skipBaselineInput"><span class="run-setting-option-main"><input id="skipBaselineInput" type="checkbox" checked><span>跳过 Baseline</span></span><small>不计算 Heuristic 性能基线，可更快得到本次批量结果。</small></label>
+            <label class="run-setting-option" for="skipBaselineInput"><span class="run-setting-option-main"><input id="skipBaselineInput" type="checkbox" checked><span>跳过 Baseline</span></span><small>跳过性能基线比较，可更快得到本次批量结果。</small></label>
             <label class="run-setting-option" for="executionTimingEnabledInput"><span class="run-setting-option-main"><input id="executionTimingEnabledInput" type="checkbox"><span>时间波动模式</span></span><small>按设备“执行时间”配置修正实际 Move 时刻；关闭时使用算法原始时间，路径加工时长不变。</small></label>
           </div>
         </section>
@@ -901,7 +864,7 @@
     </aside>
   </dialog>
 
-  <script type="module" src="/assets/config_editor.js?v=1.6.25"></script>
+  <script type="module" src="/assets/config_editor.js?v=1.6.26"></script>
   <dialog id="testDraftDialog" aria-labelledby="testDraftTitle">
     <h2 id="testDraftTitle">测试有未保存的修改</h2><p>保存后再离开，或放弃本次修改。</p>
     <form method="dialog" class="editor-save-actions"><button class="btn" value="cancel" autofocus>继续编辑</button><button class="btn" value="discard">放弃修改</button><button class="btn primary" value="save">保存并继续</button></form>

@@ -88,15 +88,7 @@ const DEFAULT_SCHEDULE_OPTIONS = Object.freeze({
   loadLockMacroSearchSeconds: 4,
   loadLockMacroRollouts: 96,
   searchTreeModelPath: "",
-  heuristicConfig: null,
   seed: 0,
-});
-const DEFAULT_HEURISTIC_WEIGHTS = Object.freeze({
-  feed_block_penalty: 4,
-  earliest_start_weight: .35, finish_time_weight: .15, exchange_bonus: 2,
-  process_departure_bonus: 1.6, into_process_bonus: 1.5, drain_bonus: .3,
-  sink_bonus: .25, feed_penalty: -.35,
-  stage_progress_bonus: .2,
 });
 const SCHEDULE_OPTION_KEYS = new Set(Object.keys(DEFAULT_SCHEDULE_OPTIONS));
 
@@ -167,7 +159,7 @@ const state = {
   activeBatchId: "", batchRunning: false, batchCancelRequested: false, batchCancelSent: false, batchResult: null,
   deviceName: "", baseDevice: null, device: null, stationNames: [], loadPorts: [], processModules: [], robotNames: [], robotScopes: {}, robotSlots: {}, robotSlotsSaving: new Set(),
   deviceConfigSection: "station-time", deviceStationName: "", deviceRobotName: "", deviceRobotTransferAxes: {}, deviceRobotTransferSources: {}, deviceTimingDraft: null, deviceTimingDirty: false, deviceTimingSaving: false, deviceTimingStatusMessage: "选择设备后开始配置",
-  strategy: "heuristic", availableAlgorithms: [], algorithmMetadata: {}, roundCount: 2, times: [0, 70], options: { ...DEFAULT_SCHEDULE_OPTIONS },
+  strategy: "", availableAlgorithms: [], algorithmMetadata: {}, roundCount: 2, times: [0, 70], options: { ...DEFAULT_SCHEDULE_OPTIONS },
   cleans: [],
   routes: [{ name: "RouteA", group: "RouteA", bufferOption: 0, prePJobCleanRefs: [], postPJobCleanRefs: [], postCJobCleanRefs: [], stages: linkRouteSteps([makeStage("LP1"), makeStage("Robot"), makeStage("PM1,PM2", true, "RouteA_Step2"), makeStage("Robot"), makeStage("LP1")]) }],
   rounds: [makeRound(1, 0, "RouteA", "LP1"), makeRound(2, 70, "RouteA", "LP2")],
@@ -1482,7 +1474,7 @@ function makeDefaultTestCase(name = "默认测试集") {
   }
   const routeName = state.routes[0]?.name || "";
   return {
-    name, group: state.activeTestGroup || "", strategy: "heuristic", roundCount: 2, times: [0, 70],
+    name, group: state.activeTestGroup || "", strategy: "", roundCount: 2, times: [0, 70],
     options: { ...DEFAULT_SCHEDULE_OPTIONS },
     cleans: [], routes: state.routes.map(routeTemplateForSave),
     routeConfigs: normalizeTestRouteConfigs({}, state.routes),
@@ -2244,8 +2236,8 @@ function applyTestCase(testCase) {
   const value = structuredClone(testCase);
   state.routeNameChanges.clear();
   state.testCaseId = value.id; state.testCaseName = value.name; state.testCaseGroup = String(value.group || ""); state.activeTestGroup = state.testCaseGroup;
-  const requestedStrategy = String(value.strategy || "heuristic");
-  state.strategy = requestedStrategy.trim() || "heuristic";
+  const requestedStrategy = String(value.strategy || "");
+  state.strategy = requestedStrategy.trim() || "";
   state.roundCount = Math.max(1, Number(value.roundCount) || 1); state.times = Array.isArray(value.times) ? value.times : [0];
   const persistedOptions = value.options && typeof value.options === "object" ? value.options : {};
   state.options = {
@@ -2255,10 +2247,10 @@ function applyTestCase(testCase) {
     ),
   };
   state.options.loadLockManager = state.options.loadLockManager || "petri-look";
-  const heuristicLoadLockOptionRanges = {
+  const loadLockOptionRanges = {
     loadLockDirection: [0, 1], loadLockCapacity: [0, 1, 2], loadLockBindBatch: [0, 1],
   };
-  for (const [key, allowedValues] of Object.entries(heuristicLoadLockOptionRanges)) {
+  for (const [key, allowedValues] of Object.entries(loadLockOptionRanges)) {
     const optionValue = Number(state.options[key]);
     state.options[key] = allowedValues.includes(optionValue) ? optionValue : DEFAULT_SCHEDULE_OPTIONS[key];
   }
@@ -2323,7 +2315,7 @@ function currentTestSnapshot(name = state.testCaseName) {
   return structuredClone({
     name,
     group: state.testCaseGroup,
-    strategy: state.workspaceDevice?.tests?.find(test => test.id === state.testCaseId)?.strategy || "heuristic",
+    strategy: state.workspaceDevice?.tests?.find(test => test.id === state.testCaseId)?.strategy || "",
     roundCount: state.roundCount,
     times: state.times,
     options: state.workspaceDevice?.tests?.find(test => test.id === state.testCaseId)?.options || {},
@@ -3733,62 +3725,6 @@ function openSearchTreeOptionsDialog() {
   document.getElementById("searchTreeOptionsDialog").showModal();
 }
 
-/** 打开 Heuristic 设置；编辑值先留在弹窗，确认后才影响本次会话。 */
-function openHeuristicSettingsDialog() {
-  document.getElementById("heuristicSettingsError").textContent = "";
-  const configured = state.options.heuristicConfig && typeof state.options.heuristicConfig === "object"
-    ? state.options.heuristicConfig : null;
-  document.getElementById("heuristicSelectionMode").value = configured?.selection_mode || "priority";
-  document.getElementById("heuristicRandomSeed").value = configured?.random_seed ?? 0;
-  document.getElementById("heuristicCustomWeightsEnabled").checked = Boolean(configured && Object.keys(DEFAULT_HEURISTIC_WEIGHTS).some(key => key in configured));
-  document.querySelectorAll("[data-heuristic-weight]").forEach(input => {
-    const key = input.dataset.heuristicWeight;
-    input.value = configured?.[key] ?? DEFAULT_HEURISTIC_WEIGHTS[key];
-  });
-  for (const key of ["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"]) {
-    document.querySelectorAll(`[data-heuristic-dialog-option="${key}"]`).forEach(input => {
-      input.checked = String(state.options[key]) === input.value;
-    });
-  }
-  updateHeuristicWeightEditorState();
-  document.getElementById("heuristicSettingsDialog").showModal();
-}
-
-/** 根据自定义开关启用或禁用权重输入，避免未启用时造成已生效的误解。 */
-function updateHeuristicWeightEditorState() {
-  const random = document.getElementById("heuristicSelectionMode").value === "random";
-  document.getElementById("heuristicRandomSeed").disabled = !random;
-  document.getElementById("heuristicCustomWeightsEnabled").disabled = random;
-  const enabled = !random && document.getElementById("heuristicCustomWeightsEnabled")?.checked === true;
-  document.querySelectorAll("[data-heuristic-weight]").forEach(input => { input.disabled = !enabled; });
-  document.getElementById("heuristicWeightFields")?.classList.toggle("is-disabled", !enabled);
-}
-
-/** 校验并提交 Heuristic 设置；所有权重仅随当前测试请求发送。 */
-function saveHeuristicSettings() {
-  const random = document.getElementById("heuristicSelectionMode").value === "random";
-  const seedText = document.getElementById("heuristicRandomSeed").value.trim();
-  const seed = Number(seedText);
-  if (random && (!seedText || !Number.isSafeInteger(seed))) throw new Error("随机种子必须是安全范围内的整数");
-  for (const key of ["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"]) {
-    const input = document.querySelector(`[data-heuristic-dialog-option="${key}"]:checked`);
-    state.options[key] = Number(input?.value);
-  }
-  if (random) {
-    state.options.heuristicConfig = { selection_mode: "random", random_seed: seed };
-  } else if (document.getElementById("heuristicCustomWeightsEnabled").checked) {
-    const weights = {};
-    document.querySelectorAll("[data-heuristic-weight]").forEach(input => {
-      const value = Number(input.value);
-      if (!Number.isFinite(value)) throw new Error(`${input.dataset.heuristicWeight} 必须是有限数字`);
-      weights[input.dataset.heuristicWeight] = value;
-    });
-    state.options.heuristicConfig = weights;
-  } else state.options.heuristicConfig = null;
-  retainSessionSchedulingConfiguration();
-  document.getElementById("heuristicSettingsDialog").close();
-}
-
 /** 上传用户从文件夹选取的 checkpoint，并返回本地服务可访问的绝对路径。 */
 async function uploadSearchTreeCheckpoint(file) {
   const response = await fetch("/api/model-checkpoints", {
@@ -4127,22 +4063,12 @@ function buildPayload() {
   const instances = runtimePJobRouteInstances();
   const routes = instances.routes.map(route => ({ ...normalizeRoute(route), stages: route.stages.map(stage => ({ ...stage, visits: stage.visits.map(visit => structuredClone(visit)) })) }));
   const cleans = state.cleans.map(runtimeClean);
-  const options = schedulingRequestOptions();
+  const options = { ...state.options };
   if (state.strategy === "search-tree") {
     // 拓扑回放固定为连续求解，不再提供步进求解分支。
     options.searchTreeExecutionMode = "continuous";
   }
   return { schemaVersion: EXPECTED_API_SCHEMA, workspaceDeviceId: state.workspaceDeviceId, workspaceTestId: state.testCaseId, deviceName: state.deviceName, device: state.device, strategy: state.strategy, roundCount: state.roundCount, options, hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), cleanValidationTypes: cleanValidationTypes(), recipes: collectRecipes(routes), cleans, routes, rounds: instances.rounds };
-}
-
-/** 收集发送给算法的选项；Heuristic 仅允许覆盖其三个 LoadLock 配置。 */
-function schedulingRequestOptions() {
-  if (state.strategy !== "heuristic") return { ...state.options };
-  const options = Object.fromEntries(
-    ["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"].map(key => [key, state.options[key]])
-  );
-  if (state.options.heuristicConfig) options.heuristicConfig = structuredClone(state.options.heuristicConfig);
-  return options;
 }
 
 /** 把数字输入限制在 [min, max] 并回填 DOM，防止手输越界值。 */
@@ -4368,13 +4294,12 @@ function updateStrategyOptionVisibility() {
   const algorithm = state.availableAlgorithms.find(item => item.strategy === state.strategy);
   const optionGroups = new Set(algorithm?.optionGroups || []);
   document.getElementById("loadlockOptions").classList.toggle("is-hidden", !optionGroups.has("loadlock"));
-  document.getElementById("heuristicSettings").classList.toggle("is-hidden", state.strategy !== "heuristic");
   document.getElementById("searchTreeOptions").classList.toggle("is-hidden", !optionGroups.has("search-tree"));
 }
 
 /** 返回策略在批量结果中的可读名称，兼容动态发现的 other_alg 策略。 */
 function displayStrategyName(strategy) {
-  const normalized = String(strategy || "heuristic");
+  const normalized = String(strategy || "未选择算法");
   const cardName = document.querySelector(`[data-strategy-card="${CSS.escape(normalized)}"] b`)?.textContent;
   return state.algorithmMetadata[normalized]?.name || cardName || normalized;
 }
@@ -4636,7 +4561,7 @@ async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
     const runResponse = fetch("/api/run-batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deviceId, group: state.activeTestGroup, testIds: tests.map(test => test.id), strategy: state.strategy, options: schedulingRequestOptions(), hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: fromResultCardQueue ? 1 : batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() }),
+      body: JSON.stringify({ deviceId, group: state.activeTestGroup, testIds: tests.map(test => test.id), strategy: state.strategy, options: { ...state.options }, hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: fromResultCardQueue ? 1 : batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() }),
     });
     if (!fromResultCardQueue) resetRunResult();
     activeRunContext = null;
@@ -5719,14 +5644,6 @@ document.getElementById("batchTestSelectionForm").addEventListener("submit", eve
   runBatchSelection(false);
 });
 document.getElementById("openSearchTreeOptionsDialogButton").addEventListener("click", openSearchTreeOptionsDialog);
-document.getElementById("openHeuristicSettingsDialogButton").addEventListener("click", openHeuristicSettingsDialog);
-document.getElementById("heuristicSettingsDialogCancel").addEventListener("click", () => document.getElementById("heuristicSettingsDialog").close());
-document.getElementById("heuristicCustomWeightsEnabled").addEventListener("change", updateHeuristicWeightEditorState);
-document.getElementById("heuristicSelectionMode").addEventListener("change", updateHeuristicWeightEditorState);
-document.getElementById("heuristicSettingsForm").addEventListener("submit", event => {
-  event.preventDefault();
-  try { saveHeuristicSettings(); } catch (error) { document.getElementById("heuristicSettingsError").textContent = error.message; }
-});
 document.getElementById("searchTreeOptionsDialogCancel").addEventListener("click", () => document.getElementById("searchTreeOptionsDialog").close());
 document.getElementById("searchTreeCheckpointFile").addEventListener("change", event => {
   pendingSearchTreeCheckpointFile = event.currentTarget.files?.[0] || null;

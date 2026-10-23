@@ -121,12 +121,12 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         package = json.loads((frontend_root / "package.json").read_text(encoding="utf-8"))
         package_lock = json.loads((frontend_root / "package-lock.json").read_text(encoding="utf-8"))
 
-        self.assertEqual("1.6.25", package["version"])
-        self.assertEqual("1.6.25", package_lock["version"])
-        self.assertEqual("1.6.25", package_lock["packages"][""]["version"])
-        self.assertIn('class="frontend-version">V1.6.25</span>', template)
-        self.assertIn('/assets/config_editor.css?v=1.6.25', template)
-        self.assertIn('/assets/config_editor.js?v=1.6.25', template)
+        self.assertEqual("1.6.26", package["version"])
+        self.assertEqual("1.6.26", package_lock["version"])
+        self.assertEqual("1.6.26", package_lock["packages"][""]["version"])
+        self.assertIn('class="frontend-version">V1.6.26</span>', template)
+        self.assertIn('/assets/config_editor.css?v=1.6.26', template)
+        self.assertIn('/assets/config_editor.js?v=1.6.26', template)
 
     def test_single_run_failure_card_does_not_duplicate_validation_issue(self) -> None:
         """状态推进校验失败只展示一条完整错误，不再重复渲染问题列表。"""
@@ -157,14 +157,6 @@ class RecomputeFailureOutputTests(unittest.TestCase):
         style = (ROOT / "app" / "frontend" / "assets" / "config_editor.css").read_text(encoding="utf-8")
         self.assertIn("width: 34px; min-width: 34px; height: 34px", style)
         self.assertIn("top: 3px; right: 3px; width: 5px; height: 5px", style)
-
-    def test_heuristic_weights_accept_arbitrary_decimal_values(self) -> None:
-        """自定义权重应允许后端支持的任意有限小数，包括默认的 0.25。"""
-        template = EDITOR_PATH.read_text(encoding="utf-8")
-
-        weight_inputs = re.findall(r'<input data-heuristic-weight="[^"]+"[^>]*>', template)
-        self.assertEqual(10, len(weight_inputs))
-        self.assertTrue(all('type="number"' in item and 'step="any"' in item for item in weight_inputs))
 
     def test_batch_status_refresh_obeys_frontend_performance_limit(self) -> None:
         """批量状态最多每秒轮询一次，且明细未变化时不得重建整组 DOM。"""

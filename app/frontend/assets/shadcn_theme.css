@@ -105,12 +105,11 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); }
 #scheduleSide > .panel { color: var(--ink); background: var(--surface); }
 #scheduleSide > .panel > .panel-head, #scheduleSide .run-box { border-color: var(--line); }
 #scheduleSide .panel-head h2, #scheduleSide .field label,
-#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) strong,
+#scheduleSide .search-tree-settings-card strong,
 #scheduleSide .run-status-head strong { color: var(--ink); }
-#scheduleSide .hint, #scheduleSide .heuristic-settings-card small,
-#scheduleSide .run-status-head time { color: var(--muted); }
+#scheduleSide .hint, #scheduleSide .run-status-head time { color: var(--muted); }
 #scheduleSide .strategy-card,
-#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card),
+#scheduleSide .search-tree-settings-card,
 #scheduleSide .run-status-card {
   color: var(--ink); border-color: var(--line); border-radius: var(--control-radius); background: var(--surface);
 }
@@ -119,10 +118,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); }
 #scheduleSide .strategy-card:has(input:disabled) { color: var(--muted); opacity: .5; }
 #scheduleSide .strategy-card:focus-within { outline-color: var(--focus-ring); }
 #scheduleSide > .panel > .panel-head .btn,
-#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) .btn,
+#scheduleSide .search-tree-settings-card .btn,
 #scheduleSide .run-box .run-settings-button { color: var(--ink); border-color: var(--line); border-radius: var(--control-radius); background: var(--surface); }
 #scheduleSide > .panel > .panel-head .btn:hover:not(:disabled),
-#scheduleSide :is(.heuristic-settings-card, .search-tree-settings-card) .btn:hover:not(:disabled),
+#scheduleSide .search-tree-settings-card .btn:hover:not(:disabled),
 #scheduleSide .run-box .run-settings-button:hover:not(:disabled) { color: var(--ink); border-color: var(--line); background: var(--brand-soft); }
 #scheduleSide .run-actions .btn.batch:not(.cancel) { color: #fff; border-color: var(--brand); border-radius: var(--control-radius); background: var(--brand); font-weight: 500; }
 #scheduleSide .run-actions .btn.batch:not(.cancel):hover:not(:disabled) { border-color: var(--brand-dark); background: var(--brand-dark); }
@@ -167,7 +166,7 @@ dialog::backdrop, dialog#testDraftDialog::backdrop, .drawer-layer::backdrop { ba
 .drawer { background: var(--surface); }
 .run-settings-dialog-head, .batch-selection-dialog-head, .pjob-route-dialog-head,
 .analysis-options-head, .pjob-route-detail-head, .pjob-route-edit-head { background: var(--soft); }
-.run-setting-option, .heuristic-option-group, .search-tree-option-group,
+.run-setting-option, .search-tree-option-group,
 .batch-selection-item, .analysis-test-options label, .analysis-metric-options label,
 .data-transfer-option { border-color: var(--line); border-radius: var(--control-radius); background: var(--surface); }
 .run-setting-option:hover, .batch-selection-item:hover, .pjob-route-card:hover,

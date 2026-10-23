@@ -7843,20 +7843,7 @@ var DEFAULT_SCHEDULE_OPTIONS = Object.freeze({
   loadLockMacroSearchSeconds: 4,
   loadLockMacroRollouts: 96,
   searchTreeModelPath: "",
-  heuristicConfig: null,
   seed: 0
-});
-var DEFAULT_HEURISTIC_WEIGHTS = Object.freeze({
-  feed_block_penalty: 4,
-  earliest_start_weight: 0.35,
-  finish_time_weight: 0.15,
-  exchange_bonus: 2,
-  process_departure_bonus: 1.6,
-  into_process_bonus: 1.5,
-  drain_bonus: 0.3,
-  sink_bonus: 0.25,
-  feed_penalty: -0.35,
-  stage_progress_bonus: 0.2
 });
 var SCHEDULE_OPTION_KEYS = new Set(Object.keys(DEFAULT_SCHEDULE_OPTIONS));
 var DEADLOCK_TYPE_CATALOG = Object.freeze({
@@ -7949,7 +7936,7 @@ var state = {
   deviceTimingDirty: false,
   deviceTimingSaving: false,
   deviceTimingStatusMessage: "\u9009\u62E9\u8BBE\u5907\u540E\u5F00\u59CB\u914D\u7F6E",
-  strategy: "heuristic",
+  strategy: "",
   availableAlgorithms: [],
   algorithmMetadata: {},
   roundCount: 2,
@@ -9085,7 +9072,7 @@ function makeDefaultTestCase(name = "\u9ED8\u8BA4\u6D4B\u8BD5\u96C6") {
   return {
     name,
     group: state.activeTestGroup || "",
-    strategy: "heuristic",
+    strategy: "",
     roundCount: 2,
     times: [0, 70],
     options: { ...DEFAULT_SCHEDULE_OPTIONS },
@@ -9448,8 +9435,8 @@ function applyTestCase(testCase) {
   state.testCaseName = value.name;
   state.testCaseGroup = String(value.group || "");
   state.activeTestGroup = state.testCaseGroup;
-  const requestedStrategy = String(value.strategy || "heuristic");
-  state.strategy = requestedStrategy.trim() || "heuristic";
+  const requestedStrategy = String(value.strategy || "");
+  state.strategy = requestedStrategy.trim() || "";
   state.roundCount = Math.max(1, Number(value.roundCount) || 1);
   state.times = Array.isArray(value.times) ? value.times : [0];
   const persistedOptions = value.options && typeof value.options === "object" ? value.options : {};
@@ -9460,12 +9447,12 @@ function applyTestCase(testCase) {
     )
   };
   state.options.loadLockManager = state.options.loadLockManager || "petri-look";
-  const heuristicLoadLockOptionRanges = {
+  const loadLockOptionRanges = {
     loadLockDirection: [0, 1],
     loadLockCapacity: [0, 1, 2],
     loadLockBindBatch: [0, 1]
   };
-  for (const [key, allowedValues] of Object.entries(heuristicLoadLockOptionRanges)) {
+  for (const [key, allowedValues] of Object.entries(loadLockOptionRanges)) {
     const optionValue = Number(state.options[key]);
     state.options[key] = allowedValues.includes(optionValue) ? optionValue : DEFAULT_SCHEDULE_OPTIONS[key];
   }
@@ -9539,7 +9526,7 @@ function currentTestSnapshot(name = state.testCaseName) {
   return structuredClone({
     name,
     group: state.testCaseGroup,
-    strategy: state.workspaceDevice?.tests?.find((test) => test.id === state.testCaseId)?.strategy || "heuristic",
+    strategy: state.workspaceDevice?.tests?.find((test) => test.id === state.testCaseId)?.strategy || "",
     roundCount: state.roundCount,
     times: state.times,
     options: state.workspaceDevice?.tests?.find((test) => test.id === state.testCaseId)?.options || {},
@@ -10840,57 +10827,6 @@ function openSearchTreeOptionsDialog() {
   document.getElementById("searchTreeCheckpointHint").textContent = configuredPath ? "\u5F53\u524D checkpoint \u5DF2\u4FDD\u5B58\u5728\u672C\u5730\u670D\u52A1\u4E2D\uFF1B\u91CD\u65B0\u9009\u62E9\u6587\u4EF6\u53EF\u66FF\u6362\u5B83\u3002" : "\u9009\u62E9\u672C\u673A checkpoint \u540E\u5C06\u4E0A\u4F20\u5230\u672C\u5730\u670D\u52A1\uFF0C\u5E76\u7528\u4E8E\u540E\u7EED\u8FD0\u884C\u3002";
   document.getElementById("searchTreeOptionsDialog").showModal();
 }
-function openHeuristicSettingsDialog() {
-  document.getElementById("heuristicSettingsError").textContent = "";
-  const configured = state.options.heuristicConfig && typeof state.options.heuristicConfig === "object" ? state.options.heuristicConfig : null;
-  document.getElementById("heuristicSelectionMode").value = configured?.selection_mode || "priority";
-  document.getElementById("heuristicRandomSeed").value = configured?.random_seed ?? 0;
-  document.getElementById("heuristicCustomWeightsEnabled").checked = Boolean(configured && Object.keys(DEFAULT_HEURISTIC_WEIGHTS).some((key) => key in configured));
-  document.querySelectorAll("[data-heuristic-weight]").forEach((input) => {
-    const key = input.dataset.heuristicWeight;
-    input.value = configured?.[key] ?? DEFAULT_HEURISTIC_WEIGHTS[key];
-  });
-  for (const key of ["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"]) {
-    document.querySelectorAll(`[data-heuristic-dialog-option="${key}"]`).forEach((input) => {
-      input.checked = String(state.options[key]) === input.value;
-    });
-  }
-  updateHeuristicWeightEditorState();
-  document.getElementById("heuristicSettingsDialog").showModal();
-}
-function updateHeuristicWeightEditorState() {
-  const random = document.getElementById("heuristicSelectionMode").value === "random";
-  document.getElementById("heuristicRandomSeed").disabled = !random;
-  document.getElementById("heuristicCustomWeightsEnabled").disabled = random;
-  const enabled = !random && document.getElementById("heuristicCustomWeightsEnabled")?.checked === true;
-  document.querySelectorAll("[data-heuristic-weight]").forEach((input) => {
-    input.disabled = !enabled;
-  });
-  document.getElementById("heuristicWeightFields")?.classList.toggle("is-disabled", !enabled);
-}
-function saveHeuristicSettings() {
-  const random = document.getElementById("heuristicSelectionMode").value === "random";
-  const seedText = document.getElementById("heuristicRandomSeed").value.trim();
-  const seed = Number(seedText);
-  if (random && (!seedText || !Number.isSafeInteger(seed))) throw new Error("\u968F\u673A\u79CD\u5B50\u5FC5\u987B\u662F\u5B89\u5168\u8303\u56F4\u5185\u7684\u6574\u6570");
-  for (const key of ["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"]) {
-    const input = document.querySelector(`[data-heuristic-dialog-option="${key}"]:checked`);
-    state.options[key] = Number(input?.value);
-  }
-  if (random) {
-    state.options.heuristicConfig = { selection_mode: "random", random_seed: seed };
-  } else if (document.getElementById("heuristicCustomWeightsEnabled").checked) {
-    const weights = {};
-    document.querySelectorAll("[data-heuristic-weight]").forEach((input) => {
-      const value = Number(input.value);
-      if (!Number.isFinite(value)) throw new Error(`${input.dataset.heuristicWeight} \u5FC5\u987B\u662F\u6709\u9650\u6570\u5B57`);
-      weights[input.dataset.heuristicWeight] = value;
-    });
-    state.options.heuristicConfig = weights;
-  } else state.options.heuristicConfig = null;
-  retainSessionSchedulingConfiguration();
-  document.getElementById("heuristicSettingsDialog").close();
-}
 async function uploadSearchTreeCheckpoint(file) {
   const response = await fetch("/api/model-checkpoints", {
     method: "POST",
@@ -11273,19 +11209,11 @@ function buildPayload() {
   const instances = runtimePJobRouteInstances();
   const routes = instances.routes.map((route) => ({ ...normalizeRoute(route), stages: route.stages.map((stage) => ({ ...stage, visits: stage.visits.map((visit) => structuredClone(visit)) })) }));
   const cleans = state.cleans.map(runtimeClean);
-  const options = schedulingRequestOptions();
+  const options = { ...state.options };
   if (state.strategy === "search-tree") {
     options.searchTreeExecutionMode = "continuous";
   }
   return { schemaVersion: EXPECTED_API_SCHEMA, workspaceDeviceId: state.workspaceDeviceId, workspaceTestId: state.testCaseId, deviceName: state.deviceName, device: state.device, strategy: state.strategy, roundCount: state.roundCount, options, hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), cleanValidationTypes: cleanValidationTypes(), recipes: collectRecipes(routes), cleans, routes, rounds: instances.rounds };
-}
-function schedulingRequestOptions() {
-  if (state.strategy !== "heuristic") return { ...state.options };
-  const options = Object.fromEntries(
-    ["loadLockDirection", "loadLockCapacity", "loadLockBindBatch"].map((key) => [key, state.options[key]])
-  );
-  if (state.options.heuristicConfig) options.heuristicConfig = structuredClone(state.options.heuristicConfig);
-  return options;
 }
 function clampParallelismInput(elementId, min, max, fallback) {
   const input = document.getElementById(elementId);
@@ -11464,11 +11392,10 @@ function updateStrategyOptionVisibility() {
   const algorithm = state.availableAlgorithms.find((item) => item.strategy === state.strategy);
   const optionGroups = new Set(algorithm?.optionGroups || []);
   document.getElementById("loadlockOptions").classList.toggle("is-hidden", !optionGroups.has("loadlock"));
-  document.getElementById("heuristicSettings").classList.toggle("is-hidden", state.strategy !== "heuristic");
   document.getElementById("searchTreeOptions").classList.toggle("is-hidden", !optionGroups.has("search-tree"));
 }
 function displayStrategyName(strategy) {
-  const normalized = String(strategy || "heuristic");
+  const normalized = String(strategy || "\u672A\u9009\u62E9\u7B97\u6CD5");
   const cardName = document.querySelector(`[data-strategy-card="${CSS.escape(normalized)}"] b`)?.textContent;
   return state.algorithmMetadata[normalized]?.name || cardName || normalized;
 }
@@ -11681,7 +11608,7 @@ async function runCurrentTestGroup(selectedTestIds = null, runOptions = {}) {
     const runResponse = fetch("/api/run-batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deviceId, group: state.activeTestGroup, testIds: tests.map((test) => test.id), strategy: state.strategy, options: schedulingRequestOptions(), hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: fromResultCardQueue ? 1 : batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() })
+      body: JSON.stringify({ deviceId, group: state.activeTestGroup, testIds: tests.map((test) => test.id), strategy: state.strategy, options: { ...state.options }, hongYeCheck: hongYeCheckEnabled(), executionTimingEnabled: executionTimingEnabled(), skipBaseline: skipBaselineEnabled(), maximumWorkers: fromResultCardQueue ? 1 : batchParallelism(), validationWorkers: validationParallelism(), cleanValidationTypes: cleanValidationTypes() })
     });
     if (!fromResultCardQueue) resetRunResult();
     activeRunContext = null;
@@ -12648,18 +12575,6 @@ document.getElementById("batchTestSelectionForm").addEventListener("submit", (ev
   runBatchSelection(false);
 });
 document.getElementById("openSearchTreeOptionsDialogButton").addEventListener("click", openSearchTreeOptionsDialog);
-document.getElementById("openHeuristicSettingsDialogButton").addEventListener("click", openHeuristicSettingsDialog);
-document.getElementById("heuristicSettingsDialogCancel").addEventListener("click", () => document.getElementById("heuristicSettingsDialog").close());
-document.getElementById("heuristicCustomWeightsEnabled").addEventListener("change", updateHeuristicWeightEditorState);
-document.getElementById("heuristicSelectionMode").addEventListener("change", updateHeuristicWeightEditorState);
-document.getElementById("heuristicSettingsForm").addEventListener("submit", (event) => {
-  event.preventDefault();
-  try {
-    saveHeuristicSettings();
-  } catch (error) {
-    document.getElementById("heuristicSettingsError").textContent = error.message;
-  }
-});
 document.getElementById("searchTreeOptionsDialogCancel").addEventListener("click", () => document.getElementById("searchTreeOptionsDialog").close());
 document.getElementById("searchTreeCheckpointFile").addEventListener("change", (event) => {
   pendingSearchTreeCheckpointFile = event.currentTarget.files?.[0] || null;
