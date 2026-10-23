@@ -10,47 +10,28 @@ from unittest.mock import patch
 import pytest
 
 from app.backend import application as server
+from tests.support.workspace_fixtures import workspace_device
 
 
-def _device(station_name: str = "LP1") -> dict:
-    """创建足以通过工作区归一化的最小设备 init。"""
-    return {
-        "Robots": {
-            "R1": {
-                "Name": "R1",
-                "Type": "ATMRobot",
-                "Capacity": 1,
-                "ArmInfo": {"ArmA": {"SlotIDs": [1]}},
-            },
-        },
-        "Stations": {
-            station_name: {
-                "Name": station_name,
-                "Type": "LoadPort",
-                "Capacity": 1,
-                "Slots": [1],
-            },
-        },
-    }
-
-
-def _create_store(store_dir: Path, data_dir: Path) -> tuple[dict, dict]:
+def _create_store(store_dir: Path, data_dir: Path, init_data: dict | None = None) -> tuple[dict, dict]:
     """建立一台设备及一个测试集，并返回两者。"""
     with (
         patch.object(server, "WORKSPACE_STORE_PATH", store_dir),
         patch.object(server, "DATA_DIR", data_dir),
     ):
-        device, _ = server.import_workspace_device("PSE300.json", _device(), store_dir)
+        device, _ = server.import_workspace_device("PSE300.json", init_data if init_data is not None else workspace_device(), store_dir)
         test = server.create_workspace_test(device["id"], {"name": "基础测试"}, store_dir)
     return device, test
 
 
-def test_v6_layout_keeps_single_pure_device_init() -> None:
-    """默认 v6 目录用 UUID 寻址，device.json 不再嵌入路径和测试。"""
+def test_current_layout_keeps_pure_init_and_restores_legacy_options() -> None:
+    """当前目录分离 init、测试与旧初始化选项，读取时完整恢复选项。"""
     with tempfile.TemporaryDirectory() as directory:
         data_dir = Path(directory) / "data"
         store_dir = data_dir / "datasets"
-        device, test = _create_store(store_dir, data_dir)
+        init = workspace_device()
+        init["InitialMoveID"] = 7
+        device, test = _create_store(store_dir, data_dir, init)
 
         device_dir = store_dir / device["id"]
         test_dir = device_dir / "tests" / test["id"]
@@ -62,29 +43,9 @@ def test_v6_layout_keeps_single_pure_device_init() -> None:
         assert (test_dir / "test.json").is_file()
         init_data = server.json.loads((device_dir / "device.json").read_text(encoding="utf-8"))
         assert set(init_data) == {"Robots", "Stations"}
-
-
-def test_v6_layout_moves_legacy_init_options_out_of_device_json() -> None:
-    """兼容旧 init 扩展字段，但磁盘上的 device.json 始终保持纯净。"""
-    with tempfile.TemporaryDirectory() as directory:
-        data_dir = Path(directory) / "data"
-        store_dir = data_dir / "datasets"
-        source = _device()
-        source["InitialMoveID"] = 7
-        with (
-            patch.object(server, "WORKSPACE_STORE_PATH", store_dir),
-            patch.object(server, "DATA_DIR", data_dir),
-        ):
-            device, _ = server.import_workspace_device("PSE300.json", source, store_dir)
-
-        device_dir = store_dir / device["id"]
-        init_data = server.json.loads((device_dir / "device.json").read_text(encoding="utf-8"))
         metadata = server.json.loads((device_dir / "metadata.json").read_text(encoding="utf-8"))
-        restored = server.get_workspace_device(device["id"], store_dir)
-
-        assert set(init_data) == {"Robots", "Stations"}
         assert metadata["initOptions"]["InitialMoveID"] == 7
-        assert restored["device"]["InitialMoveID"] == 7
+        assert server.get_workspace_device(device["id"], store_dir)["device"]["InitialMoveID"] == 7
 
 
 def test_device_archive_round_trip_includes_all_tests() -> None:
@@ -93,7 +54,7 @@ def test_device_archive_round_trip_includes_all_tests() -> None:
         root = Path(directory)
         source = root / "source.json"
         target = root / "target.json"
-        init_data = _device()
+        init_data = workspace_device()
         init_data["InitialMoveID"] = 7
         device, _ = server.import_workspace_device("PSE300.json", init_data, source)
         server.create_workspace_test(device["id"], {"name": "基础测试"}, source)
@@ -143,12 +104,12 @@ def test_test_archive_requires_matching_device() -> None:
         source_device, test = _create_store(source, root / "source-data")
         content, _ = server.export_workspace_test(source_device["id"], test["id"], source)
 
-        matching_device, _ = server.import_workspace_device("same.json", _device(), matching)
+        matching_device, _ = server.import_workspace_device("same.json", workspace_device(), matching)
         imported, created = server.import_workspace_test_archive(matching_device["id"], content, matching)
         assert created is True
         assert imported["name"] == "基础测试"
 
-        mismatch_device, _ = server.import_workspace_device("other.json", _device("LP2"), mismatch)
+        mismatch_device, _ = server.import_workspace_device("other.json", workspace_device("LP2"), mismatch)
         with pytest.raises(ValueError, match="当前设备不一致"):
             server.import_workspace_test_archive(mismatch_device["id"], content, mismatch)
 
@@ -185,7 +146,7 @@ def test_current_directory_device_export_skips_full_catalog_read() -> None:
             "kind": "ct-scheduler-datasets",
             "schemaVersion": server.WORKSPACE_STORE_VERSION,
         })
-        device, _ = server.import_workspace_device("PSE300.json", _device(), store_dir)
+        device, _ = server.import_workspace_device("PSE300.json", workspace_device(), store_dir)
         server.create_workspace_test(device["id"], {"name": "基础测试"}, store_dir)
 
         with patch.object(
@@ -206,7 +167,7 @@ def test_current_directory_device_import_only_updates_target_device() -> None:
         root = Path(directory)
         source = root / "source.json"
         target = root / "datasets"
-        source_device, _ = server.import_workspace_device("source.json", _device("LP2"), source)
+        source_device, _ = server.import_workspace_device("source.json", workspace_device("LP2"), source)
         server.create_workspace_test(source_device["id"], {"name": "导入测试"}, source)
         content, _ = server.export_workspace_device(source_device["id"], source)
 
@@ -214,7 +175,7 @@ def test_current_directory_device_import_only_updates_target_device() -> None:
             "kind": "ct-scheduler-datasets",
             "schemaVersion": server.WORKSPACE_STORE_VERSION,
         })
-        local_device, _ = server.import_workspace_device("local.json", _device(), target)
+        local_device, _ = server.import_workspace_device("local.json", workspace_device(), target)
         local_test = server.create_workspace_test(local_device["id"], {"name": "本地测试"}, target)
         with patch.object(
             server,
@@ -236,7 +197,7 @@ def test_current_directory_device_import_merges_matching_device_directly() -> No
         root = Path(directory)
         source = root / "source.json"
         target = root / "datasets"
-        source_device, _ = server.import_workspace_device("source.json", _device(), source)
+        source_device, _ = server.import_workspace_device("source.json", workspace_device(), source)
         source_test = server.create_workspace_test(
             source_device["id"], {"name": "导入测试"}, source,
         )
@@ -246,7 +207,7 @@ def test_current_directory_device_import_merges_matching_device_directly() -> No
             "kind": "ct-scheduler-datasets",
             "schemaVersion": server.WORKSPACE_STORE_VERSION,
         })
-        local_device, _ = server.import_workspace_device("local.json", _device(), target)
+        local_device, _ = server.import_workspace_device("local.json", workspace_device(), target)
         local_test = server.create_workspace_test(
             local_device["id"], {"name": "本地测试"}, target,
         )

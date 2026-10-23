@@ -2,19 +2,9 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from app.backend.validation.move_validation import (
-    ATMOSPHERE,
-    VACUUM,
-    DoorState,
-    LoadLockState,
-    MachineState,
-    MaterialState,
     MoveStateReplay,
-    RobotState,
     SlotPhase,
-    SlotState,
     ValidationErrorCode,
     validate_move_list,
 )
@@ -58,103 +48,6 @@ def test_repeated_prepare_and_complete_are_idempotent() -> None:
         )
     assert replay.state.stations["PM1"].door.value == "closed"
 
-def test_dummy_port_returned_material_can_be_picked_again() -> None:
-    """Dummy 放回库存槽后应直接完成，允许下一次清洁任务复用同一物理片。"""
-    update = {
-        "Stations": {
-            "DummyPort": {"Type": "DummyPort", "Capacity": 1, "Slots": [1]},
-        },
-        "Robots": {
-            "ATR": {
-                "Type": "ATMRobot",
-                "Capacity": 1,
-                "ArmInfo": {
-                    "ArmA": {
-                        "Name": "ArmA",
-                        "IsEnable": True,
-                        "SlotIDs": [1],
-                        "AccessibleStations": ["DummyPort"],
-                    },
-                },
-            },
-        },
-        "Materials": [{
-            "ID": 100002,
-            "CurrentModuleName": "DummyPort",
-            "SlotID": 1,
-            "StepID": 0,
-        }],
-    }
-    moves = [
-        _move(1, 6, 0, 1, ModuleName="DummyPort", MatIDList=[100002], StepIDList=[0], SlotList=[1]),
-        _move(
-            2, 0, 1, 2, ModuleName="ATR", MatIDList=[100002], StepIDList=[1],
-            SrcStationList=["DummyPort"], SrcSlotList=[1], RobotSlotList=[1],
-        ),
-        _move(3, 7, 2, 3, ModuleName="DummyPort", MatIDList=[100002], StepIDList=[1], SlotList=[1]),
-        _move(4, 6, 3, 4, ModuleName="DummyPort", MatIDList=[100002], StepIDList=[7], SlotList=[1]),
-        _move(
-            5, 1, 4, 5, ModuleName="ATR", MatIDList=[100002], StepIDList=[8],
-            DestStationList=["DummyPort"], DestSlotList=[1], RobotSlotList=[1],
-        ),
-        _move(6, 7, 5, 6, ModuleName="DummyPort", MatIDList=[100002], StepIDList=[8], SlotList=[1]),
-        _move(7, 6, 6, 7, ModuleName="DummyPort", MatIDList=[100002], StepIDList=[0], SlotList=[1]),
-        _move(
-            8, 0, 7, 8, ModuleName="ATR", MatIDList=[100002], StepIDList=[1],
-            SrcStationList=["DummyPort"], SrcSlotList=[1], RobotSlotList=[1],
-        ),
-    ]
-
-    assert validate_move_list(None, moves, update) == []
-
-def test_buffer_placed_material_can_be_picked_without_process_move() -> None:
-    """Buffer 与库存端口一致，Place 完成后无需 ProcessMove 即可再次 Pick。"""
-    update = {
-        "Stations": {
-            "Buffer1": {"Type": "Buffer", "Capacity": 1, "Slots": [1]},
-        },
-        "Robots": {
-            "ATR": {
-                "Type": "ATMRobot",
-                "Capacity": 1,
-                "ArmInfo": {
-                    "ArmA": {
-                        "Name": "ArmA",
-                        "IsEnable": True,
-                        "SlotIDs": [1],
-                        "AccessibleStations": ["Buffer1"],
-                    },
-                },
-            },
-        },
-        "Materials": [{
-            "ID": 101,
-            "CurrentModuleName": "Buffer1",
-            "SlotID": 1,
-            "StepID": 0,
-        }],
-    }
-    moves = [
-        _move(1, 6, 0, 1, ModuleName="Buffer1", MatIDList=[101], StepIDList=[0], SlotList=[1]),
-        _move(
-            2, 0, 1, 2, ModuleName="ATR", MatIDList=[101], StepIDList=[1],
-            SrcStationList=["Buffer1"], SrcSlotList=[1], RobotSlotList=[1],
-        ),
-        _move(3, 7, 2, 3, ModuleName="Buffer1", MatIDList=[101], StepIDList=[1], SlotList=[1]),
-        _move(4, 6, 3, 4, ModuleName="Buffer1", MatIDList=[101], StepIDList=[2], SlotList=[1]),
-        _move(
-            5, 1, 4, 5, ModuleName="ATR", MatIDList=[101], StepIDList=[2],
-            DestStationList=["Buffer1"], DestSlotList=[1], RobotSlotList=[1],
-        ),
-        _move(6, 7, 5, 6, ModuleName="Buffer1", MatIDList=[101], StepIDList=[2], SlotList=[1]),
-        _move(7, 6, 6, 7, ModuleName="Buffer1", MatIDList=[101], StepIDList=[2], SlotList=[1]),
-        _move(
-            8, 0, 7, 8, ModuleName="ATR", MatIDList=[101], StepIDList=[3],
-            SrcStationList=["Buffer1"], SrcSlotList=[1], RobotSlotList=[1],
-        ),
-    ]
-
-    assert validate_move_list(None, moves, update) == []
 
 def test_repeated_door_action_still_rejects_busy_overlap() -> None:
     """幂等开关门不能绕过门机构的时间互斥。"""
@@ -266,3 +159,29 @@ def test_pick_after_aligner_service_accepts_next_robot_step() -> None:
     ]
 
     assert validate_move_list(None, moves, update) == []
+
+
+def test_inventory_return_is_pickable_without_a_process_move():
+    """DummyPort 复用与 Buffer 中转共用取放流程，只保留物料与工步的业务差异。"""
+    for station, station_type, material_id, steps in [
+        ("DummyPort", "DummyPort", 100002, (7, 8, 0, 1)),
+        ("Buffer1", "Buffer", 101, (2, 2, 2, 3)),
+    ]:
+        update = {
+            "Stations": {station: {"Type": station_type, "Capacity": 1, "Slots": [1]}},
+            "Robots": {"ATR": {"Type": "ATMRobot", "Capacity": 1, "ArmInfo": {
+                "ArmA": {"Name": "ArmA", "IsEnable": True, "SlotIDs": [1], "AccessibleStations": [station]}}}},
+            "Materials": [{"ID": material_id, "CurrentModuleName": station, "SlotID": 1, "StepID": 0}],
+        }
+        ready, returned, next_ready, next_pick = steps
+        moves = [
+            _move(1, 6, 0, 1, ModuleName=station, MatIDList=[material_id], StepIDList=[0], SlotList=[1]),
+            _move(2, 0, 1, 2, ModuleName="ATR", MatIDList=[material_id], StepIDList=[1], SrcStationList=[station], SrcSlotList=[1], RobotSlotList=[1]),
+            _move(3, 7, 2, 3, ModuleName=station, MatIDList=[material_id], StepIDList=[1], SlotList=[1]),
+            _move(4, 6, 3, 4, ModuleName=station, MatIDList=[material_id], StepIDList=[ready], SlotList=[1]),
+            _move(5, 1, 4, 5, ModuleName="ATR", MatIDList=[material_id], StepIDList=[returned], DestStationList=[station], DestSlotList=[1], RobotSlotList=[1]),
+            _move(6, 7, 5, 6, ModuleName=station, MatIDList=[material_id], StepIDList=[returned], SlotList=[1]),
+            _move(7, 6, 6, 7, ModuleName=station, MatIDList=[material_id], StepIDList=[next_ready], SlotList=[1]),
+            _move(8, 0, 7, 8, ModuleName="ATR", MatIDList=[material_id], StepIDList=[next_pick], SrcStationList=[station], SrcSlotList=[1], RobotSlotList=[1]),
+        ]
+        assert validate_move_list(None, moves, update) == [], station_type

@@ -14,6 +14,8 @@ from tests.support.move_validation_fixtures import dual_chamber_update, dual_tra
 def test_completed_validation_state_matches_every_event_replay(monkeypatch) -> None:
     """终态复用必须保留门、压力、持片、Step、占用窗口和已完成动作。"""
     update, moves = dual_chamber_update(), dual_transfer_moves()
+    moves[0]["Extension"] = {"values": [1]}
+    original = deepcopy((update, moves))
     reference = MoveStateReplay(None, moves, update)
     events = list(_planned_events(moves))
     for _, _, notification in events:
@@ -29,6 +31,8 @@ def test_completed_validation_state_matches_every_event_replay(monkeypatch) -> N
     assert notifications == [event[2] for event in events]
     assert runtime.state == reference.state
     assert runtime.current_plan == reference.materialized_plan
+    runtime.current_plan[0]["Extension"]["values"].append(2)
+    assert (update, moves) == original
 
 
 def test_intermediate_cutoff_still_replays_running_actions() -> None:
@@ -48,17 +52,6 @@ def test_modified_notification_invalidates_validated_completion() -> None:
     replay = MoveStateReplay.from_validation(validation)
     replay.update_move_state({"MoveID": 1, "MoveState": 0, "StartTime": 0.1}, snapshot=False)
     assert replay.finish_validated_plan(11) is False
-
-
-def test_validation_and_runtime_do_not_modify_input() -> None:
-    """快速路径同样隔离原始 update、Move 数组与扩展元数据。"""
-    update, moves = dual_chamber_update(), dual_transfer_moves()
-    moves[0]["Extension"] = {"values": [1]}
-    original = deepcopy((update, moves))
-    runtime = PlatformMoveListRuntime(update, {"MoveList": moves})
-    advance_platform_move_list_to_update(runtime, 11)
-    runtime.current_plan[0]["Extension"]["values"].append(2)
-    assert (update, moves) == original
 
 
 def test_serial_events_preserve_tolerance_and_zero_duration_order() -> None:

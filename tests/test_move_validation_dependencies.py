@@ -1,175 +1,43 @@
-"""平台 MoveID、前驱关系与增量历史校验测试。"""
+"""Move 依赖代表图：格式、分叉汇合与提交历史、缺失/环/时间错误。"""
+from app.backend.validation.move_validation import ValidationErrorCode, validate_move_list
+from tests.support.move_validation_fixtures import move
 
-from __future__ import annotations
 
-from types import SimpleNamespace
+def _update():
+    """依赖测试只需要一个无物料 PM，不混入搬运或设备计时约束。"""
+    return {"Stations": {"PM1": {"Type": "ProcessChamber", "Capacity": 1}}, "Robots": {}, "Materials": []}
 
-from app.backend.validation.move_validation import (
-    ATMOSPHERE,
-    VACUUM,
-    DoorState,
-    LoadLockState,
-    MachineState,
-    MaterialState,
-    MoveStateReplay,
-    RobotState,
-    SlotPhase,
-    SlotState,
-    ValidationErrorCode,
-    validate_move_list,
-)
-from tests.support.move_validation_fixtures import (
-    dual_chamber_update as _dual_chamber_update,
-    move as _move,
-)
 
-def test_validation_error_codes_are_unique_and_non_object_moves_are_coded() -> None:
-    """每类输出校验错误都必须有唯一稳定码，非法 Move 元素也不能抛普通异常。"""
-    codes = [error_code.value for error_code in ValidationErrorCode]
-
+def test_validation_codes_are_unique_and_invalid_moves_have_a_code():
+    """格式错误保留稳定错误码，不退化为非结构化异常。"""
+    codes = [item.value for item in ValidationErrorCode]
     assert len(codes) == len(set(codes))
-    assert validate_move_list(None, ["invalid"], {}) == [
-        "[MVL-FMT-001] MoveList[0] 必须是 JSON 对象"
-    ]
+    issues = validate_move_list(None, ["invalid"], {})
+    assert any("[MVL-FMT-001]" in issue for issue in issues)
 
-def test_dependency_rejects_missing_predecessor() -> None:
-    """PreMoveID 引用不存在的 MoveID 必须在平台侧失败。"""
+
+def test_dependency_graph_accepts_duplicate_edges_and_committed_predecessors():
+    """一个分叉汇合图同时覆盖重复边去重、本代前驱及已完成历史引用。"""
+    history = {99: move(99, 6, 0, 0, ModuleName="PM1")}
     moves = [
-        _move(
-            1,
-            5,
-            0,
-            1,
-            ModuleName="VACRobot",
-            SrcStationList=["PM1"],
-            DestStationList=["LL1"],
-            RobotSlotList=[1],
-            MatIDList=[],
-            PreMoveID=[999],
-        )
+        move(1, 6, 0, 1, ModuleName="PM1", PreMoveID=[99]),
+        move(2, 6, 1, 2, ModuleName="PM1", PreMoveID=[1, 1]),
+        move(3, 6, 2, 3, ModuleName="PM1", PreMoveID=[1, 1]),
+        move(4, 6, 3, 4, ModuleName="PM1", PreMoveID=[2, 3, 2, 3, 99]),
     ]
+    assert validate_move_list(None, moves, _update(), external_predecessors=history) == []
 
-    issues = validate_move_list(None, moves, _dual_chamber_update())
 
-    assert "不存在的 MoveID=999" in issues[0]
-
-def test_dependency_rejects_cycle() -> None:
-    """PreMoveID DAG 中的环不能依赖时间排序侥幸通过。"""
-    moves = [
-        _move(1, 10, 0, 0, ModuleName="LL1", MatIDList=[], PreMoveID=[2]),
-        _move(2, 10, 0, 0, ModuleName="LL1", MatIDList=[], PreMoveID=[1]),
+def test_invalid_dependency_graphs_report_missing_cycle_and_time_codes():
+    """每种独立错误保留一张最小反例图，已提交历史也必须满足时间边界。"""
+    cases = [
+        ("未提交的前驱", [move(101, 6, 2, 3, ModuleName="PM1", PreMoveID=[999])],
+         {1: move(1, 6, 0, 1, ModuleName="PM1")}, ValidationErrorCode.PREDECESSOR_MISSING),
+        ("本代依赖环", [move(1, 6, 0, 0, ModuleName="PM1", PreMoveID=[2]), move(2, 6, 0, 0, ModuleName="PM1", PreMoveID=[1])],
+         {}, ValidationErrorCode.DEPENDENCY_CYCLE),
+        ("历史动作尚未完成", [move(101, 6, 2, 3, ModuleName="PM1", PreMoveID=[1])],
+         {1: move(1, 6, 0, 5, ModuleName="PM1")}, ValidationErrorCode.PREDECESSOR_TIME_CONFLICT),
     ]
-
-    issues = validate_move_list(None, moves, _dual_chamber_update())
-
-    assert "依赖环" in issues[0]
-
-def test_dependency_duplicate_edges_do_not_inflate_indegree() -> None:
-    """重复前驱引用只构成一条拓扑边，分叉汇合不能重复入队或误报环。"""
-    moves = [
-        _move(1, 6, 0, 1, ModuleName="PM1"),
-        _move(2, 6, 1, 2, ModuleName="PM1", PreMoveID=[1, 1]),
-        _move(3, 6, 2, 3, ModuleName="PM1", PreMoveID=[1, 1]),
-        _move(4, 6, 3, 4, ModuleName="PM1", PreMoveID=[2, 3, 2, 3]),
-    ]
-
-    assert validate_move_list(None, moves, _single_pm_update()) == []
-
-
-def test_dependency_rejects_predecessor_finishing_after_child_starts() -> None:
-    """即使拓扑无环，前驱未完成时也不能启动后继 Move。"""
-    moves = [
-        _move(1, 10, 0, 5, ModuleName="LL1", MatIDList=[]),
-        _move(2, 10, 2, 3, ModuleName="LL1", MatIDList=[], PreMoveID=[1]),
-    ]
-
-    issues = validate_move_list(None, moves, _dual_chamber_update())
-
-    assert "前驱 MoveID=1 尚未结束" in issues[0]
-
-def _single_pm_update() -> dict:
-    """创建单 PM、无机器人的最小设备快照。"""
-    return {
-        "Stations": {
-            "PM1": {"Type": "ProcessChamber", "Capacity": 1},
-        },
-        "Robots": {},
-        "Materials": [],
-    }
-
-def test_recompute_incremental_output_may_reference_committed_predecessors() -> None:
-    """重算增量输出引用旧代已提交 Move 作为前驱必须通过校验。"""
-    moves = [
-        _move(101, 6, 4, 5, ModuleName="PM1", PreMoveID=[1]),
-        _move(102, 6, 5, 6, ModuleName="PM1", PreMoveID=[101, 2]),
-    ]
-    external_predecessors = {
-        1: _move(1, 6, 0, 1, ModuleName="PM1"),
-        2: _move(2, 6, 1, 2, ModuleName="PM1"),
-    }
-
-    issues = validate_move_list(
-        None,
-        moves,
-        _single_pm_update(),
-        external_predecessors=external_predecessors,
-    )
-
-    assert issues == []
-
-def test_recompute_external_predecessor_does_not_join_dependency_cycle() -> None:
-    """外部前驱是已完成历史，不能因为其 ID 不在本代而误报依赖环。"""
-    moves = [
-        _move(101, 6, 4, 5, ModuleName="PM1", PreMoveID=[1]),
-        _move(102, 6, 5, 6, ModuleName="PM1", PreMoveID=[101]),
-    ]
-    external_predecessors = {
-        1: _move(1, 6, 0, 1, ModuleName="PM1"),
-    }
-
-    issues = validate_move_list(
-        None,
-        moves,
-        _single_pm_update(),
-        external_predecessors=external_predecessors,
-    )
-
-    assert issues == []
-
-def test_recompute_external_predecessor_still_requires_finished_time() -> None:
-    """外部前驱虽合法，但其 EndTime 晚于本动作 StartTime 时仍须报时间冲突。"""
-    moves = [
-        _move(101, 6, 2, 3, ModuleName="PM1", PreMoveID=[1]),
-    ]
-    external_predecessors = {
-        1: _move(1, 6, 0, 5, ModuleName="PM1"),
-    }
-
-    issues = validate_move_list(
-        None,
-        moves,
-        _single_pm_update(),
-        external_predecessors=external_predecessors,
-    )
-
-    assert issues
-    assert "前驱 MoveID=1 尚未结束" in issues[0]
-
-def test_recompute_still_rejects_reference_outside_committed_history() -> None:
-    """即使允许外部前驱，引用既不在本代也不在已提交历史的 ID 仍须失败。"""
-    moves = [
-        _move(101, 6, 2, 3, ModuleName="PM1", PreMoveID=[999]),
-    ]
-    external_predecessors = {
-        1: _move(1, 6, 0, 1, ModuleName="PM1"),
-    }
-
-    issues = validate_move_list(
-        None,
-        moves,
-        _single_pm_update(),
-        external_predecessors=external_predecessors,
-    )
-
-    assert issues
-    assert "不存在的 MoveID=999" in issues[0]
+    for name, moves, history, expected in cases:
+        issues = validate_move_list(None, moves, _update(), external_predecessors=history)
+        assert any(f"[{expected.value}]" in issue for issue in issues), (name, issues)

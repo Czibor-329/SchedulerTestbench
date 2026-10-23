@@ -112,33 +112,21 @@ def _recompute_snapshot(runtime: PlatformMoveListRuntime, time: float) -> tuple[
 
 
 @pytest.mark.parametrize("running_wac", [False, True])
-def test_recompute_exports_only_completed_process_variables(running_wac: bool) -> None:
-    """加工中不累加，WAC 中不清零；逐槽计数也不得提前应用完成投影。"""
-    initial, output = _dual_process_plan(running_wac=running_wac)
-    original = deepcopy((initial, output))
-    runtime = PlatformMoveListRuntime(initial, output, device=initial)
-    update, projected, _ = _recompute_snapshot(runtime, 5.0)
-
-    actual_count = 3 if running_wac else 0
-    projected_count = 0 if running_wac else 1
-    assert projected.stations["PM1"].state_variables["ProcessCount"] == projected_count
-    station = update["Stations"]["PM1"]
-    assert station["StateVariables"]["ProcessCount"]["Value"]["Value"] == actual_count
-    assert station["MaterialCount"] == {"1": 0, "2": 0}
-    assert station["TimeToAvailableOfSlot"] == {"1": 6.0, "2": 6.0}
-    assert [(item["MoveID"], item["MoveState"]) for item in update["MoveStates"]] == [(1, MoveStateReplay.RUNNING)]
-    assert (initial, output) == original
-
-
-@pytest.mark.parametrize("running_wac", [False, True])
 def test_running_process_crosses_two_recomputations_without_early_commit(running_wac: bool) -> None:
     """同一 Running 跨两轮空计划重算仍保持原值，在真实结束时只更新一次。"""
     initial, output = _dual_process_plan(running_wac=running_wac)
+    original = deepcopy((initial, output))
     runtime = PlatformMoveListRuntime(initial, output, device=initial)
     for time in (5.0, 7.0):
         update, projected, committed = _recompute_snapshot(runtime, time)
         assert update["Stations"]["PM1"]["StateVariables"]["ProcessCount"]["Value"]["Value"] == (3 if running_wac else 0)
-        assert len(update["MoveStates"]) == 1
+        expected_projection = 0 if running_wac else 1
+        assert projected.stations["PM1"].state_variables["ProcessCount"] == expected_projection
+        station = update["Stations"]["PM1"]
+        assert station["MaterialCount"] == {"1": 0, "2": 0}
+        assert station["TimeToAvailableOfSlot"] == {"1": 11.0 - time, "2": 11.0 - time}
+        assert [(item["MoveID"], item["MoveState"]) for item in update["MoveStates"]] == [(1, MoveStateReplay.RUNNING)]
+        assert (initial, output) == original
         runtime.replace_plan(update, {"MoveList": []}, time, "测试重算", committed, initial_state=projected)
         assert runtime.current_plan == []
         assert runtime.state.stations["PM1"].state_variables["ProcessCount"] == (3 if running_wac else 0)

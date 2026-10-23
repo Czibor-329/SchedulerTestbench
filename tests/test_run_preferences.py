@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.backend.preferences.repository import (
+    RUN_PREFERENCES_SCHEMA_VERSION,
     read_analysis_preferences,
     read_run_preferences,
     update_analysis_preferences,
@@ -47,183 +48,74 @@ def _analysis_settings(**overrides) -> dict:
     return value
 
 
-def test_missing_run_preferences_use_defaults_without_creating_file(tmp_path: Path) -> None:
-    """首次启动应返回安全默认值，读取操作本身不得产生文件写入。"""
-    path = tmp_path / "run_preferences.json"
+def test_preferences_round_trip_keeps_run_and_analysis_settings_separate(tmp_path):
+    """缺省读取无写入，两类设置分别保存，更新分析偏好不覆盖运行设置。"""
+    path = tmp_path / "preferences.json"
     assert read_run_preferences(path) == _settings()
-    assert read_analysis_preferences(path) == _analysis_settings()
-    assert not path.exists()
+    assert read_analysis_preferences(path) == _analysis_settings() and not path.exists()
+    run = _settings(maximumWorkers=30, validationWorkers=15)
+    assert update_run_preferences(run, path) == run
+    assert json.loads(path.read_text(encoding="utf-8")) == {"schemaVersion": RUN_PREFERENCES_SCHEMA_VERSION, "runSettings": run, "analysisSettings": _analysis_settings()}
+    analysis = _analysis_settings(metricIds=["throughput", "makespan"], windowMode="full", timeBudgetSeconds=300)
+    assert update_analysis_preferences(analysis, path) == analysis
+    assert read_analysis_preferences(path) == analysis and read_run_preferences(path) == run
 
 
-def test_run_preferences_are_versioned_and_persisted_atomically(tmp_path: Path) -> None:
-    """保存后应写入 schemaVersion 6，并保留默认分析设置。"""
-    path = tmp_path / "run_preferences.json"
-    expected = _settings(
-        skipBaseline=True,
-        maximumWorkers=30,
-        validationWorkers=15,
-    )
-    assert update_run_preferences(expected, path) == expected
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload == {
-        "schemaVersion": 6,
-        "runSettings": expected,
-        "analysisSettings": _analysis_settings(),
-    }
-    assert read_run_preferences(path) == expected
-
-
-@pytest.mark.parametrize(
-    "overrides, message",
-    [
-        ({"maximumWorkers": 31}, "maximumWorkers 必须在 1 到 30 之间"),
-        ({"validationWorkers": 16}, "validationWorkers 必须在 1 到 15 之间"),
-        ({"hongYeCheck": 1}, "hongYeCheck 必须是布尔值"),
-        ({"cleanValidationTypes": ["unknown"]}, "cleanValidationTypes 包含不支持的类型"),
-    ],
-)
-def test_run_preferences_reject_invalid_values(
-    tmp_path: Path,
-    overrides: dict,
-    message: str,
-) -> None:
-    """服务端不得把越界或错误类型的页面输入写入本地数据。"""
-    with pytest.raises(ValueError, match=message):
-        update_run_preferences(_settings(**overrides), tmp_path / "run_preferences.json")
-
-
-def test_run_preferences_reject_newer_schema(tmp_path: Path) -> None:
-    """较新版本偏好文件必须显式拒绝，不能按旧格式静默覆盖。"""
-    path = tmp_path / "run_preferences.json"
-    path.write_text(
-        json.dumps({"schemaVersion": 7, "runSettings": _settings()}),
-        encoding="utf-8",
-    )
-    with pytest.raises(ValueError, match="版本过新：7"):
-        read_run_preferences(path)
-
-
-def test_run_preferences_migrate_v1_and_keep_recoverable_backup(tmp_path: Path) -> None:
-    """旧偏好首次读取时应补齐 Clean 类型并保留原文件副本。"""
-    path = tmp_path / "run_preferences.json"
-    old_settings = _settings()
-    old_settings.pop("cleanValidationTypes")
-    path.write_text(json.dumps({"schemaVersion": 1, "runSettings": old_settings}), encoding="utf-8")
-
-    assert read_run_preferences(path) == _settings()
-    assert json.loads((tmp_path / "run_preferences.json.v1.bak").read_text(encoding="utf-8"))["schemaVersion"] == 1
-
-
-def test_run_preferences_migrate_v2_with_execution_time_disabled(tmp_path: Path) -> None:
-    """v2 偏好升级后应默认关闭执行时间模拟并保留原始备份。"""
-    path = tmp_path / "run_preferences.json"
-    old_settings = _settings()
-    old_settings.pop("executionTimingEnabled")
-    path.write_text(json.dumps({"schemaVersion": 2, "runSettings": old_settings}), encoding="utf-8")
-
-    assert read_run_preferences(path) == _settings()
-    assert json.loads((tmp_path / "run_preferences.json.v2.bak").read_text(encoding="utf-8"))["schemaVersion"] == 2
-
-
-def test_run_preferences_migrate_v3_and_add_analysis_settings(tmp_path: Path) -> None:
-    """v3 偏好升级后应补齐分析设置，并保留可恢复的原始文件。"""
-    path = tmp_path / "run_preferences.json"
-    fixture = Path(__file__).parent / "fixtures" / "run_preferences_v3.json"
-    path.write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
-
-    assert read_analysis_preferences(path) == _analysis_settings()
-    assert json.loads(path.read_text(encoding="utf-8"))["schemaVersion"] == 6
-    assert json.loads((tmp_path / "run_preferences.json.v3.bak").read_text(encoding="utf-8"))["schemaVersion"] == 3
-
-
-@pytest.mark.parametrize("compatibility", [False, True])
-def test_v4_migration_removes_compatibility_without_disabling_fluctuation(tmp_path: Path, compatibility: bool) -> None:
-    """迁移删除旧开关但保留波动选择和分析偏好，原始备份及重复读取保持稳定。"""
-    path = tmp_path / "run_preferences.json"
-    expected = _settings(executionTimingEnabled=True)
-    original = {"schemaVersion": 4, "runSettings": {**expected, "compatibilityMode": compatibility}, "analysisSettings": _analysis_settings(windowMode="full")}
-    path.write_text(json.dumps(original), encoding="utf-8")
-    assert read_run_preferences(path) == expected
-    assert read_analysis_preferences(path)["windowMode"] == "full"
-    backup = path.with_suffix(".json.v4.bak")
-    assert json.loads(backup.read_text(encoding="utf-8")) == original
-    migrated = path.read_bytes()
-    assert read_run_preferences(path) == expected
-    assert path.read_bytes() == migrated
-    assert json.loads(backup.read_text(encoding="utf-8")) == original
-
-
-def test_v5_migrates_renamed_analysis_metric_ids(tmp_path: Path) -> None:
-    """v5 偏好应自动把旧指标 ID 改写成当前白名单，并保留用户勾选。"""
-    path = tmp_path / "run_preferences.json"
-    original = {
-        "schemaVersion": 5,
-        "runSettings": _settings(),
-        "analysisSettings": {
-            "metricIds": [
-                "average_recompute_time",
-                "throughput",
-                "company_capacity_baseline",
-                "company_capacity_improvement",
-                "baseline_improvement",
-            ],
-            "windowMode": "steady",
-            "timeBudgetSeconds": 300,
-        },
-    }
-    path.write_text(json.dumps(original), encoding="utf-8")
-
-    assert read_analysis_preferences(path) == {
-        "metricIds": [
-            "throughput",
-            "average_recompute_time",
-            "company_capacity_baseline",
-            "company_capacity_ratio",
-        ],
-        "windowMode": "steady",
-        "timeBudgetSeconds": 300,
-    }
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["schemaVersion"] == 6
-    assert payload["analysisSettings"]["metricIds"] == [
-        "throughput",
-        "average_recompute_time",
-        "company_capacity_baseline",
-        "company_capacity_ratio",
+def test_invalid_preferences_never_modify_saved_settings(tmp_path):
+    """分别选取范围、类型和枚举错误；所有失败写入都保留原文件。"""
+    path = tmp_path / "preferences.json"
+    update_run_preferences(_settings(), path)
+    original = path.read_bytes()
+    cases = [
+        (update_run_preferences, _settings(maximumWorkers=31), "maximumWorkers"),
+        (update_run_preferences, _settings(validationWorkers=16), "validationWorkers"),
+        (update_run_preferences, _settings(hongYeCheck=1), "布尔值"),
+        (update_run_preferences, _settings(cleanValidationTypes=["unknown"]), "cleanValidationTypes"),
+        (update_analysis_preferences, _analysis_settings(metricIds=["unknown"]), "metricIds"),
+        (update_analysis_preferences, _analysis_settings(windowMode="recent"), "windowMode"),
+        (update_analysis_preferences, _analysis_settings(timeBudgetSeconds=60), "timeBudgetSeconds"),
     ]
-    assert json.loads((tmp_path / "run_preferences.json.v5.bak").read_text(encoding="utf-8")) == original
+    for save, value, field in cases:
+        with pytest.raises(ValueError, match=field):
+            save(value, path)
+        assert path.read_bytes() == original, field
 
 
-def test_analysis_preferences_persist_without_overwriting_run_settings(tmp_path: Path) -> None:
-    """保存个人分析习惯时应逐指标规范化，并完整保留运行设置。"""
-    path = tmp_path / "run_preferences.json"
-    run_settings = _settings(maximumWorkers=8)
-    update_run_preferences(run_settings, path)
-    expected = _analysis_settings(
-        metricIds=["throughput", "makespan"],
-        windowMode="full",
-        timeBudgetSeconds=300,
-    )
-    assert update_analysis_preferences(expected, path) == expected
-    assert read_run_preferences(path) == run_settings
+def test_newer_preferences_are_rejected_without_overwriting_file(tmp_path):
+    """未知高版本不能被旧服务静默重写。"""
+    path = tmp_path / "preferences.json"
+    path.write_text(json.dumps({"schemaVersion": RUN_PREFERENCES_SCHEMA_VERSION + 1, "runSettings": _settings()}), encoding="utf-8")
+    original = path.read_bytes()
+    with pytest.raises(ValueError, match="版本过新"):
+        read_run_preferences(path)
+    assert path.read_bytes() == original
 
 
-@pytest.mark.parametrize(
-    "overrides, message",
-    [
-        ({"metricIds": ["unknown"]}, "metricIds 包含不支持的指标"),
-        ({"windowMode": "recent"}, "windowMode 只支持 steady 或 full"),
-        ({"timeBudgetSeconds": 60}, "timeBudgetSeconds 只支持 30、120 或 300 秒"),
-    ],
-)
-def test_analysis_preferences_reject_invalid_values(
-    tmp_path: Path,
-    overrides: dict,
-    message: str,
-) -> None:
-    """分析偏好的指标和时间控制必须由服务端校验。"""
-    with pytest.raises(ValueError, match=message):
-        update_analysis_preferences(
-            _analysis_settings(**overrides),
-            tmp_path / "run_preferences.json",
-        )
+def test_released_preference_migrations_keep_values_backups_and_idempotence(tmp_path):
+    """各已发布版本各保留一个代表输入，共用备份、用户值与幂等检查。"""
+    old_v1 = _settings()
+    old_v1.pop("cleanValidationTypes")
+    old_v2 = _settings()
+    old_v2.pop("executionTimingEnabled")
+    v3 = json.loads((Path(__file__).parent / "fixtures/run_preferences_v3.json").read_text(encoding="utf-8"))
+    cases = [
+        ({"schemaVersion": 1, "runSettings": old_v1}, _settings(), _analysis_settings()),
+        ({"schemaVersion": 2, "runSettings": old_v2}, _settings(), _analysis_settings()),
+        (v3, _settings(**{key: value for key, value in v3["runSettings"].items() if key in _settings()}), _analysis_settings()),
+        ({"schemaVersion": 4, "runSettings": {**_settings(executionTimingEnabled=True), "compatibilityMode": True}, "analysisSettings": _analysis_settings(windowMode="full")}, _settings(executionTimingEnabled=True), _analysis_settings(windowMode="full")),
+        ({"schemaVersion": 5, "runSettings": _settings(), "analysisSettings": {"metricIds": ["average_recompute_time", "throughput", "company_capacity_baseline", "company_capacity_improvement", "baseline_improvement"], "windowMode": "steady", "timeBudgetSeconds": 300}}, _settings(), _analysis_settings(metricIds=["throughput", "average_recompute_time", "company_capacity_baseline", "company_capacity_ratio"], timeBudgetSeconds=300)),
+    ]
+    for original, run, analysis in cases:
+        version = original["schemaVersion"]
+        directory = tmp_path / str(version)
+        directory.mkdir()
+        path = directory / "preferences.json"
+        path.write_text(json.dumps(original), encoding="utf-8")
+        assert read_run_preferences(path) == run, version
+        assert read_analysis_preferences(path) == analysis, version
+        assert json.loads(path.read_text(encoding="utf-8"))["schemaVersion"] == RUN_PREFERENCES_SCHEMA_VERSION
+        backup = path.with_suffix(f".json.v{version}.bak")
+        assert json.loads(backup.read_text(encoding="utf-8")) == original
+        current_bytes, backup_bytes = path.read_bytes(), backup.read_bytes()
+        assert read_run_preferences(path) == run
+        assert path.read_bytes() == current_bytes and backup.read_bytes() == backup_bytes

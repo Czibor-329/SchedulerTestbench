@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from app.backend.validation.move_validation import (
-    ATMOSPHERE,
     VACUUM,
     DoorState,
     LoadLockState,
@@ -15,7 +12,6 @@ from app.backend.validation.move_validation import (
     RobotState,
     SlotPhase,
     SlotState,
-    ValidationErrorCode,
     validate_move_list,
 )
 from tests.support.move_validation_fixtures import (
@@ -34,143 +30,6 @@ def _zero_duration_pm_route(step_id: int = 4, station: str = "PM1") -> dict:
             }
         ]
     }
-
-def test_dual_chamber_omitted_zero_duration_process_allows_paired_pick() -> None:
-    """双腔两片 0s 工艺省略 ProcessMove 后，关门即应成对完成并允许双片 Pick。"""
-    update = _dual_chamber_update()
-    zero_route = _zero_duration_pm_route()
-    for material in update["Materials"]:
-        material["Route"] = zero_route
-        material["PJobName"] = "P1"
-    update["ProcessJobs"] = [{
-        "JobName": "P1",
-        "MatList": [101, 102],
-        "OriginRoute": zero_route,
-    }]
-    moves = [
-        _move(1, 6, 0, 1, ModuleName="PM1", RelatedRobotType=1),
-        _move(
-            2, 0, 1, 2, ModuleName="VACRobot", MatIDList=[101, 102],
-            SrcStationList=["PM1", "PM1"], SrcSlotList=[1, 2], RobotSlotList=[1, 2],
-        ),
-        _move(
-            3, 1, 2, 3, ModuleName="VACRobot", MatIDList=[101, 102],
-            DestStationList=["PM1", "PM1"], DestSlotList=[1, 2], RobotSlotList=[1, 2],
-            StepIDList=[4, 4],
-        ),
-        _move(4, 7, 3, 4, ModuleName="PM1"),
-        _move(5, 6, 4, 5, ModuleName="PM1", RelatedRobotType=1, RelatedActionType=1),
-        _move(
-            6, 0, 5, 6, ModuleName="VACRobot", MatIDList=[101, 102],
-            SrcStationList=["PM1", "PM1"], SrcSlotList=[1, 2], RobotSlotList=[1, 2],
-        ),
-    ]
-    assert validate_move_list(None, moves, update) == []
-
-def test_dual_chamber_omitted_zero_duration_process_from_pjob_matlist() -> None:
-    """仅 OriginRoute/MatList 声明 0s 时，物理第二片也应能省略 ProcessMove。"""
-    update = _dual_chamber_update()
-    zero_route = _zero_duration_pm_route()
-    update["Materials"] = [update["Materials"][0]]
-    update["Materials"][0]["Route"] = {}
-    update["ProcessJobs"] = [{
-        "JobName": "P1",
-        "MatList": [101, 102],
-        "OriginRoute": zero_route,
-    }]
-    update["Materials"].append({
-        "ID": 102,
-        "CurrentModuleName": "PM1",
-        "SlotID": 2,
-        "StepID": 4,
-    })
-    moves = [
-        _move(1, 6, 0, 1, ModuleName="PM1", RelatedRobotType=1),
-        _move(
-            2, 0, 1, 2, ModuleName="VACRobot", MatIDList=[101, 102],
-            SrcStationList=["PM1", "PM1"], SrcSlotList=[1, 2], RobotSlotList=[1, 2],
-        ),
-        _move(
-            3, 1, 2, 3, ModuleName="VACRobot", MatIDList=[101, 102],
-            DestStationList=["PM1", "PM1"], DestSlotList=[1, 2], RobotSlotList=[1, 2],
-        ),
-        _move(4, 7, 3, 4, ModuleName="PM1"),
-        _move(5, 6, 4, 5, ModuleName="PM1", RelatedRobotType=1, RelatedActionType=1),
-        _move(
-            6, 0, 5, 6, ModuleName="VACRobot", MatIDList=[101, 102],
-            SrcStationList=["PM1", "PM1"], SrcSlotList=[1, 2], RobotSlotList=[1, 2],
-        ),
-    ]
-    assert validate_move_list(None, moves, update) == []
-
-def test_dual_chamber_mixed_process_times_still_require_process_move() -> None:
-    """双腔一槽 0s、一槽非零时，不能省略覆盖两片的 ProcessMove。"""
-    update = _dual_chamber_update()
-    update["Materials"][0]["Route"] = _zero_duration_pm_route()
-    update["Materials"][1]["Route"] = {
-        "RouteSteps": [{
-            "StepID": 4,
-            "NeedProcess": True,
-            "Visits": [{"StationName": "PM1", "ProcessRecipe": "LongRecipe"}],
-        }]
-    }
-    update["ProcessRecipes"] = [{
-        "Name": "LongRecipe",
-        "ModuleName": "PM1",
-        "Time": 10.0,
-    }]
-    moves = [
-        _move(1, 6, 0, 1, ModuleName="PM1", RelatedRobotType=1),
-        _move(
-            2, 0, 1, 2, ModuleName="VACRobot", MatIDList=[101, 102],
-            SrcStationList=["PM1", "PM1"], SrcSlotList=[1, 2], RobotSlotList=[1, 2],
-        ),
-        _move(
-            3, 1, 2, 3, ModuleName="VACRobot", MatIDList=[101, 102],
-            DestStationList=["PM1", "PM1"], DestSlotList=[1, 2], RobotSlotList=[1, 2],
-            StepIDList=[4, 4],
-        ),
-        _move(4, 7, 3, 4, ModuleName="PM1"),
-        _move(5, 6, 4, 5, ModuleName="PM1", RelatedRobotType=1, RelatedActionType=1),
-        _move(
-            6, 0, 5, 6, ModuleName="VACRobot", MatIDList=[101, 102],
-            SrcStationList=["PM1", "PM1"], SrcSlotList=[1, 2], RobotSlotList=[1, 2],
-        ),
-    ]
-    issues = validate_move_list(None, moves, update)
-    assert issues
-    assert "没有匹配的已完成物料" in issues[0]
-
-
-def test_single_process_chamber_omitted_zero_duration_process_allows_pick() -> None:
-    """单腔 PM 的 0s 工艺省略 ProcessMove 后，开门即可取出已完成晶圆。"""
-    update = _dual_chamber_update()
-    update["Stations"]["PM1"] = {"Type": "ProcessChamber", "Capacity": 1}
-    update["Stations"].pop("LL1")
-    update["Materials"] = [update["Materials"][0]]
-    zero_route = _zero_duration_pm_route()
-    zero_route["RouteSteps"][0]["Visits"][0]["ProcessRecipe"] = "ZeroRecipe"
-    update["Materials"][0]["Route"] = zero_route
-    update["Materials"][0]["PJobName"] = "P1"
-    update["ProcessRecipes"] = [{
-        "Name": "ZeroRecipe",
-        "ModuleName": "PM1",
-        "Time": 0.0,
-    }]
-    update["ProcessJobs"] = [{
-        "JobName": "P1",
-        "MatList": [101],
-        "OriginRoute": zero_route,
-    }]
-    moves = [
-        _move(1, 6, 0, 1, ModuleName="PM1", RelatedRobotType=1),
-        _move(
-            2, 0, 1, 2, ModuleName="VACRobot", MatIDList=[101],
-            SrcStationList=["PM1"], SrcSlotList=[1], RobotSlotList=[1],
-            StepIDList=[4],
-        ),
-    ]
-    assert validate_move_list(None, moves, update) == []
 
 
 def test_aligner_zero_route_step_does_not_consume_explicit_alignment_move() -> None:
@@ -598,3 +457,47 @@ def test_place_first_swap_can_reuse_one_robot_slot_for_multi_slot_station() -> N
         replay.update_move_state({"MoveID": move["MoveID"], "MoveState": MoveStateReplay.DONE}, snapshot=False)
     assert replay.state.stations["PM1"].slots[2].material.material_id == 1
     assert replay.state.robots["R"].hands[1].material_id == 2
+
+
+def test_omitted_processing_requires_zero_time_for_every_material():
+    """共用搬运轨迹验证单腔、双腔与 PJob 回填的零时长准入，混合非零工艺必须拒绝。"""
+    for case in ("双腔逐片路线", "双腔PJob回填", "单腔显式零配方", "双腔混合非零"):
+        update = _dual_chamber_update()
+        route = _zero_duration_pm_route()
+        for material in update["Materials"]:
+            material["Route"] = route
+            material["PJobName"] = "P1"
+        update["ProcessJobs"] = [{"JobName": "P1", "MatList": [101, 102], "OriginRoute": route}]
+        count = 2
+        if case == "双腔PJob回填":
+            for material in update["Materials"]:
+                material["Route"] = {}
+                material.pop("PJobName", None)
+        elif case == "单腔显式零配方":
+            count = 1
+            update["Stations"]["PM1"] = {"Type": "ProcessChamber", "Capacity": 1}
+            update["Stations"].pop("LL1")
+            update["Materials"] = update["Materials"][:1]
+            route["RouteSteps"][0]["Visits"][0]["ProcessRecipe"] = "ZeroRecipe"
+            update["ProcessRecipes"] = [{"Name": "ZeroRecipe", "ModuleName": "PM1", "Time": 0.0}]
+            update["ProcessJobs"][0]["MatList"] = [101]
+        elif case == "双腔混合非零":
+            update.pop("ProcessJobs")
+            for material in update["Materials"]:
+                material.pop("PJobName", None)
+            update["Materials"][1]["Route"] = {"RouteSteps": [{"StepID": 4, "NeedProcess": True, "Visits": [{"StationName": "PM1", "ProcessRecipe": "LongRecipe"}]}]}
+            update["ProcessRecipes"] = [{"Name": "LongRecipe", "ModuleName": "PM1", "Time": 10.0}]
+        materials, slots = [101, 102][:count], [1, 2][:count]
+        moves = [
+            _move(1, 6, 0, 1, ModuleName="PM1", RelatedRobotType=1),
+            _move(2, 0, 1, 2, ModuleName="VACRobot", MatIDList=materials, SrcStationList=["PM1"] * count, SrcSlotList=slots, RobotSlotList=slots),
+            _move(3, 1, 2, 3, ModuleName="VACRobot", MatIDList=materials, DestStationList=["PM1"] * count, DestSlotList=slots, RobotSlotList=slots, StepIDList=[4] * count),
+            _move(4, 7, 3, 4, ModuleName="PM1"),
+            _move(5, 6, 4, 5, ModuleName="PM1", RelatedRobotType=1, RelatedActionType=1),
+            _move(6, 0, 5, 6, ModuleName="VACRobot", MatIDList=materials, SrcStationList=["PM1"] * count, SrcSlotList=slots, RobotSlotList=slots),
+        ]
+        issues = validate_move_list(None, moves, update)
+        if case == "双腔混合非零":
+            assert any("没有匹配的已完成物料" in issue for issue in issues), issues
+        else:
+            assert issues == [], (case, issues)

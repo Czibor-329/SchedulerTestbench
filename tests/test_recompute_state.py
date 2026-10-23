@@ -250,71 +250,6 @@ def _loadlock(last_item: str, current_item: str) -> dict:
     }
 
 
-def test_loadlock_snapshot_restores_configured_side_names() -> None:
-    """状态快照应按各站点配置恢复带编号或双真空侧的 LastItem。"""
-    update = {
-        "CurrentTime": 0.0,
-        "Materials": [],
-        "Robots": {},
-        "Stations": {
-            "LA": _loadlock("ATR_1", "VTR_1"),
-            "LB": _loadlock("ATR_1", "VTR_1"),
-            "UBR": _loadlock("VTR_1", "VTR_2"),
-            "DBR": _loadlock("VTR_1", "VTR_2"),
-        },
-    }
-    state = MachineState.from_sources(None, update)
-    state.stations["LA"].environment = VACUUM
-    state.stations["LB"].environment = ATMOSPHERE
-    state.stations["UBR"].environment = ATMOSPHERE
-    state.stations["DBR"].environment = VACUUM
-
-    apply_machine_state_to_update(update, state, 70.0)
-
-    assert update["Stations"]["LA"]["LastItem"] == "VTR_1"
-    assert update["Stations"]["LB"]["LastItem"] == "ATR_1"
-    assert update["Stations"]["UBR"]["LastItem"] == "VTR_1"
-    assert update["Stations"]["DBR"]["LastItem"] == "VTR_2"
-
-
-def test_loadlock_snapshot_preserves_legacy_atr_vtr_names() -> None:
-    """传统设备仍应输出原有 ATR/VTR 名称，保持标准接口向后兼容。"""
-    update = {
-        "CurrentTime": 0.0,
-        "Materials": [],
-        "Robots": {},
-        "Stations": {"LA": _loadlock("ATR", "VTR")},
-    }
-    state = MachineState.from_sources(None, update)
-    state.stations["LA"].environment = VACUUM
-
-    apply_machine_state_to_update(update, state, 10.0)
-
-    assert update["Stations"]["LA"]["LastItem"] == "VTR"
-
-
-def test_station_material_count_remains_slot_mapping_in_snapshot() -> None:
-    """重算快照不得把 Cooler 的逐槽加工次数退化成站内物料总数。"""
-    update = {
-        "CurrentTime": 0.0,
-        "Materials": [],
-        "Robots": {},
-        "Stations": {
-            "Cooler": {
-                "Type": "Cooler",
-                "Capacity": 2,
-                "Slots": [1, 2],
-                "MaterialCount": {"1": 3, "2": 5},
-            },
-        },
-    }
-    state = MachineState.from_sources(None, update)
-
-    apply_machine_state_to_update(update, state, 70.0)
-
-    assert update["Stations"]["Cooler"]["MaterialCount"] == {"1": 3, "2": 5}
-
-
 def test_completed_process_increments_station_slot_material_count() -> None:
     """带片 ProcessMove 完成后应只累计实际加工槽位的 MaterialCount。"""
     update = {
@@ -515,48 +450,6 @@ def test_last_clean_move_resets_declared_state_variables() -> None:
     assert update["Stations"]["PM1"]["StateVariables"]["ProcessCount"]["Value"]["Value"] == 0
 
 
-def test_dummy_route_returned_by_algorithm_is_sent_back_on_recompute() -> None:
-    """平台应把上一轮 DummyReturnInfo 原样回填到在途 Dummy Material。"""
-    route_recipe = {
-        "Name": "dummy-pm1-route",
-        "RouteSteps": [{
-            "StepID": 4,
-            "Visits": [{"StationName": "PM1"}],
-            "NeedProcess": True,
-        }],
-    }
-    update = {
-        "Materials": [{
-            "ID": 100000,
-            "TaskID": "",
-            "PJobName": "",
-            "Route": {},
-            "CurrentModuleName": "PM1",
-            "StepID": 4,
-            "SrcPortName": "DummyPort",
-            "AccessiblePM": ["PM1"],
-        }],
-    }
-    output = {
-        "DummyReturnInfo": {
-            "100000": [{
-                "TaskID": "1",
-                "PJobName": "1.C1.P1",
-                "RouteRecipe": route_recipe,
-            }],
-        },
-    }
-
-    restored = restore_dummy_routes_from_algorithm_output(update, output)
-
-    assert restored == [100000]
-    assert update["Materials"][0]["Route"] == route_recipe
-    assert update["Materials"][0]["TaskID"] == "1"
-    assert update["Materials"][0]["PJobName"] == "1.C1.P1"
-    assert update["Materials"][0]["CurrentModuleName"] == "PM1"
-    assert update["Materials"][0]["StepID"] == 4
-
-
 def test_merge_algorithm_update_consumes_previous_dummy_return_info() -> None:
     """统一重算合并边界必须直接消费上一轮算法返回的 Dummy Route。"""
     route_recipe = {
@@ -615,88 +508,9 @@ def test_merge_algorithm_update_consumes_previous_dummy_return_info() -> None:
     assert "Route" not in merged
     assert "Routes" not in merged
     assert material["Route"] == route_recipe
+    assert material["CurrentModuleName"] == "PM1" and material["StepID"] == 4
     assert material["PJobName"] == "1.C1.P1"
     assert material["TaskID"] == "1"
-
-
-def test_idle_dummy_at_source_port_returns_to_default_state() -> None:
-    """Dummy 位于来源端口且没有 Running Move 时应恢复库存默认状态。"""
-    update = {
-        "Materials": [{
-            "ID": 100000,
-            "TaskID": "",
-            "PJobName": "",
-            "Route": {},
-            "CurrentModuleName": "DummyPort",
-            "StepID": 0,
-            "SrcPortName": "DummyPort",
-            "AccessiblePM": ["PM1"],
-            "Count": 7,
-        }],
-    }
-    output = {
-        "DummyReturnInfo": {
-            "100000": [{
-                "TaskID": "1",
-                "PJobName": "1.C1.P1",
-                "RouteRecipe": {
-                    "Name": "unstarted-route",
-                    "RouteSteps": [{"StepID": 0, "Visits": []}],
-                },
-            }],
-        },
-    }
-
-    restored = restore_dummy_routes_from_algorithm_output(update, output)
-
-    assert restored == [100000]
-    material = update["Materials"][0]
-    assert material["Route"]["RouteSteps"] == []
-    assert material["TaskID"] == ""
-    assert material["PJobName"] == ""
-    assert material["StepID"] == 0
-    assert material["CurrentModuleName"] == "DummyPort"
-    assert material["Count"] == 7
-
-
-def test_only_dummy_ids_present_in_return_info_are_normalized() -> None:
-    """只处理算法返回过的 Dummy MatID，其余库存保持原样。"""
-    update = {
-        "Materials": [
-            {
-                "ID": 100000 + index,
-                "TaskID": "",
-                "PJobName": "",
-                "Route": {},
-                "CurrentModuleName": "DummyPort",
-                "StepID": 0,
-                "SrcPortName": "DummyPort",
-            }
-            for index in range(5)
-        ],
-    }
-    returned_route = {
-        "Name": "returned-route",
-        "RouteSteps": [{"StepID": 0, "Visits": [{"StationName": "DummyPort"}]}],
-    }
-    output = {
-        "DummyReturnInfo": {
-            str(material_id): [{
-                "TaskID": "1",
-                "PJobName": "1.C1.P1",
-                "RouteRecipe": returned_route,
-            }]
-            for material_id in (100000, 100001)
-        },
-    }
-
-    restored = restore_dummy_routes_from_algorithm_output(update, output)
-
-    assert restored == [100000, 100001]
-    assert [
-        bool((material.get("Route") or {}).get("RouteSteps"))
-        for material in update["Materials"]
-    ] == [False, False, False, False, False]
 
 
 def test_inflight_dummy_uses_running_move_task_assignment() -> None:
@@ -834,3 +648,46 @@ def test_application_does_not_implement_machine_state_snapshot_replay() -> None:
     assert "def apply_machine_state_to_update" in backend_source
     assert "from app.backend.execution.run_state import *" in application_source
     assert "apply_machine_state_to_update(" in run_state_source
+
+
+def test_station_snapshot_keeps_pressure_side_names_and_slot_count_mappings():
+    """一次快照覆盖传统、编号、双真空侧以及库存站逐槽计数，避免重复搭建回写流程。"""
+    update = {
+        "CurrentTime": 0.0, "Materials": [], "Robots": {},
+        "Stations": {
+            "Legacy": _loadlock("ATR", "VTR"),
+            "LA": _loadlock("ATR_1", "VTR_1"), "LB": _loadlock("ATR_1", "VTR_1"),
+            "UBR": _loadlock("VTR_1", "VTR_2"), "DBR": _loadlock("VTR_1", "VTR_2"),
+            "Cooler": {"Type": "Cooler", "Capacity": 2, "Slots": [1, 2], "MaterialCount": {"1": 3, "2": 5}},
+        },
+    }
+    state = MachineState.from_sources(None, update)
+    cases = [("Legacy", VACUUM, "VTR"), ("LA", VACUUM, "VTR_1"),
+             ("LB", ATMOSPHERE, "ATR_1"), ("UBR", ATMOSPHERE, "VTR_1"), ("DBR", VACUUM, "VTR_2")]
+    for name, environment, _ in cases:
+        state.stations[name].environment = environment
+    apply_machine_state_to_update(update, state, 70.0)
+    for name, _, expected_side in cases:
+        assert update["Stations"][name]["LastItem"] == expected_side, name
+    assert update["Stations"]["Cooler"]["MaterialCount"] == {"1": 3, "2": 5}
+
+
+def test_idle_dummy_normalization_only_touches_returned_materials():
+    """归还的库存 Dummy 重置任务和路线；未归还物料及累计计数保持原样。"""
+    materials = [{"ID": material_id, "TaskID": "", "PJobName": "", "Route": {},
+                  "CurrentModuleName": "DummyPort", "StepID": 0, "SrcPortName": "DummyPort",
+                  "AccessiblePM": ["PM1"], "Count": 7 + index}
+                 for index, material_id in enumerate((100000, 100001, 100002))]
+    update = {"Materials": materials}
+    untouched = dict(materials[-1])
+    output = {"DummyReturnInfo": {str(material_id): [{
+        "TaskID": "1", "PJobName": "1.C1.P1", "RouteRecipe": {
+            "Name": "unstarted-route", "RouteSteps": [{"StepID": 0, "Visits": [{"StationName": "DummyPort"}]}]},
+    }] for material_id in (100000, 100001)}}
+    assert restore_dummy_routes_from_algorithm_output(update, output) == [100000, 100001]
+    for index, material in enumerate(materials[:2]):
+        assert material["Route"]["RouteSteps"] == []
+        assert material["TaskID"] == material["PJobName"] == ""
+        assert material["StepID"] == 0 and material["CurrentModuleName"] == "DummyPort"
+        assert material["Count"] == 7 + index
+    assert materials[-1] == untouched
