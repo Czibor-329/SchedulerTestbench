@@ -129,6 +129,15 @@
    - Standard API documentation must remain last in document navigation. Changes to API fields, types, enums, inheritance, or aggregation must update the API overview, device objects, job objects, and Move/output pages, not only summary fields.
    - All documentation content is owned by the separate Git repository `D:/ct-scheduler-docs`. Do not create documentation copies or old-path navigation pages in either code repository. Keep code-repository agent instructions here and point their reading requirements to the documentation repository. Runtime data ignore rules remain unchanged.
 
+## Repository cleanup
+
+- 本地调试日志、验收报告和研究结果统一放在忽略版本控制的 `.tmp/`；仓库根目录
+  不保留 `result/`、`results/`、`artifacts/` 等结果目录。平台运行制品仍由
+  `app/exports/runs/` 管理，不改变设备与测试主数据的存储规则。
+- `scripts/` 只保留日常测试、复现与维护入口，新增入口必须同步说明
+  `scripts/README.md` 中的用途。离线研究归属 `prototypes/`，测试 builder 归属
+  `tests/support/`；已完成的一次性数据修补与已退役功能的脚本不继续保留。
+
 ## Frontend versioning
 
 - Do not change the frontend package version, visible frontend version, or asset cache-busting version while implementation is still in progress.

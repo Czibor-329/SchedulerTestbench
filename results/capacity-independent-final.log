@@ -1,9 +1,0 @@
-
-=== milp: D:\project\milp\venv\Scripts\python.exe -m pytest tests -q -k theory_capacity or optional_algorithm_repository or backend_structure ===
-........................................................................ [ 41%]
-........................................................................ [ 82%]
-..............................                                           [100%]
-174 passed, 451 deselected in 19.33s
-
-=== 测试套件汇总 ===
-platform: 通过

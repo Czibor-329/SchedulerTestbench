@@ -31,3 +31,9 @@ reasonix.toml
 /tmp
 /app/data/documentation
 /outputs
+
+# 本地调试与实验产物不纳入版本库
+/.tmp/
+/result/
+/results/
+/artifacts/

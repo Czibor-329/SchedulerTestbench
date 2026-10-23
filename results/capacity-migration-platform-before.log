@@ -1,8 +1,0 @@
-
-=== milp: D:\project\milp\venv\Scripts\python.exe -m pytest tests -q -k theory_capacity ===
-........................................................................ [ 67%]
-...................................                                      [100%]
-107 passed, 467 deselected in 35.33s
-
-=== �����׼����� ===
-platform: ͨ��

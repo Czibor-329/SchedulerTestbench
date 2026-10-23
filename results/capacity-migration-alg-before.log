@@ -1,8 +1,0 @@
-
-=== alg: D:\project\milp\venv\Scripts\python.exe -m pytest tests -q -k cycle_capacity ===
-........................................................................ [ 91%]
-.......                                                                  [100%]
-79 passed, 998 deselected in 34.84s
-
-=== �����׼����� ===
-algorithm: ͨ��
