@@ -8,8 +8,8 @@ from itertools import product
 from math import lcm
 
 from app.backend.theory_capacity.compact_period import calculate_period
-from scripts.loadlock_research.structures import build_vacuum, add_atmosphere, close_atmosphere, episode_options
-from scripts.loadlock_research.verification import replay_witness, linear_program_period
+from prototypes.loadlock_research.structures import build_vacuum, add_atmosphere, close_atmosphere, episode_options
+from prototypes.loadlock_research.verification import replay_witness, linear_program_period
 
 
 def evaluate_template(timing, nodes, port, width, atmosphere_order, phase=0):

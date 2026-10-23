@@ -9,11 +9,11 @@ import json
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from scripts.search_loadlock_cycles import PSE300, read_timing
-from scripts.loadlock_research.physical_witness import validate_physical_witness
+from prototypes.loadlock_research.search_loadlock_cycles import PSE300, read_timing
+from prototypes.loadlock_research.physical_witness import validate_physical_witness
 
 COLORS = {0: '#60a5fa', 1: '#38bdf8', 4: '#818cf8', 5: '#94a3b8',
           6: '#fbbf24', 7: '#f59e0b', 9: '#34d399', 10: '#f472b6'}
@@ -52,8 +52,8 @@ def timeline(physical, period):
 def main():
     """验证代表候选、写入完整 JSON 和一个包含计时证据的 HTML 页面。"""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--search', type=Path, default=ROOT / 'results/loadlock-research/pse300-single.json')
-    parser.add_argument('--output', type=Path, default=ROOT / 'results/loadlock-research/pse300-report.html')
+    parser.add_argument('--search', type=Path, default=ROOT / '.tmp/loadlock-research/pse300-single.json')
+    parser.add_argument('--output', type=Path, default=ROOT / '.tmp/loadlock-research/pse300-report.html')
     arguments = parser.parse_args()
     payload = json.loads(arguments.search.read_text(encoding='utf-8'))
     source = ROOT / 'app/data/datasets' / PSE300 / 'device.json'
@@ -106,10 +106,10 @@ body{margin:0;background:#0d1523;color:#dce7f5;font:16px/1.65 system-ui,"Microso
 <h2>已经验证与尚未证明</h2><p>代表方案均通过独立 Gurobi LP 与 8 周期物料回放；两片压力批另从非空快照展开 3 个周期、312 条标准动作，通过平台 MoveList 物理校验。</p>
 <p class="note">PROOF 更长周期尚未全部穷尽，该数值尚不是全局最优证明。固定单 PM 骨架的放松下界约 31.04 秒/片。尚未验证空机启动、整批收尾、清洁和公司数据集整例。</p>
 <p>生产 Cycle、前端版本、设备与测试数据未修改。<a href="pse300-physical-verification.json">完整物理动作证据</a> · <a href="pse300-single.json">搜索与事件图证据</a></p>
-<details><summary>复现入口与设备指纹</summary><pre>venv/Scripts/python.exe scripts/search_loadlock_cycles.py --process 0 10 15 20 30 60 120 --rounds 2 4 --seconds 5
-venv/Scripts/python.exe scripts/search_loadlock_cycles.py --process 10 --rounds 4 --family all --seconds 600 --workers 4 --output results/loadlock-research/pse300-full-four.json
-venv/Scripts/python.exe scripts/search_loadlock_cycles.py --process 10 --rounds 4 --return-policy original --seconds 600 --workers 4 --output results/loadlock-research/pse300-original-four.json
-venv/Scripts/python.exe scripts/report_loadlock_research.py
+<details><summary>复现入口与设备指纹</summary><pre>venv/Scripts/python.exe prototypes/loadlock_research/search_loadlock_cycles.py --process 0 10 15 20 30 60 120 --rounds 2 4 --seconds 5
+venv/Scripts/python.exe prototypes/loadlock_research/search_loadlock_cycles.py --process 10 --rounds 4 --family all --seconds 600 --workers 4 --output .tmp/loadlock-research/pse300-full-four.json
+venv/Scripts/python.exe prototypes/loadlock_research/search_loadlock_cycles.py --process 10 --rounds 4 --return-policy original --seconds 600 --workers 4 --output .tmp/loadlock-research/pse300-original-four.json
+venv/Scripts/python.exe prototypes/loadlock_research/report_loadlock_research.py
 SHA-256: DIGEST</pre></details></main></html>'''
     replacements = {'BASE': f'{baseline:.2f}', 'BEST': f'{candidate:.2f}', 'GAIN': f'{gain * 100:.1f}',
                     'PERIOD': f'{period:.2f}', 'LEGEND': f'<div class="legend">{legend}</div>',

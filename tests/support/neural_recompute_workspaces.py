@@ -1,13 +1,12 @@
 """幂等生成神经实时重算、清洁和六腔路线分解的前端验收工作区。
 
-脚本只通过实时调度服务已有的工作区 CRUD 写入数据：四腔案例合并到现有
+测试 builder 只通过实时调度服务已有的工作区 CRUD 写入调用方提供的隔离目录：四腔案例合并到现有
 PSE300，六腔案例导入独立克隆设备，避免改变原设备拓扑。重复运行不会新增
 同名 Route、Clean 或测试。
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from copy import deepcopy
@@ -15,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from app.backend import application as scheduler_server
@@ -658,9 +657,9 @@ def _find_or_import_pse300(store_path: Path) -> Dict[str, Any]:
 
 
 def seed_workspace_matrix(
-    store_path: Path = scheduler_server.WORKSPACE_STORE_PATH,
+    store_path: Path,
 ) -> Dict[str, Any]:
-    """写入完整验收矩阵，并返回设备、组别和测试数量摘要。"""
+    """向 store_path 指定的隔离目录写入验收矩阵，返回设备、组别与测试数量摘要。"""
     four_device = _find_or_import_pse300(store_path)
     four_device_id = str(four_device["id"])
     _ensure_groups(
@@ -757,26 +756,3 @@ def seed_workspace_matrix(
         "recomputeGrids": list(RECOMPUTE_GRIDS),
         "waferCounts": list(WAFER_COUNTS),
     }
-
-
-def main() -> None:
-    """解析可选工作区路径并打印幂等生成摘要。"""
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--store",
-        type=Path,
-        default=scheduler_server.WORKSPACE_STORE_PATH,
-        help="工作区 JSON 路径；缺省写入实时前端当前数据目录",
-    )
-    args = parser.parse_args()
-    print(
-        json.dumps(
-            seed_workspace_matrix(args.store),
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
-
-
-if __name__ == "__main__":
-    main()

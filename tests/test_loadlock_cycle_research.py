@@ -12,12 +12,12 @@ import pytest
 
 from app.backend.theory_capacity.compact_period import calculate_period
 from app.backend.theory_capacity.input_model import DeviceDurations
-from scripts.loadlock_research.event_model import EventModel
-from scripts.loadlock_research.structures import (
+from prototypes.loadlock_research.event_model import EventModel
+from prototypes.loadlock_research.structures import (
     add_atmosphere, atmosphere_orders, build_vacuum, close_atmosphere, episode_options, partitions,
 )
-from scripts.loadlock_research.verification import replay_witness
-from scripts.search_loadlock_cycles import PSE300, ROOT, read_timing, search
+from prototypes.loadlock_research.verification import replay_witness
+from prototypes.loadlock_research.search_loadlock_cycles import PSE300, ROOT, read_timing, search
 from tests.support.capacity_problem_builders import cycle_problem
 
 
@@ -90,7 +90,7 @@ def test_process_bound_can_certify_without_enumeration():
 @pytest.mark.integration
 def test_pse300_refill_first_witness_passes_real_move_validation(tmp_path):
     """真实设备先补后收的稳态见证须保持 FIFO、容量及标准 MoveList 物理合法。"""
-    from scripts.loadlock_research.physical_witness import validate_physical_witness
+    from prototypes.loadlock_research.physical_witness import validate_physical_witness
     source = ROOT / 'app/data/datasets' / PSE300 / 'device.json'
     if not source.is_file():
         pytest.skip('恢复 PSE300 设备主数据后可运行物理见证验收')

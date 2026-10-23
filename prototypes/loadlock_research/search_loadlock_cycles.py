@@ -1,6 +1,6 @@
 """PSE300 固定 PM Swap 骨架的离线循环搜索，设备数据只读。
 
-从仓库根目录运行 venv/Scripts/python.exe scripts/search_loadlock_cycles.py。
+从仓库根目录运行 venv/Scripts/python.exe prototypes/loadlock_research/search_loadlock_cycles.py。
 枚举 1/2 片压力批、进出锁、VAC 取放方式与 ATM 循环交织，用周期图精确定时。
 输出包含搜索范围、未覆盖行为、最优性边界、源文件哈希和可独立复核的事件证据。
 不修改 Cycle、前端、配置或 datasets，也不把数学图可行冒充生产 MoveList 验收。
@@ -17,17 +17,17 @@ from pathlib import Path
 import sys
 from time import monotonic
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from app.backend.theory_capacity.compact_period import calculate_period
 from app.backend.theory_capacity.device_input import _device_timing
 from app.backend.theory_capacity.input_model import CapacityInput, DeviceDurations
-from scripts.loadlock_research.structures import (
+from prototypes.loadlock_research.structures import (
     add_atmosphere, atmosphere_cycles, build_vacuum, close_atmosphere,
     episode_options, partitions, vacuum_words,
 )
-from scripts.loadlock_research.verification import replay_witness, verify_result
+from prototypes.loadlock_research.verification import replay_witness, verify_result
 
 PSE300 = '460fad299cda43298409d7ce16d54906'
 SHAPES = {'single': (('PM1',),), 'serial': (('PM1',), ('PM2',)),
@@ -205,7 +205,7 @@ def main():
     parser.add_argument('--family', choices=('all', 'swap', 'batch'), default='all')
     parser.add_argument('--return-policy', choices=('any', 'original'), default='any')
     parser.add_argument('--workers', type=int, default=1)
-    parser.add_argument('--output', type=Path, default=ROOT / 'results/loadlock-research/pse300-search.json')
+    parser.add_argument('--output', type=Path, default=ROOT / '.tmp/loadlock-research/pse300-search.json')
     args = parser.parse_args()
     if args.return_policy == 'original' and args.shape != 'single':
         parser.error('本轮原锁比较只开放单 PM，避免把不满足原锁约束的既有模板当上界')

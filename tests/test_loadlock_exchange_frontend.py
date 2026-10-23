@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from app.backend import application as scheduler_server
 from app.backend.application import build_workspace_batch_plan
-from scripts.seed_neural_recompute_workspaces import (
+from tests.support.neural_recompute_workspaces import (
     LOADLOCK_CADENCE_GROUP,
     LOADLOCK_CADENCE_TEST,
     SINGLE_TWO_JOB_GROUP,

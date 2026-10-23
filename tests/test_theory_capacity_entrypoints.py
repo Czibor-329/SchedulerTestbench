@@ -1,6 +1,5 @@
-"""平台理论产能入口的仓库边界：纯数学求解和 CLI 不需要算法仓库。"""
+"""平台理论产能入口的仓库边界：纯数学求解和页面 API 不需要算法仓库。"""
 
-import json
 from pathlib import Path
 import subprocess
 import sys
@@ -25,29 +24,6 @@ assert not any(name.startswith('src.') for name in sys.modules)
     completed = subprocess.run([sys.executable, '-I', '-X', 'utf8', '-c', script, str(PLATFORM_ROOT)],
         capture_output=True, text=True, check=False)
     assert completed.returncode == 0, completed.stderr
-
-
-def test_theory_capacity_cli_writes_report_without_algorithm_repository(tmp_path):
-    """从任意工作目录运行迁移后的 CLI，明确禁止算法依赖并核对 JSON 输出。"""
-    model_path, report_path = tmp_path / 'model.json', tmp_path / 'output' / 'report.json'
-    model_path.write_text(json.dumps({
-        'name': '单事件', 'events': ['A'], 'units_per_cycle': 1,
-        'constraints': [{'source': 'A', 'target': 'A', 'minimum_delay_seconds': 12.5,
-                         'cycle_shift': 1, 'label': '节拍'}],
-    }, ensure_ascii=False), encoding='utf-8')
-    script = """
-import runpy, sys
-sys.modules['src'] = None
-sys.argv = sys.argv[1:]
-runpy.run_path(sys.argv[0], run_name='__main__')
-"""
-    completed = subprocess.run([sys.executable, '-I', '-X', 'utf8', '-c', script,
-        str(PLATFORM_ROOT / 'scripts/analyze_cycle_capacity.py'), str(model_path),
-        '--output', str(report_path)], cwd=tmp_path, capture_output=True, text=True, check=False)
-    assert completed.returncode == 0, completed.stderr
-    report = json.loads(report_path.read_text(encoding='utf-8'))
-    assert abs(report['period_seconds'] - 12.5) < 1e-6
-    assert abs(report['physical_wafers_per_hour'] - 288) < 1e-5
 
 
 def test_theory_capacity_page_api_works_without_algorithm_repository(tmp_path):

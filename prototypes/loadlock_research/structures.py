@@ -7,7 +7,7 @@ ATM 每次只搬一片，枚举每锁的回盒/供片次序及跨锁循环交织
 """
 from itertools import combinations, product
 
-from scripts.loadlock_research.event_model import EventModel
+from prototypes.loadlock_research.event_model import EventModel
 
 
 def vacuum_words(rounds, locks=('LA', 'LB')):

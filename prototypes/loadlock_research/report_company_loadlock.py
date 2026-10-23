@@ -8,7 +8,7 @@ from html import escape
 import json
 from pathlib import Path
 
-DIRECTORY = Path(__file__).resolve().parents[1] / 'results/loadlock-research'
+DIRECTORY = Path(__file__).resolve().parents[2] / '.tmp/loadlock-research'
 TOLERANCE = 1e-5
 
 

@@ -12,15 +12,15 @@ from pathlib import Path
 import re
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from app.backend import application
 from app.backend.execution.batch_service import build_workspace_batch_plan
 from app.backend.execution.plan_builder import build_round_update, BuildState
-from scripts.search_loadlock_cycles import PSE300, read_timing
-from scripts.loadlock_research.template_comparison import compare_templates
-from scripts.loadlock_research.physical_witness import validate_physical_witness
+from prototypes.loadlock_research.search_loadlock_cycles import PSE300, read_timing
+from prototypes.loadlock_research.template_comparison import compare_templates
+from prototypes.loadlock_research.physical_witness import validate_physical_witness
 
 
 def route_facts(route, recipes):
@@ -62,7 +62,7 @@ def main():
     """逐例组合正式请求并去重计算稳态模板，保存画像和候选证据。"""
     sys.stdout.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', type=Path, default=ROOT / 'results/loadlock-research/pse300-company130-profile.json')
+    parser.add_argument('--output', type=Path, default=ROOT / '.tmp/loadlock-research/pse300-company130-profile.json')
     arguments = parser.parse_args()
     device = application.get_workspace_device(PSE300)
     source = ROOT / 'app/data/datasets' / PSE300 / 'device.json'

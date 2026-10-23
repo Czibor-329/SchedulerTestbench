@@ -7,9 +7,9 @@ import pytest
 
 from app.backend.theory_capacity.compact_period import calculate_period
 from app.backend.theory_capacity.input_model import DeviceDurations
-from scripts.loadlock_research.template_comparison import evaluate_template
-from scripts.loadlock_research.physical_witness import validate_physical_witness
-from scripts.search_loadlock_cycles import ROOT, PSE300, read_timing
+from prototypes.loadlock_research.template_comparison import evaluate_template
+from prototypes.loadlock_research.physical_witness import validate_physical_witness
+from prototypes.loadlock_research.search_loadlock_cycles import ROOT, PSE300, read_timing
 from tests.support.capacity_problem_builders import cycle_problem
 
 
