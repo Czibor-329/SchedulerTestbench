@@ -5,12 +5,13 @@
 并将投影后的站点、机器人和物料状态写回企业标准接口。HTTP 服务只负责流程编排，
 不在边界层解释 LoadLock 压力态或物料位置。
 加工状态变量和逐槽 MaterialCount 可单独取真实完成现场，禁止使用在途完成投影。
+Running Swap 仅在协议快照中导出参与晶圆的交换后位置，真实状态与资源封锁不变。
 """
 
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Dict, List, Mapping, Optional, Set
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set
 
 from app.backend.validation.move_validation import (
     ATMOSPHERE,
@@ -21,10 +22,59 @@ from app.backend.validation.move_validation import (
     SlotState,
 )
 from app.backend.execution.plan_builder import FIRST_SLOT_ID
+from app.backend.validation.move_state import (
+    MOVE_STATE_ABORTED, MOVE_STATE_DONE, MOVE_STATE_RUNNING, SWAP_MOVE,
+)
 
 
 DEFAULT_ATMOSPHERE_LAST_ITEM = "ATR"
 DEFAULT_VACUUM_LAST_ITEM = "VTR"
+
+
+def project_running_swap_materials(
+    update_params: Dict[str, Any],
+    moves: Sequence[Mapping[str, Any]],
+    move_states: Sequence[Mapping[str, Any]],
+    completed_state: MachineState,
+) -> None:
+    """仅将 Running Swap 的参与晶圆导出为企业约定的交换完成位置。
+
+    moves 与 move_states 确定尚未 Done/Abort 的 Swap 及进出片；completed_state
+    复用运行时已有的完成投影。只原子更新 update_params 中这些晶圆的位置、
+    槽位和 StepID，不改任一 MachineState、MoveStates、资源忙时或真实计数。
+    无 Running Swap 时不扫描完成投影；缺失参与片时拒绝半组导出。
+    """
+    ended = {item["MoveID"] for item in move_states
+             if item.get("MoveState") in {MOVE_STATE_DONE, MOVE_STATE_ABORTED}}
+    running = {item["MoveID"] for item in move_states
+               if item.get("MoveState") == MOVE_STATE_RUNNING} - ended
+    material_ids = {material_id for move in moves
+                    if move.get("MoveID") in running and move.get("MoveType") == SWAP_MOVE
+                    for key in ("RecvMatList", "SendMatList")
+                    for material_id in (move.get(key) or [])}
+    if not material_ids:
+        return
+    materials = {item["ID"]: item for item in update_params.get("Materials") or []
+                 if isinstance(item, dict) and item.get("ID") in material_ids}
+    locations: Dict[Any, Dict[str, Any]] = {}
+    for station_name, station in completed_state.stations.items():
+        for slot_id, slot in station.slots.items():
+            material = slot.material
+            if material is not None and material.material_id in material_ids:
+                locations[material.material_id] = {
+                    "CurrentModuleName": station_name, "SlotID": int(slot_id), "StepID": material.step_id,
+                }
+    for robot_name, robot in completed_state.robots.items():
+        for slot_id, material in robot.hands.items():
+            if material is not None and material.material_id in material_ids:
+                locations[material.material_id] = {
+                    "CurrentModuleName": robot_name, "SlotID": int(slot_id), "StepID": material.step_id,
+                }
+    missing = material_ids - (materials.keys() & locations.keys())
+    if missing:
+        raise ValueError(f"Running Swap 完成投影缺少参与物料：{sorted(missing)}")
+    for material_id, raw_material in materials.items():
+        raw_material.update({key: value for key, value in locations[material_id].items() if value is not None})
 
 
 def _empty_dummy_route() -> Dict[str, Any]:
@@ -111,17 +161,21 @@ def _dummy_assignment_hints(
 def restore_dummy_routes_from_algorithm_output(
     update_params: Dict[str, Any],
     algorithm_output: Mapping[str, Any],
+    *,
+    initial_dummy_counts: Optional[Mapping[str, int]] = None,
 ) -> List[Any]:
     """把算法返回的 Dummy 路径事务写回下一轮标准 update。
 
     ``DummyReturnInfo`` 是算法为具体 Dummy MatID 返回的实际路径。在途 Dummy
-    保持该路径和任务归属；已经回到来源 DummyPort 且没有 Running Move 的库存片
-    恢复默认 TaskID、PJobName、StepID、CurrentModuleName 和 Route。``Count`` 是
-    物理片跨任务累计寿命，不在恢复默认状态时修改。
+    保持该路径和任务归属；提供本代起点 Count 时，回港库存按真实完成使用次数
+    推进到下一条已分配 Route，而非无条件清空。分配耗尽时恢复库存默认值。
+    旧调用方未提供起点时保留原兼容行为。Count 不在回港时归零。
 
     参数:
         update_params: 即将再次发送给算法的全量标准 update，会被原地更新。
         algorithm_output: 上一轮算法的标准输出。
+        initial_dummy_counts: 该轮请求中的物理寿命起点，用于区分本代已完成使用
+            与更早历史；缺省时不能根据绝对寿命猜测分配游标。
 
     返回:
         成功恢复路径的 Dummy MatID 列表。
@@ -154,6 +208,34 @@ def restore_dummy_routes_from_algorithm_output(
         material_key = str(material_id)
         source_port = str(material.get("SrcPortName") or "DummyPort")
         current_module = str(material.get("CurrentModuleName") or "")
+        if current_module == source_port and initial_dummy_counts is not None and material_key in initial_dummy_counts:
+            # AlgorithmCount 是本代输出中各次分配的使用次数；Count 是物理寿命。
+            # 相减后只跳过本代真正完成的使用，不把回港误当成取消下一条已分配 Route。
+            consumed = int(material.get("Count") or 0) - initial_dummy_counts[material_key]
+            if consumed < 0:
+                raise ValueError(f"Dummy {material_id} 的累计使用次数倒退")
+            selected = None
+            for entry in raw_entries:
+                if not isinstance(entry, Mapping) or not isinstance(entry.get("RouteRecipe"), Mapping):
+                    continue
+                count = int(entry.get("AlgorithmCount", 1))
+                if count <= 0:
+                    continue
+                if consumed < count:
+                    selected = entry
+                    break
+                consumed -= count
+            if selected is not None:
+                material["Route"] = deepcopy(dict(selected["RouteRecipe"]))
+                material["TaskID"] = str(selected.get("TaskID") or "")
+                material["PJobName"] = str(selected.get("PJobName") or "")
+                steps = material["Route"].get("RouteSteps") or []
+                material["StepID"] = steps[0].get("StepID", 0) if steps else 0
+                restored.append(material_id)
+                continue
+            material.update(TaskID="", PJobName="", StepID=0, Route=_empty_dummy_route())
+            restored.append(material_id)
+            continue
         if (
             current_module == source_port
             and material_key not in running_material_ids
@@ -333,25 +415,23 @@ def merge_algorithm_update(
     全量 update 的统一合并边界，确保内置算法和外部算法的两条重算路径都不会
     漏掉平台已收到的 Dummy Route。
     """
-    # 下列字段随后逐项合并或直接重建，避免先复制整份旧路线和通知再丢弃。
+    # 下列字段随后按企业键序逐项合并或直接重建，避免先复制整份旧路线和通知再
+    # 丢弃；Scenario 与 InitialMoveID 不在企业 IUpdateParams 中，旧快照残留一并剔除。
     rebuilt_fields = {
         "Materials", "ProcessJobs", "ControlJobs", "ProcessRecipes",
-        "Robots", "Stations", "MoveStates", "RemoveList",
+        "Robots", "Stations", "MoveStates", "RemoveList", "CurrentTime",
+        "Scenario", "InitialMoveID",
     }
     merged = deepcopy({key: value for key, value in previous_update.items() if key not in rebuilt_fields})
-    merged["Scenario"] = new_round_update.get("Scenario", merged.get("Scenario", 0))
-    merged["CurrentTime"] = float(new_round_update.get("CurrentTime") or 0.0)
-    merged["InitialMoveID"] = int(
-        new_round_update.get("InitialMoveID", merged.get("InitialMoveID", 0)) or 0
-    )
-    merged["ProcessRecipes"] = deepcopy(
-        list(new_round_update.get("ProcessRecipes") or [])
-    )
     # 企业 IUpdateParams 没有顶层 Routes；路径由 Material.Route 与
     # ProcessJob.OriginRoute 随各自业务对象传递。
     for field_name in list(merged):
         if str(field_name).casefold() in {"route", "routes"}:
             merged.pop(field_name, None)
+    # 企业键序：Robots → Stations → Materials → ProcessJobs → ControlJobs →
+    # RemoveList → MoveStates → ProcessRecipes → CurrentTime。
+    merged["Robots"] = deepcopy(dict(new_round_update.get("Robots") or {}))
+    merged["Stations"] = deepcopy(dict(new_round_update.get("Stations") or {}))
 
     material_by_id: Dict[Any, Dict[str, Any]] = {}
     for raw_material in [
@@ -360,7 +440,14 @@ def merge_algorithm_update(
     ]:
         if isinstance(raw_material, Mapping) and raw_material.get("ID") is not None:
             material_by_id[raw_material["ID"]] = deepcopy(dict(raw_material))
-    merged["Materials"] = list(material_by_id.values())
+    # 企业快照在所有产品（含补片）后列出可复用 Dummy；保留各分区内的原顺序。
+    def is_dummy_inventory(material: Mapping[str, Any]) -> bool:
+        """只按源站真实类型分区，不按 MatID 数值或名称猜测 Dummy 身份。"""
+        source = (merged["Stations"].get(str(material.get("SrcPortName") or "")) or {})
+        return str(source.get("Type") or "").casefold() == "dummyport"
+
+    merged["Materials"] = [m for m in material_by_id.values() if not is_dummy_inventory(m)]
+    merged["Materials"].extend(m for m in material_by_id.values() if is_dummy_inventory(m))
 
     process_job_by_name: Dict[str, Dict[str, Any]] = {}
     for raw_job in [
@@ -378,10 +465,12 @@ def merge_algorithm_update(
         ]
         if isinstance(control_job, Mapping)
     ]
-    merged["Robots"] = deepcopy(dict(new_round_update.get("Robots") or {}))
-    merged["Stations"] = deepcopy(dict(new_round_update.get("Stations") or {}))
-    merged["MoveStates"] = []
     merged["RemoveList"] = []
+    merged["MoveStates"] = []
+    merged["ProcessRecipes"] = deepcopy(
+        list(new_round_update.get("ProcessRecipes") or [])
+    )
+    merged["CurrentTime"] = float(new_round_update.get("CurrentTime") or 0.0)
     if previous_output is not None:
         restore_dummy_routes_from_algorithm_output(merged, previous_output)
     return merged
@@ -431,11 +520,14 @@ def apply_machine_state_to_update(
     current_time: float,
     *,
     completed_process_state: Optional[MachineState] = None,
+    robot_pointer_state: Optional[MachineState] = None,
 ) -> None:
     """将物料、资源和压力态写回 update，并按真实完成现场导出加工计数。
 
-    参数 state 提供规划所需的位置和占用；completed_process_state 可提供
+    参数 state 提供位置、压力和占用；completed_process_state 可独立提供
     当前时刻真实 MaterialCount/StateVariables，缺省时沿用 state。
+    robot_pointer_state 仅提供已提交运动的控制目标，不改变物料或压力，
+    也不解除 TimeToAvailable 对机器人访问的封锁。
     返回 None，原地更新 update_params，不修改任一 MachineState。
     """
     update_params["CurrentTime"] = float(current_time)
@@ -445,6 +537,16 @@ def apply_machine_state_to_update(
         if isinstance(material, dict) and material.get("ID") is not None
     }
     located_material_ids: set[Any] = set()
+
+    # Dummy 库存片的 ``Count`` 是跨任务物理寿命，由回放账本在带片工艺完成时
+    # 递增；此处投影回 update，供算法恢复寿命并执行 LimitLevel 筛选。完成
+    # 计数现场与 MaterialCount 同源：外部算法用真实回放状态，内置策略沿用
+    # 位置投影。
+    count_state = completed_process_state if completed_process_state is not None else state
+    for material_id, raw_material in materials.items():
+        usage_count = count_state.dummy_material_counts.get(str(material_id))
+        if usage_count is not None:
+            raw_material["Count"] = int(usage_count)
 
     stations = update_params.setdefault("Stations", {})
     for station_name, station_state in state.stations.items():
@@ -490,6 +592,14 @@ def apply_machine_state_to_update(
                 {"Name": variable_name, "ComputeRule": "", "Type": 1},
             )
             variable.setdefault("Value", {})["Value"] = value
+        if completed_station.idle_reference_time is not None:
+            station["StateVariables"]["IdleTime"]["Value"]["Value"] = max(
+                0.0, current_time - completed_station.idle_reference_time,
+            )
+        for variable_name, value in completed_station.text_state_variables.items():
+            variable = (station.get("StateVariables") or {}).get(variable_name)
+            if isinstance(variable, dict):
+                variable.setdefault("Value", {})["Value"] = value
         if isinstance(station_state, LoadLockState):
             station["LastItem"] = _configured_loadlock_last_item(
                 station,
@@ -503,12 +613,21 @@ def apply_machine_state_to_update(
             robot_state.busy_until,
             current_time,
         )
-        if robot_state.position or robot_state.slot_targets:
+        # SlotAtStation 表达已提交运动的控制目标；在途 PreTrans 尚未完成时，
+        # 企业已报告目标站，但 TimeToAvailable 仍封锁机器人，不能理解为可立即取放。
+        pointer_robot = (
+            robot_pointer_state.robots.get(robot_name, robot_state)
+            if robot_pointer_state is not None else robot_state
+        )
+        if pointer_robot.position or pointer_robot.slot_targets:
             arm_info = robot.get("ArmInfo") or {}
             if isinstance(arm_info, Mapping):
                 for arm in arm_info.values():
                     if isinstance(arm, dict) and arm.get("IsEnable") is not False:
-                        arm["SlotAtStation"] = _arm_slot_at_station(robot_state, arm.get("Name"))
+                        arm["SlotAtStation"] = _arm_slot_at_station(pointer_robot, arm.get("Name"))
+                        arm_name = str(arm.get("Name") or "")
+                        if arm_name in robot_state.arm_use_counts:
+                            arm["UseCount"] = robot_state.arm_use_counts[arm_name]
         for slot_id, material in robot_state.hands.items():
             if material is None:
                 continue

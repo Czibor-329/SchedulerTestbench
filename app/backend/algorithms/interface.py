@@ -46,11 +46,11 @@ _ENTRY_REVISION: Optional[str] = None
 
 ALGORITHM_SOURCE_SUFFIXES = frozenset({
     ".py", ".json", ".yaml", ".yml", ".toml", ".npz", ".npy", ".pt",
-    ".pth", ".pkl", ".joblib",
+    ".pth", ".pkl", ".joblib", ".onnx", ".onnx_data", ".data",
 })
 IGNORED_ALGORITHM_DIRECTORIES = frozenset({
     "__pycache__", ".git", ".pytest_cache", ".mypy_cache", ".venv", "venv",
-    "results", "exports",
+    "results", "exports", "logs",
 })
 
 

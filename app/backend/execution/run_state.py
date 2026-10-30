@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.backend.payload_snapshot import copy_payload
 
 from app.backend.bootstrap import *
+from app.backend.execution.recompute_state import project_running_swap_materials
 from collections.abc import Mapping, Sequence
 from app.backend.execution.runtime_snapshot import (
     compact_runtime_snapshots,
@@ -127,7 +128,7 @@ def _remove_released_materials_from_update(
         if not pjob_names:
             continue
         job["PJobNameList"] = pjob_names
-        job["MaterialCount"] = sum(material_count_by_job[name] for name in pjob_names)
+        # 企业协议：ControlJob 不携带 MaterialCount，算法侧按 PJob MatList 重算。
         control_jobs.append(job)
     update_params["ControlJobs"] = control_jobs
 
@@ -606,11 +607,15 @@ def _build_platform_recompute_update(
     projected_state: Optional[MachineState] = None,
     previous_output: Optional[Mapping[str, Any]] = None,
     completed_process_state: Optional[MachineState] = None,
+    robot_pointer_state: Optional[MachineState] = None,
+    running_swap_state: Optional[MachineState] = None,
 ) -> Dict[str, Any]:
     """构造下一轮 update，可为标准算法包独立指定真实完成计数现场。
 
-    projected_state 保留规划位置与占用，completed_process_state 只决定加工计数。
-    内置策略缺省沿用其完成投影契约，标准算法包由调用方提供真实完成现场。
+    projected_state 参数名保留兼容：内置策略可传完成投影，标准算法包传真实
+    物理现场；completed_process_state 决定加工计数和空闲时钟，
+    robot_pointer_state 仅提供已提交运动目标；running_swap_state 仅为仍标为
+    Running 的 Swap 参与晶圆提供企业约定的交换后位置，不提前提交真实回放。
     返回隔离后的协议快照，不修改输入状态。
     """
     update = merge_algorithm_update(
@@ -622,14 +627,20 @@ def _build_platform_recompute_update(
         projected_state if projected_state is not None else runtime.state,
         requested_time,
         completed_process_state=completed_process_state,
+        robot_pointer_state=robot_pointer_state,
     )
+    execution_plan = runtime.execution_plan
+    if running_swap_state is not None:
+        project_running_swap_materials(
+            update, execution_plan, move_states, running_swap_state,
+        )
     update["MoveStates"] = [
         copy_payload(dict(notification))
         for notification in move_states
     ]
     _apply_running_resource_times(
         update,
-        runtime.execution_plan,
+        execution_plan,
         requested_time,
         move_states,
     )
@@ -643,7 +654,14 @@ def _build_platform_recompute_update(
     if previous_output is not None:
         # 与完整平台运行时保持同一协议边界：只在所有现场字段投影完成后消费
         # 算法返回的 Dummy 信息，确保发出的 AlgSchedule 保留恢复结果。
-        restore_dummy_routes_from_algorithm_output(update, previous_output)
+        restore_dummy_routes_from_algorithm_output(
+            update, previous_output,
+            initial_dummy_counts={
+                str(material["ID"]): int(material.get("Count") or 0)
+                for material in runtime.current_update.get("Materials") or []
+                if isinstance(material, Mapping) and material.get("ID") is not None
+            },
+        )
     compact_runtime_snapshots(update)
     return update
 
@@ -696,6 +714,9 @@ def _apply_running_resource_times(
                 float(robots[module_name].get("TimeToAvailable") or 0.0),
                 remaining,
             )
+        # PreTrans 只占 Robot 运动资源，不因其参考站名而冻结 LP/LL 的槽位。
+        if move.get("MoveType") == 5:
+            continue
 
         station_slots: Dict[str, set[int]] = {}
         slot_groups = (

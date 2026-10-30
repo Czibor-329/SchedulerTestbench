@@ -691,3 +691,66 @@ def test_idle_dummy_normalization_only_touches_returned_materials():
         assert material["StepID"] == 0 and material["CurrentModuleName"] == "DummyPort"
         assert material["Count"] == 7 + index
     assert materials[-1] == untouched
+
+
+def test_recompute_update_projects_dummy_material_lifespan() -> None:
+    """下一轮 update 的 Dummy Count 应反映平台回放账本累计的寿命。"""
+    update = {
+        "CurrentTime": 0.0,
+        "Materials": [{
+            "ID": 100001,
+            "CurrentModuleName": "PM1",
+            "SlotID": 1,
+            "Usage": 2,
+            "Count": 3,
+        }],
+        "Robots": {},
+        "Stations": {"PM1": {"Type": "ProcessChamber", "Capacity": 1}},
+    }
+    state = MachineState.from_sources(None, update)
+    # 初始物料按“已就位”建模；带片工艺要求槽位处于待加工状态。
+    state.stations["PM1"].slots[1].phase = SlotPhase.UNPROCESSED
+    state.stations["PM1"].slots[1].material = MaterialState(100001, pjob_name="dummy_P1")
+    move = {
+        "MoveID": 1,
+        "MoveType": 9,
+        "StartTime": 0.0,
+        "EndTime": 10.0,
+        "ModuleName": "PM1",
+        "MatIDList": [100001],
+        "SlotList": [1],
+    }
+    replay = MoveStateReplay(None, [move], state)
+    replay.update_move_state({"MoveID": 1, "MoveState": MoveStateReplay.RUNNING})
+    replay.update_move_state({"MoveID": 1, "MoveState": MoveStateReplay.DONE})
+
+    apply_machine_state_to_update(update, replay.state, 10.0)
+
+    assert update["Materials"][0]["Count"] == 4
+
+
+def test_recompute_update_prefers_completed_state_for_dummy_counts() -> None:
+    """外部算法的 Dummy 寿命回写必须来自真实回放状态而非位置投影。"""
+    update = {
+        "CurrentTime": 0.0,
+        "Materials": [{
+            "ID": 100001,
+            "CurrentModuleName": "PM1",
+            "SlotID": 1,
+            "Usage": 2,
+            "Count": 0,
+        }],
+        "Robots": {},
+        "Stations": {"PM1": {"Type": "ProcessChamber", "Capacity": 1}},
+    }
+    projected_state = MachineState.from_sources(None, update)
+    projected_state.dummy_material_counts["100001"] = 0
+    completed_state = MachineState.from_sources(None, update)
+    completed_state.dummy_material_counts["100001"] = 6
+
+    apply_machine_state_to_update(
+        update, projected_state, 10.0,
+        completed_process_state=completed_state,
+    )
+
+    assert update["Materials"][0]["Count"] == 6

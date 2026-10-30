@@ -583,33 +583,33 @@ class ConfigEditorDeviceTests(unittest.TestCase):
                 plan, {"jobs": [_job("Incoming", "Route12", "LP1")]}, 0.0, BuildState(),
             )
 
-    def test_task_alg_init_removes_every_unreferenced_module(self) -> None:
-        """任务级 AlgInit 应同步移除 PM5/PM6 等所有未引用模块信息。"""
+    def test_task_alg_init_passes_through_every_declared_module(self) -> None:
+        """企业协议：任务级 AlgInit 全量透传设备拓扑，不做任务级裁剪。
+
+        旧断言要求同步移除 PM5/PM6 等所有未引用模块；该任务级裁剪语义已被
+        企业协议取消——企业平台 AlgInit 携带设备声明的全部 Station/Robot 与
+        完整时序字典，裁剪会导致本地与企业在候选生成前分叉。此处改为正向
+        断言全量透传，同时证明 routes/rounds 参数不影响拓扑。
+        """
         device = json.loads(PSE300_DEVICE_PATH.read_text(encoding="utf-8"))
         route = _route("R1", "PM1", "R1_Step4")
         rounds = [{"jobs": [{**_job("P1", "R1", "LP1"), "waferCount": 1}]}]
 
         alg_init = config_server.build_task_alg_init(device, [route], rounds)
 
-        used_stations = {"LP1", "LA", "LB", "PM1"}
-        self.assertEqual(used_stations, set(alg_init["Stations"]))
-        self.assertEqual({"ATR", "VTR"}, set(alg_init["Robots"]))
-        for robot in alg_init["Robots"].values():
-            self.assertTrue(set(robot.get("PickTime", {})) <= used_stations)
-            self.assertTrue(set(robot.get("PlaceTime", {})) <= used_stations)
-            self.assertTrue(all(
-                row["SrcStation"] in used_stations
-                and row["DestStation"] in used_stations
-                for row in robot.get("PrepTransTime", [])
-            ))
-            for arm in robot.get("ArmInfo", {}).values():
-                self.assertTrue(set(arm.get("AccessibleStations", [])) <= used_stations)
-                self.assertTrue(all(
-                    candidate["Key"] in used_stations
-                    for slots in arm.get("SlotsStationMap", {}).values()
-                    for candidates in slots.values()
-                    for candidate in candidates
-                ))
+        declared_stations = set(device["Stations"])
+        declared_robots = set(device["Robots"])
+        self.assertEqual(declared_stations, set(alg_init["Stations"]))
+        self.assertEqual(declared_robots, set(alg_init["Robots"]))
+        # 任务只引用 LP1/PM1，未引用的 PM5/PM6 仍在拓扑与时序字典中。
+        for module in ("PM5", "PM6"):
+            self.assertIn(module, alg_init["Stations"])
+        for name, robot in device["Robots"].items():
+            runtime_robot = alg_init["Robots"][name]
+            self.assertEqual(set(robot.get("PickTime", {})), set(runtime_robot.get("PickTime", {})))
+            self.assertEqual(set(robot.get("PlaceTime", {})), set(runtime_robot.get("PlaceTime", {})))
+            self.assertEqual(robot.get("PrepTransTime", []), runtime_robot.get("PrepTransTime", []))
+            self.assertEqual(robot.get("ArmInfo", {}), runtime_robot.get("ArmInfo", {}))
 
     def test_pse300_loadlock_does_not_switch_environment_twice_without_opening(self) -> None:
         """PSE300 多槽换片时，两次抽充气之间必须存在一次真实开门访问。"""

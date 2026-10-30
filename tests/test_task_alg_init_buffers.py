@@ -1,8 +1,9 @@
-"""验证任务级 AlgInit 与标准 update 对 Buffer 模块的保留边界。
+"""验证企业协议 AlgInit 全量透传与标准 update 的 Buffer 模块快照。
 
-Route 通过 ``BufferOption`` 请求共享 Buffer 资源，不能只按 Visit 命名收敛模块；
-标准算法要求此时设备拓扑存在显式 ``Type=Buffer`` 站点。本模块用最小双腔设备
-覆盖“按类型保留 Buffer”与“零 BufferOption 仍收敛模块”两条相邻契约。
+企业协议要求 ``build_task_alg_init`` 携带设备声明的全部 Station/Robot（含
+未被当前任务引用的 PM/Cooler 与 ``BufferOption`` 未请求的 Buffer），不做
+任务级拓扑裁剪；标准算法据此在完整拓扑上生成候选。本模块用最小双腔设备
+覆盖“全量透传不丢模块”与“update 快照携带 Buffer 实时字段”两条契约。
 """
 
 from __future__ import annotations
@@ -165,21 +166,22 @@ def _plan(buffer_option: int) -> tuple[Dict[str, Any], Dict[str, Any]]:
     return plan, rounds[0]
 
 
-def test_buffer_option_keeps_typed_buffer_modules_in_task_alg_init() -> None:
-    """BufferOption 非零时按类型保留全部 Buffer，未引用的其它模块仍被裁剪。"""
+def test_alg_init_keeps_every_declared_module_regardless_of_task() -> None:
+    """BufferOption 非零时，未引用模块与全部 Buffer 仍保留在 AlgInit。"""
     plan, _round = _plan(2)
 
     stations = set(plan["device"]["Stations"])
-    assert {"Buffer1", "Buffer2"} <= stations
-    assert stations == {"P1", "LA", "PM1", "Buffer1", "Buffer2"}
-    assert "PM2" not in stations and "Cooler" not in stations
+    assert stations == {"P1", "LA", "PM1", "PM2", "Cooler", "Buffer1", "Buffer2"}
+    assert set(plan["device"]["Robots"]) == {"ATR", "VTR"}
 
 
-def test_buffer_option_none_still_trims_unreferenced_buffer_modules() -> None:
-    """零 BufferOption 不请求 Buffer，任务级 AlgInit 继续保持最小拓扑。"""
+def test_zero_buffer_option_still_keeps_every_declared_module() -> None:
+    """零 BufferOption 不请求 Buffer，但企业协议 AlgInit 仍为全量拓扑。"""
     plan, _round = _plan(0)
 
-    assert set(plan["device"]["Stations"]) == {"P1", "LA", "PM1"}
+    assert set(plan["device"]["Stations"]) == {
+        "P1", "LA", "PM1", "PM2", "Cooler", "Buffer1", "Buffer2",
+    }
     assert set(plan["device"]["Robots"]) == {"ATR", "VTR"}
 
 
@@ -189,7 +191,9 @@ def test_buffer_option_update_carries_standard_buffer_snapshot() -> None:
 
     update = build_round_update(plan, round_config, 0.0, BuildState())
 
-    assert set(update["Stations"]) == {"P1", "LA", "PM1", "Buffer1", "Buffer2"}
+    assert set(update["Stations"]) == {
+        "P1", "LA", "PM1", "PM2", "Cooler", "Buffer1", "Buffer2",
+    }
     assert set(update["Stations"]["Buffer1"]) == {
         "Type", "State", "TimeToAvailableOfSlot",
     }
