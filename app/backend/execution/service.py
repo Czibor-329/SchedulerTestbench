@@ -654,12 +654,6 @@ def _execute_plan(raw_plan: Mapping[str, Any], reproduction: ReproductionLog) ->
         if plan.get("executionTimingEnabled")
         else None
     )
-    plan["device"] = build_task_alg_init(
-        plan["device"],
-        [row for row in (plan.get("routes") or []) if isinstance(row, Mapping)],
-        [row for row in (plan.get("rounds") or []) if isinstance(row, Mapping)],
-        [row for row in (plan.get("cleans") or []) if isinstance(row, Mapping)],
-    )
     reproduction.add("AlgInit", plan["device"])
     strategy = str(plan.get("strategy") or "heuristic").strip()
     normalized_strategy = strategy.lower()

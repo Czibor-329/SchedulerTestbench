@@ -3,7 +3,7 @@
 本模块是“结果诊断 → 理论产能”页签的数据边界，负责：
 
 - 读取设备概览与测试，按平台标准载荷构造链路
-  （``build_workspace_batch_plan`` → ``build_task_alg_init`` →
+  （``build_workspace_batch_plan`` →
   ``build_round_update`` → ``compile_capacity_input``）得到平台 ``CapacityInput``；
 - 用一次“路线分类”缓存（只编译、不求解）得到每条路线的路径类型、LoadLock
   类型与可建图状态，供筛选器选择；
@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from app.backend.execution.batch_service import build_workspace_batch_plan
-from app.backend.execution.plan_builder import BuildState, build_round_update, build_task_alg_init
+from app.backend.execution.plan_builder import BuildState, build_round_update
 from app.backend.workspace.repository import get_workspace_device_overview, get_workspace_test
 
 # 导入即装配批量服务依赖，保证与运行接口使用同一套计划构造边界。
@@ -347,9 +347,6 @@ def _compile_route(
     runtime = _capacity_runtime()
     test_case = _synthetic_test_case(route_name, route_config, load_port)
     plan = build_workspace_batch_plan(device, test_case, "cycle", {})
-    plan["device"] = build_task_alg_init(
-        plan["device"], plan["routes"], plan["rounds"], plan["cleans"],
-    )
     build_state = BuildState()
     update = build_round_update(plan, plan["rounds"][0], 0.0, build_state)
     problem = runtime.compile_capacity_input(plan["device"], update)

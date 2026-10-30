@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 
 
 FRONTEND = Path(__file__).resolve().parents[1] / "app/frontend"
-EXPECTED_FRONTEND_VERSION = "1.6.26"
+EXPECTED_FRONTEND_VERSION = "1.6.27"
 VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 
 

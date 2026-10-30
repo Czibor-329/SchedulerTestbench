@@ -1,6 +1,6 @@
 """调度请求数据建模。
 
-本模块负责设备初始化数据归一化、企业格式 AlgInit 透传、Route/Recipe 构造以及
+本模块负责完整设备初始化数据归一化、Route/Recipe 构造以及
 各轮 CJob/PJob 请求展开。命名与结构对齐企业平台协议（Material ID 从 0 起、
 PJobName 形如 ``{TaskID}.PJOB_{CJob全局序号}``、Dummy ID 从 1000000 起）。
 它不执行调度算法，也不处理 HTTP 或工作区持久化。
@@ -36,9 +36,6 @@ CJOB_TYPE_VALUES = {"NormalLot": 0, "HighestLot": 2, "HigherLot": 3}
 TASK_MODE_VALUES = {"Smart": 0, "Pipeline": 1, "Sequential": 2, "Concurrent": 3}
 # Aligner RouteStep 必须通过 NeedProcess 触发 AlignMove 规划。
 ALIGNER_NAME_MARKER = "aligner"
-# 需要按任务请求补齐全量站点的标准 Station.Type 名称。
-DUMMY_PORT_STATION_TYPE = "dummyport"
-BUFFER_STATION_TYPE = "buffer"
 
 
 @dataclass
@@ -67,6 +64,8 @@ def extract_init_data(raw: Any) -> Dict[str, Any]:
 
     标准 ``IToolTopo`` 不包含顶层 Route；旧录制或导入文件即使携带
     ``Route/Routes`` 兼容字段，也不能继续透传给算法 ``init``。
+    返回完整拓扑的隔离副本，统一按 Robots、Stations 排列根字段；不裁剪模块、
+    时序或机器人指向，也不修改输入。
     """
     value = raw
     if isinstance(value, list):
@@ -88,45 +87,13 @@ def extract_init_data(raw: Any) -> Dict[str, Any]:
         raise ValueError("设备文件不是有效 JSON 对象")
     if not isinstance(value.get("Stations"), Mapping) or not isinstance(value.get("Robots"), Mapping):
         raise ValueError("设备文件必须包含 Stations 和 Robots")
-    return {
+    result = {
         str(key): copy_payload(item)
         for key, item in value.items()
         if str(key).casefold() not in {"route", "routes"}
     }
-
-
-def _station_type_name(station: Mapping[str, Any]) -> str:
-    """返回标准接口 Station.Type 的归一化名称。
-
-    保留给运行时按类型定位站点（例如 DummyPort 库存查找）使用。
-    """
-    return str(station.get("Type") or "").strip().casefold()
-
-
-def build_task_alg_init(
-    device: Mapping[str, Any],
-    routes: Sequence[Mapping[str, Any]] = (),
-    rounds: Sequence[Mapping[str, Any]] = (),
-    cleans: Sequence[Mapping[str, Any]] = (),
-) -> Dict[str, Any]:
-    """构造发送给算法 ``init`` 的完整设备拓扑。
-
-    企业协议要求 AlgInit 携带设备声明的全部 Station/Robot，包括未被当前任务
-    Route 引用的模块、完整时序字典、PrepTransTime 与 ArmInfo；不做任务级拓扑
-    裁剪，也不改写机器人指向。任务级裁剪曾把 18 站设备裁成 9 站并过滤各类时序
-    键，导致本地与企业在候选生成前就已分叉。
-
-    参数 routes/rounds/cleans 仅保留调用方兼容；本函数不再依据任务内容修改
-    拓扑。任务级裁剪如需恢复，必须作为显式标注的独立实验入口，不允许在主链路
-    隐式生效。
-    """
-    result = extract_init_data(device)
-    if not isinstance(result.get("Stations"), Mapping) or not isinstance(
-        result.get("Robots"), Mapping
-    ):
-        raise ValueError("设备文件必须包含 Stations 和 Robots")
     # 企业 AlgInit 顶层键序：Robots → Stations（设备文件的字段顺序不参与协议）。
-    ordered_result = {key: result[key] for key in ("Robots", "Stations") if key in result}
+    ordered_result = {key: result[key] for key in ("Robots", "Stations")}
     ordered_result.update(
         {key: value for key, value in result.items() if key not in ordered_result}
     )

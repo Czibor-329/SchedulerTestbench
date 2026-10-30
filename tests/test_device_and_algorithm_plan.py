@@ -583,19 +583,16 @@ class ConfigEditorDeviceTests(unittest.TestCase):
                 plan, {"jobs": [_job("Incoming", "Route12", "LP1")]}, 0.0, BuildState(),
             )
 
-    def test_task_alg_init_passes_through_every_declared_module(self) -> None:
-        """企业协议：任务级 AlgInit 全量透传设备拓扑，不做任务级裁剪。
+    def test_alg_init_passes_through_every_declared_module(self) -> None:
+        """企业协议：AlgInit 全量透传设备拓扑，不做任务级裁剪。
 
         旧断言要求同步移除 PM5/PM6 等所有未引用模块；该任务级裁剪语义已被
         企业协议取消——企业平台 AlgInit 携带设备声明的全部 Station/Robot 与
         完整时序字典，裁剪会导致本地与企业在候选生成前分叉。此处改为正向
-        断言全量透传，同时证明 routes/rounds 参数不影响拓扑。
+        断言全量透传，未被任务访问的模块仍属于设备初始化能力。
         """
         device = json.loads(PSE300_DEVICE_PATH.read_text(encoding="utf-8"))
-        route = _route("R1", "PM1", "R1_Step4")
-        rounds = [{"jobs": [{**_job("P1", "R1", "LP1"), "waferCount": 1}]}]
-
-        alg_init = config_server.build_task_alg_init(device, [route], rounds)
+        alg_init = config_server.extract_init_data(device)
 
         declared_stations = set(device["Stations"])
         declared_robots = set(device["Robots"])

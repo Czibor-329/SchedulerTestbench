@@ -1,6 +1,6 @@
 """验证企业协议 AlgInit 全量透传与标准 update 的 Buffer 模块快照。
 
-企业协议要求 ``build_task_alg_init`` 携带设备声明的全部 Station/Robot（含
+企业协议要求 ``extract_init_data`` 携带设备声明的全部 Station/Robot（含
 未被当前任务引用的 PM/Cooler 与 ``BufferOption`` 未请求的 Buffer），不做
 任务级拓扑裁剪；标准算法据此在完整拓扑上生成候选。本模块用最小双腔设备
 覆盖“全量透传不丢模块”与“update 快照携带 Buffer 实时字段”两条契约。
@@ -9,11 +9,11 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List
+from types import SimpleNamespace
 
 from app.backend.execution.plan_builder import (
     BuildState,
     build_round_update,
-    build_task_alg_init,
     extract_init_data,
 )
 
@@ -162,7 +162,6 @@ def _plan(buffer_option: int) -> tuple[Dict[str, Any], Dict[str, Any]]:
         "routes": [route],
         "rounds": rounds,
     }
-    plan["device"] = build_task_alg_init(plan["device"], [route], rounds, [])
     return plan, rounds[0]
 
 
@@ -173,6 +172,12 @@ def test_alg_init_keeps_every_declared_module_regardless_of_task() -> None:
     stations = set(plan["device"]["Stations"])
     assert stations == {"P1", "LA", "PM1", "PM2", "Cooler", "Buffer1", "Buffer2"}
     assert set(plan["device"]["Robots"]) == {"ATR", "VTR"}
+    assert list(plan["device"])[:2] == ["Robots", "Stations"]
+    source = _dual_chamber_device()
+    normalized = extract_init_data(source)
+    assert normalized == plan["device"]
+    assert normalized["Stations"] is not source["Stations"]
+    assert normalized["Robots"] is not source["Robots"]
 
 
 def test_zero_buffer_option_still_keeps_every_declared_module() -> None:
@@ -201,3 +206,29 @@ def test_buffer_option_update_carries_standard_buffer_snapshot() -> None:
     assert update["Stations"]["Buffer1"]["TimeToAvailableOfSlot"] == {
         str(slot): 0 for slot in range(1, 26)
     }
+
+
+def test_execution_preserves_unused_topology_and_initial_robot_position(monkeypatch) -> None:
+    """经过实际执行入口仍保留路线外模块及机器人初始姿态。"""
+    from copy import deepcopy
+    from app.backend.execution import service
+
+    plan, _ = _plan(0)
+    arm = plan["device"]["Robots"]["VTR"]["ArmInfo"]["ArmA"]
+    arm["AccessibleStations"].append("PM2")
+    arm["SlotAtStation"] = "PM2"
+    original = deepcopy(plan["device"])
+    plan.update(strategy="other_alg:fixture", roundCount=1)
+    monkeypatch.setattr(service, "discover_other_algorithms", lambda: [{"id": "fixture"}])
+
+    def capture(prepared, update, *args, **kwargs):
+        """在算法调用边界核对完整初始化与实时快照。"""
+        assert prepared["device"] == original
+        assert set(update["Stations"]) == set(original["Stations"])
+        assert update["Robots"]["VTR"]["ArmInfo"]["ArmA"] == arm
+        return {"verified": True}
+
+    monkeypatch.setattr(service, "_execute_standard_algorithm", capture)
+    reproduction = SimpleNamespace(add=lambda *args: None, add_schedule=lambda *args: None)
+    assert service._execute_plan(plan, reproduction) == {"verified": True}
+    assert plan["device"] == original
