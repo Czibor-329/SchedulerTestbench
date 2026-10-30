@@ -1,4 +1,8 @@
-"""CJob Cycle 多周期任务展开与完成边界计算。"""
+"""CJob Cycle 多周期任务展开与完成边界计算。
+
+企业命名协议：补片 CJob 复用原始 CJob 的 PJob 基础名并追加补片 TaskID
+（``1.PJOB_1_4``）；补片 TaskID 由运行侧按任务内数字序号全局递增分配。
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,11 @@ from app.backend.execution.run_state import *
 
 @dataclass
 class CJobCycleRuntime:
-    """记录一个固定 LoadPort CJob 当前运行到第几盒。"""
+    """记录一个固定 LoadPort CJob 当前运行到第几盒。
+
+    base_pjob_names 保存该 CJob 首次展开后的企业格式 PJob 基础名（如
+    ``1.PJOB_1``、``1.PJOB_1_2``），补片克隆时在末尾追加补片 TaskID。
+    """
 
     template: Dict[str, Any]
     load_port: str
@@ -15,6 +23,7 @@ class CJobCycleRuntime:
     current_cycle: int
     current_task_id: str
     configured_round: int
+    base_pjob_names: List[str] = field(default_factory=list)
 
 
 def _cjob_cycle_product_material_ids(
@@ -110,13 +119,18 @@ def _cjob_load_port_name(cjob: Mapping[str, Any]) -> str:
     ).strip()
 
 
-def _cycle_task_id(base_task_id: str, cycle_index: int) -> str:
-    """为补片循环生成稳定且不与普通轮次冲突的 TaskID。"""
-    return base_task_id if cycle_index == 1 else f"{base_task_id}-CYCLE-{cycle_index}"
+def _cycle_cjob(
+    cjob: Mapping[str, Any],
+    next_task_id: str,
+    base_pjob_names: Sequence[str],
+) -> Dict[str, Any]:
+    """复制一个 CJob 作为指定补片循环的独立标准 ControlJob。
 
-
-def _cycle_cjob(cjob: Mapping[str, Any], cycle_index: int) -> Dict[str, Any]:
-    """复制一个 CJob 作为指定循环的独立标准 ControlJob。"""
+    企业命名协议：补片 CJob 的 TaskID 使用全局递增数字（由调用方分配）；
+    各 PJob 携带原始基础名 ``_basePJobName``，由 ``build_round_update`` 在
+    末尾追加补片 TaskID（如 ``1.PJOB_1_4``）。基础名缺失时回退为正常
+    企业命名，不阻断运行。
+    """
     cloned = deepcopy(dict(cjob))
     base_task_id = str(cjob.get("taskId") or cjob.get("TaskID") or "").strip()
     if not base_task_id:
@@ -124,15 +138,60 @@ def _cycle_cjob(cjob: Mapping[str, Any], cycle_index: int) -> Dict[str, Any]:
     load_port = _cjob_load_port_name(cjob)
     if not load_port:
         raise ValueError(f"CJob TaskID={base_task_id} 必须选择 LoadPort")
-    cloned["taskId"] = _cycle_task_id(base_task_id, cycle_index)
+    cloned["taskId"] = str(next_task_id)
     cloned["loadPort"] = load_port
     cloned["cjobCycle"] = 1
-    cloned["pjobs"] = [
-        {**deepcopy(dict(pjob)), "loadPort": load_port}
-        for pjob in (cjob.get("pjobs") or [])
-        if isinstance(pjob, Mapping)
-    ]
+    cloned["pjobs"] = []
+    pjob_rows = [pjob for pjob in (cjob.get("pjobs") or []) if isinstance(pjob, Mapping)]
+    for pjob_index, pjob in enumerate(pjob_rows):
+        cloned_pjob = {**deepcopy(dict(pjob)), "loadPort": load_port}
+        if pjob_index < len(base_pjob_names) and base_pjob_names[pjob_index]:
+            cloned_pjob["_basePJobName"] = str(base_pjob_names[pjob_index])
+        cloned["pjobs"].append(cloned_pjob)
     return cloned
+
+
+def _bind_cycle_base_pjob_names(
+    states: Sequence[CJobCycleRuntime],
+    update_params: Mapping[str, Any],
+) -> None:
+    """按 TaskID 把展开后的企业格式 PJob 基础名绑定到补片运行状态。
+
+    绑定来源是当轮 update 的 ProcessJobs（JobName 为权威运行时名）。补片
+    CJob 需要原始 CJob 的基础名才能生成 ``{原始名}_{补片TaskID}``；缺失时
+    保持空列表，由 ``_cycle_cjob`` 回退到正常企业命名。
+    """
+    for state in states:
+        names = [
+            str(process_job.get("JobName") or "")
+            for process_job in update_params.get("ProcessJobs") or []
+            if (
+                isinstance(process_job, Mapping)
+                and str(process_job.get("TaskID") or "") == state.current_task_id
+            )
+        ]
+        state.base_pjob_names = [name for name in names if name]
+
+
+def _initial_cycle_task_serial(rounds: Sequence[Mapping[str, Any]]) -> int:
+    """返回补片 CJob 可用的首个全局数字 TaskID。
+
+    企业协议要求补片 TaskID 为任务内数字递增序号（如已有 1/2/3 后从 4 起），
+    与编辑器配置的数字 TaskID 保持唯一。全部 TaskID 均非数字时从 1 起计数；
+    已有数字但为负或零时同样避开冲突区。
+    """
+    max_serial = 0
+    for round_config in rounds:
+        if not isinstance(round_config, Mapping):
+            continue
+        for cjob in _round_cjob_rows(round_config):
+            raw_task_id = str(cjob.get("taskId") or cjob.get("TaskID") or "").strip()
+            try:
+                serial = int(raw_task_id)
+            except ValueError:
+                continue
+            max_serial = max(max_serial, serial)
+    return max_serial + 1
 
 
 def _cycle_states_for_round(

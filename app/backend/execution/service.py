@@ -201,6 +201,11 @@ def _execute_standard_algorithm(
         )
 
         active_cycles = _cycle_states_for_round(rounds[0], 1)
+        # 首排展开后立即绑定企业格式 PJob 基础名，供补片克隆追加补片 TaskID。
+        _bind_cycle_base_pjob_names(active_cycles, first_update)
+        # 企业协议：补片 CJob 的 TaskID 为全局递增数字，初始值取编辑器
+        # 配置的数字 TaskID 最大值 + 1，避免与后续轮次冲突。
+        next_cycle_task_serial = _initial_cycle_task_serial(rounds)
 
         def execute_recompute_event(
             round_config: Mapping[str, Any],
@@ -292,6 +297,13 @@ def _execute_standard_algorithm(
                     runtime.current_update,
                     reused_slot_material_ids,
                 )
+            # 正式标准包接收当前物理现场，在途效果由 MoveStates 恢复；
+            # 完成投影用于新计划校验；仅 Running Swap 的参与片按企业协议
+            # 单独导出交换后位置，不能连带提前提交其他动作、压力或计数。
+            snapshot_state = projected_state
+            if builtin_strategy is None:
+                snapshot_state = runtime.state
+                snapshot_state.remove_materials(released_ids)
             update = _build_platform_recompute_update(
                 runtime,
                 new_round_update,
@@ -301,9 +313,11 @@ def _execute_standard_algorithm(
                     if builtin_strategy is not None
                     else runtime.running_move_states
                 ),
-                projected_state=projected_state,
+                projected_state=snapshot_state,
+                robot_pointer_state=projected_state if builtin_strategy is None else None,
                 previous_output=output,
                 completed_process_state=runtime.state if builtin_strategy is None else None,
+                running_swap_state=projected_state if builtin_strategy is None else None,
             )
             update_snapshots.append(copy_payload(update))
             reproduction.add_schedule(
@@ -480,9 +494,19 @@ def _execute_standard_algorithm(
                     for completion_time, cycle_state in cycle_times
                     if completion_time <= next_cycle_time + TIME_TOLERANCE
                 ]
+                # 企业协议：补片 CJob 按到期顺序领取全局递增数字 TaskID。
+                cycle_task_ids = [
+                    str(next_cycle_task_serial + offset)
+                    for offset in range(len(due_states))
+                ]
+                next_cycle_task_serial += len(due_states)
                 next_cjobs = [
-                    _cycle_cjob(cycle_state.template, cycle_state.current_cycle + 1)
-                    for cycle_state in due_states
+                    _cycle_cjob(
+                        cycle_state.template,
+                        cycle_task_ids[offset],
+                        cycle_state.base_pjob_names,
+                    )
+                    for offset, cycle_state in enumerate(due_states)
                 ]
                 cycle_labels = ", ".join(
                     f"{cycle_state.load_port} {cycle_state.current_cycle + 1}/{cycle_state.total_cycles}"
@@ -504,16 +528,9 @@ def _execute_standard_algorithm(
                         "CJobCycle 到达补片时刻但 LoadPort 尚未清空："
                         + ",".join(sorted(missing_ports))
                     )
-                for cycle_state in due_states:
+                for cycle_state, new_task_id in zip(due_states, cycle_task_ids):
                     cycle_state.current_cycle += 1
-                    cycle_state.current_task_id = _cycle_task_id(
-                        str(
-                            cycle_state.template.get("taskId")
-                            or cycle_state.template.get("TaskID")
-                            or ""
-                        ).strip(),
-                        cycle_state.current_cycle,
-                    )
+                    cycle_state.current_task_id = new_task_id
                 continue
 
             round_config = rounds[next_configured_round]
@@ -526,9 +543,14 @@ def _execute_standard_algorithm(
                 "time",
                 configured_round,
             )
-            active_cycles.extend(
-                _cycle_states_for_round(round_config, configured_round)
+            new_cycle_states = _cycle_states_for_round(
+                round_config, configured_round
             )
+            # 新轮展开后同样绑定该轮的企业格式 PJob 基础名。
+            _bind_cycle_base_pjob_names(
+                new_cycle_states, runtime.current_update
+            )
+            active_cycles.extend(new_cycle_states)
             next_configured_round += 1
 
     combined_output = runtime.combined_output()
@@ -625,8 +647,12 @@ def _execute_plan(raw_plan: Mapping[str, Any], reproduction: ReproductionLog) ->
     plan = copy_payload(dict(raw_plan))
     plan["device"] = extract_init_data(plan.get("device"))
     raw_execution_timing = plan["device"].pop("ExecutionTiming", None)
-    plan["executionTiming"] = normalize_execution_timing(
-        plan["device"], raw_execution_timing,
+    # 关闭模拟时不消费历史执行配置，避免设备删改后无关的旧字段阻断调度。
+    # 开启时仍严格校验，不静默裁掉无效配置或替换操作者指定的时间。
+    plan["executionTiming"] = (
+        normalize_execution_timing(plan["device"], raw_execution_timing)
+        if plan.get("executionTimingEnabled")
+        else None
     )
     plan["device"] = build_task_alg_init(
         plan["device"],

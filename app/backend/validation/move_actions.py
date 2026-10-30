@@ -494,6 +494,8 @@ def _start_pick(state: MachineState, move: Mapping[str, Any], end_time: float, _
             robot.slot_targets[robot_slot_id] = (station.name, station_slot_id)
         robot.position = _robot_derived_position(robot)
 
+        robot.record_access([row[3] for row in transfers])
+
     _schedule(scheduled, move, end_time, complete)
     return None
 
@@ -555,6 +557,8 @@ def _start_place(state: MachineState, move: Mapping[str, Any], end_time: float, 
             robot.hands[robot_slot_id] = None
             robot.slot_targets[robot_slot_id] = (station.name, station_slot_id)
         robot.position = _robot_derived_position(robot)
+
+        robot.record_access([row[3] for row in transfers])
 
     _schedule(scheduled, move, end_time, complete)
     return None
@@ -842,10 +846,16 @@ def _start_process(state: MachineState, move: Mapping[str, Any], end_time: float
 
     def complete() -> None:
         """同时完成槽位，并按 ProcessRecipe.Weight 累计站点状态变量。"""
+        state.record_process_completion(station, move, end_time)
         for slot, material, _ in targets:
             _set_slot(slot, SlotPhase.CLEANED if material is None else SlotPhase.COMPLETED, material)
             if material is not None:
                 slot.material_process_count += 1
+                # Dummy 库存片每次带片工艺即消耗一次物理寿命，跨任务累计，
+                # 与站级 DummyCount 变量（清洁完成归零）分属两个口径。
+                material_key = str(material.material_id)
+                if material_key in state.dummy_material_counts:
+                    state.dummy_material_counts[material_key] += 1
                 pjob_name = str(material.pjob_name or "").strip()
                 if pjob_name:
                     state.product_clean_entries.add((pjob_name, station.name))
@@ -965,6 +975,9 @@ def _start_process(state: MachineState, move: Mapping[str, Any], end_time: float
                     )
                 ):
                     state.pending_wac_obligations.discard(pending_key)
+        # UpdateStateVariables 属于每次已完成清洗动作，不是整组 Dummy 的尾标记。
+        # 多次 Dummy 的完成义务仍由 completed_clean_counts 独立累计。
+        if clean_task_name:
             for variable_name in state.clean_task_state_variables.get(
                 clean_task_name,
                 set(),
@@ -1366,6 +1379,9 @@ def _start_swap(state: MachineState, move: Mapping[str, Any], end_time: float, _
             if (station.name, station_slot_id) not in send_station_slots:
                 _set_slot(station.slots[station_slot_id], SlotPhase.EMPTY, None)
         robot.position = _robot_derived_position(robot)
+
+        robot.record_access([row[2] for row in recv_rows])
+        robot.record_access([row[2] for row in send_rows])
 
     _schedule(scheduled, move, end_time, complete)
     return None

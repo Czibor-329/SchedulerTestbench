@@ -762,3 +762,115 @@ def test_skipping_preclean_does_not_skip_dummy_clean_obligation() -> None:
         skipped_clean_validation_types=["preclean"],
     )
     assert issues and "MVL-CLEAN-DUMMY-MISSING" in issues[0]
+
+
+def test_dummy_lifespan_seeded_only_for_cleaning_usage_materials() -> None:
+    """寿命账本只播种 Usage 允许清洗的物料，并继承其 Count 初值。"""
+    update = {
+        "Stations": {
+            "PM1": {"Type": "ProcessChamber", "Capacity": 1, "Slots": [1, 2]},
+            "PM2": {"Type": "ProcessChamber", "Capacity": 1},
+        },
+        "Robots": {},
+        "Materials": [
+            {"ID": 100001, "CurrentModuleName": "PM1", "SlotID": 1, "Usage": 2, "Count": 3},
+            {"ID": 100002, "CurrentModuleName": "PM1", "SlotID": 2, "Usage": "cleaning", "Count": 0},
+            {"ID": 201, "CurrentModuleName": "PM2", "SlotID": 1, "Usage": 1, "Count": 7},
+        ],
+        "ProcessJobs": [],
+    }
+    state = MachineState.from_sources(None, update)
+
+    assert state.dummy_material_counts == {"100001": 3, "100002": 0}
+
+
+def test_dummy_clean_pass_increments_material_lifespan() -> None:
+    """Dummy 带片清洁每完成一次即消耗一片物理寿命。"""
+    update = {
+        "Stations": {"PM1": {"Type": "ProcessChamber", "Capacity": 1}},
+        "Robots": {},
+        "Materials": [{
+            "ID": 100001, "CurrentModuleName": "PM1", "SlotID": 1,
+            "Usage": 2, "Count": 3,
+        }],
+        "ProcessJobs": [{
+            "JobName": "P1",
+            "OriginRoute": {"PrePJob": {"PM1": [{
+                "CheckConditions": {"Dummy": [{
+                    "TaskName": "PreDummyClean", "CleanRecipe": "DummyRecipe",
+                    "MaterialCount": 1,
+                }]},
+            }]}},
+        }],
+    }
+    state = MachineState.from_sources(None, update)
+    # 初始物料按“已就位”建模；带片清洁要求槽位处于待加工状态。
+    state.stations["PM1"].slots[1] = SlotState(
+        phase=SlotPhase.UNPROCESSED,
+        material=MaterialState(100001, pjob_name="dummy_P1"),
+    )
+    move = _move(
+        1, 9, 0, 10,
+        ModuleName="PM1", MatIDList=[100001], SlotList=[1], PJobName=["P1"],
+        CleanTaskName="PreDummyClean", ProcessRecipe="DummyRecipe",
+        IsLastCleanTaskMove=True,
+    )
+
+    replay = MoveStateReplay(None, [move], state)
+    replay.update_move_state({"MoveID": 1, "MoveState": MoveStateReplay.RUNNING})
+    replay.update_move_state({"MoveID": 1, "MoveState": MoveStateReplay.DONE})
+
+    assert replay.state.dummy_material_counts == {"100001": 4}
+
+
+def test_product_process_does_not_touch_dummy_lifespan() -> None:
+    """产品物料的带片工艺不递增 Dummy 寿命账本。"""
+    update = {
+        "Stations": {"PM1": {"Type": "ProcessChamber", "Capacity": 1}},
+        "Robots": {},
+        "Materials": [{
+            "ID": 201, "CurrentModuleName": "PM1", "SlotID": 1,
+            "Usage": 1, "Count": 7,
+        }],
+        "ProcessJobs": [],
+    }
+    state = MachineState.from_sources(None, update)
+    state.stations["PM1"].slots[1].phase = SlotPhase.UNPROCESSED
+    move = _move(
+        1, 9, 0, 10, ModuleName="PM1", MatIDList=[201], SlotList=[1],
+        ProcessRecipe="ProductRecipe",
+    )
+
+    replay = MoveStateReplay(None, [move], state)
+    replay.update_move_state({"MoveID": 1, "MoveState": MoveStateReplay.RUNNING})
+    replay.update_move_state({"MoveID": 1, "MoveState": MoveStateReplay.DONE})
+
+    assert replay.state.dummy_material_counts == {}
+
+
+def test_dummy_lifespan_survives_refresh_and_only_seeds_new_wafers() -> None:
+    """跨代刷新不得用 update 初值覆盖已累计寿命；新库存片只补种初始值。"""
+    update = {
+        "Stations": {"PM1": {"Type": "ProcessChamber", "Capacity": 1}},
+        "Robots": {},
+        "Materials": [{
+            "ID": 100001, "CurrentModuleName": "PM1", "SlotID": 1,
+            "Usage": 2, "Count": 0,
+        }],
+        "ProcessJobs": [],
+    }
+    state = MachineState.from_sources(None, update)
+    state.dummy_material_counts["100001"] = 5
+
+    next_update = {
+        "Stations": {"PM1": {"Type": "ProcessChamber", "Capacity": 1}},
+        "Robots": {},
+        "Materials": [
+            {"ID": 100001, "CurrentModuleName": "PM1", "SlotID": 1, "Usage": 2, "Count": 0},
+            {"ID": 100002, "CurrentModuleName": "PM1", "SlotID": 1, "Usage": 2, "Count": 1},
+        ],
+        "ProcessJobs": [],
+    }
+    state.refresh_validation_metadata(next_update)
+
+    assert state.dummy_material_counts == {"100001": 5, "100002": 1}

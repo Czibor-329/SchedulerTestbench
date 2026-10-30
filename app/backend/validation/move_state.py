@@ -40,6 +40,8 @@ COMPLETED_ON_PLACE_STATION_TYPES = frozenset({
 })
 MULTI_PROCESS_CHAMBER_TYPE = "multiprocesschamber"
 PROCESS_CHAMBER_TYPE = "processchamber"
+LAST_ROUTE_VARIABLE_TYPE = 3
+LAST_LOT_VARIABLE_TYPE = 7
 DOORLESS_STATION_NAMES = frozenset({"Cooler", "Cool"})
 TWIN_LOAD_LOCK_PAIRS = frozenset({
     frozenset({"LA", "LB"}),
@@ -157,6 +159,10 @@ class StationState:
     transfer_busy_until: float = 0.0
     environment_busy_until: float = 0.0
     state_variables: Dict[str, float] = field(default_factory=dict)
+    #: IdleTime 以真实 Process/Clean 完成为起点，不随取放、占片或重算而重置。
+    idle_reference_time: Optional[float] = None
+    state_variable_types: Dict[str, int] = field(default_factory=dict)
+    text_state_variables: Dict[str, str] = field(default_factory=dict)
 
     @property
     def is_load_lock(self) -> bool:
@@ -210,10 +216,18 @@ class RobotState:
     slot_map: Dict[int, Dict[str, Set[Tuple[str, int]]]] = field(default_factory=dict)
     #: 静态拓扑：Arm 名 → 该 Arm 的物理手槽（用于按臂回写 SlotAtStation）。
     arm_slots: Dict[str, Set[int]] = field(default_factory=dict)
+    arm_use_counts: Dict[str, int] = field(default_factory=dict)
     busy_until: float = 0.0
     can_swap: bool = False
     #: 静态站组的站点集合；只从 slot_map 构建，不随转位位置变化。
     station_groups: Optional[Dict[str, Set[str]]] = None
+
+    def record_access(self, slot_ids: Sequence[int]) -> None:
+        """每次真实 Pick/Place 完成按物理 Arm 加一次，双槽同臂不重复计数。"""
+        used_slots = set(slot_ids)
+        for arm_name, arm_slots in self.arm_slots.items():
+            if used_slots & arm_slots:
+                self.arm_use_counts[arm_name] = self.arm_use_counts.get(arm_name, 0) + 1
 
     def swap_slot_error(self, receive_slot: int, send_slot: int) -> Optional[str]:
         """校验原子换片使用的两个机器人手槽。"""
@@ -260,6 +274,11 @@ class MachineState:
     #: Dummy WAC 中已经完成尾随空腔 WAC 的片数。该计数与带片清洁数分离，
     #: 用于强制每片 Dummy 按“带片清洁 → 出片 → 空腔 WAC”成对完成。
     completed_dummy_wac_counts: Dict[Tuple[str, str, str], int] = field(default_factory=dict)
+    #: Dummy 库存片累计寿命（物料编号字符串 -> 已使用次数）。播种自 update
+    #: ``Materials[].Count``，带片工艺完成时递增，跨代保留；与站级
+    #: ``DummyCount`` 状态变量（清洁完成归零）分属两个口径，本账本表达
+    #: 物理片的跨任务寿命，不随任何清洁任务重置。
+    dummy_material_counts: Dict[str, int] = field(default_factory=dict)
     completed_clean_counts: Dict[Tuple[str, str, str], int] = field(default_factory=dict)
     product_clean_entries: Set[Tuple[str, str]] = field(default_factory=set)
     #: 外部算法可省略的零时长产品 ProcessMove；键为（物料、Route Step、PM）。
@@ -269,6 +288,7 @@ class MachineState:
     process_steps_by_material_station: Dict[Tuple[str, str], Set[str]] = field(
         default_factory=dict
     )
+    material_process_metadata: Dict[str, Tuple[str, str]] = field(default_factory=dict)
 
     @classmethod
     def from_sources(
@@ -348,6 +368,7 @@ class MachineState:
                 )
 
         state.seed_initial_single_chamber_wac_counters(station_configs)
+        state.seed_dummy_material_counts(payload)
 
         for name, task_station in task_stations.items():
             station_name = str(name)
@@ -365,6 +386,8 @@ class MachineState:
             if robot_name not in state.robots:
                 state.robots[robot_name] = _robot_from_task(robot_name, task_robot)
             state.robot_aliases.setdefault(robot_name, robot_name)
+
+        state.seed_runtime_observations(payload)
 
         # Route 可引用配置中遗漏的逻辑槽位；只扩容，不缩小显式物理容量。
         for wafer in getattr(task, "wafers", ()) or ():
@@ -463,6 +486,79 @@ class MachineState:
         """返回不共享可变状态的整机快照。"""
         return deepcopy(self)
 
+    def remove_materials(self, material_ids: Set[Any]) -> None:
+        """从隔离现场移除已明确卸载的物料，不猜测其它物料的完成状态。"""
+        for station in self.stations.values():
+            for slot in station.slots.values():
+                if slot.material is not None and slot.material.material_id in material_ids:
+                    slot.phase = SlotPhase.EMPTY
+                    slot.material = None
+        for robot in self.robots.values():
+            for slot_id, material in robot.hands.items():
+                if material is not None and material.material_id in material_ids:
+                    robot.hands[slot_id] = None
+
+    def seed_runtime_observations(self, payload: Mapping[str, Any]) -> None:
+        """播种实际时间基准和字符串变量定义；跨代只补元数据，不覆盖已执行事实。
+
+        标准变量 Type=3 为上次 Route、Type=7 为上次 Lot；以声明类型为准，
+        不根据变量显示名猜测（例如名为 LastPJobName 的变量也可能声明 Type=7）。
+        未支持的变量计算类型保留输入值，不解释任意 ComputeRule 表达式。
+        """
+        now = float(payload.get("CurrentTime") or 0.0)
+        for name, config in (payload.get("Stations") or {}).items():
+            station = self.stations.get(name)
+            if station is None or not isinstance(config, Mapping):
+                continue
+            for variable_name, variable in (config.get("StateVariables") or {}).items():
+                if not isinstance(variable, Mapping):
+                    continue
+                variable_type = variable.get("Type")
+                if isinstance(variable_type, int):
+                    station.state_variable_types.setdefault(variable_name, variable_type)
+                value = variable.get("Value") or {}
+                raw = value.get("Value") if isinstance(value, Mapping) else None
+                if isinstance(raw, str):
+                    station.text_state_variables.setdefault(variable_name, raw)
+            if "IdleTime" in station.state_variables and station.idle_reference_time is None:
+                station.idle_reference_time = now - float(station.state_variables["IdleTime"])
+        for name, config in (payload.get("Robots") or {}).items():
+            robot = self.robots.get(name)
+            if robot is not None and isinstance(config, Mapping):
+                for arm_name, arm in (config.get("ArmInfo") or {}).items():
+                    if isinstance(arm, Mapping):
+                        robot.arm_use_counts.setdefault(arm_name, int(arm.get("UseCount") or 0))
+        for material in payload.get("Materials") or []:
+            if not isinstance(material, Mapping) or material.get("ID") is None:
+                continue
+            route = material.get("Route") or {}
+            self.material_process_metadata[str(material["ID"])] = (
+                str(material.get("LotID") or ""),
+                str(route.get("Name") or "") if isinstance(route, Mapping) else "",
+            )
+
+    def record_process_completion(
+        self, station: StationState, move: Mapping[str, Any], end_time: float,
+    ) -> None:
+        """仅在真实工艺/清洗完成时更新空闲基准和已加工产品的标识变量。"""
+        if station.idle_reference_time is not None:
+            station.idle_reference_time = end_time
+        if move.get("CleanTaskName"):
+            return
+        completed = [self.material_process_metadata[str(mid)] for mid in move.get("MatIDList") or []
+                     if str(mid) in self.material_process_metadata]
+        if not completed:
+            return
+        for variable_name, variable_type in station.state_variable_types.items():
+            index = (
+                1 if variable_type == LAST_ROUTE_VARIABLE_TYPE
+                else 0 if variable_type == LAST_LOT_VARIABLE_TYPE else None
+            )
+            if index is not None:
+                values = {metadata[index] for metadata in completed}
+                if len(values) == 1:
+                    station.text_state_variables[variable_name] = values.pop()
+
     def seed_initial_single_chamber_wac_counters(
         self,
         station_configs: Mapping[str, Mapping[str, Any]],
@@ -500,6 +596,29 @@ class MachineState:
                     self.pjob_wac_counters[(station_name, pjob_name, variable_name)] = float(
                         station.state_variables.get(variable_name, 0.0)
                     )
+
+    def seed_dummy_material_counts(self, payload: Mapping[str, Any]) -> None:
+        """从 update 的 ``Materials`` 播种 Dummy 库存片累计寿命。
+
+        ``Count`` 是物理片跨任务累计寿命：账本中已有的键是已执行 Move 的
+        物理事实，不能被 update 快照重置；只为新出现的库存片补种初始值，
+        与算法侧 ``standard_dummy_material_counts`` 的恢复语义一致。筛选
+        条件对齐企业协议——只有 ``Usage`` 允许清洗（cleaning/mix）的物料
+        才是 Dummy 库存片。
+        """
+        materials = payload.get("Materials")
+        if not isinstance(materials, Sequence) or isinstance(materials, (str, bytes)):
+            return
+        for entry in materials:
+            if not isinstance(entry, Mapping) or entry.get("ID") is None:
+                continue
+            if not _dummy_usage_allows_clean(entry.get("Usage")):
+                continue
+            try:
+                initial_count = max(0, int(entry.get("Count") or 0))
+            except (TypeError, ValueError):
+                initial_count = 0
+            self.dummy_material_counts.setdefault(str(entry["ID"]), initial_count)
 
     def uses_pjob_scoped_wac(self, station: StationState) -> bool:
         """判断 PM 的 WAC 是否应按 PJob 独立累计。
@@ -605,6 +724,7 @@ class MachineState:
         payload = _initial_payload(update_params)
         self.process_recipe_weights = _process_recipe_weights(payload)
         self.clean_task_state_variables = _clean_task_state_variables(payload)
+        self.seed_runtime_observations(payload)
         self.clean_wac_trigger_rules = _clean_wac_trigger_rules(payload)
         self.clean_obligations = _clean_obligation_specs(payload)
         (
@@ -627,6 +747,10 @@ class MachineState:
                 continue
             for variable_name, value in _station_state_variables(config).items():
                 station.state_variables.setdefault(variable_name, value)
+
+        # 新一代可能首次出现 Dummy 库存片（新 DummyPort 库存）；已有寿命是
+        # 已执行 Move 的物理事实，同样只补缺不覆盖。
+        self.seed_dummy_material_counts(payload)
 
 
 def _route_need_process_visits(
@@ -833,3 +957,18 @@ def _is_product_process_chamber(station: StationState) -> bool:
         PROCESS_CHAMBER_TYPE,
         MULTI_PROCESS_CHAMBER_TYPE,
     }
+
+
+def _dummy_usage_allows_clean(raw: Any) -> bool:
+    """判断物料 ``Usage`` 是否允许用于清洗（企业协议 cleaning/mix 语义）。
+
+    兼容文本与数值两种形态：文本接受 ``cleaning``/``mix`` 及其数值别名
+    ``0``/``2``，数值直接按整数判断；其它用途（如产品专用 ``product``/``1``）
+    的物料不进入 Dummy 寿命账本。
+    """
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"cleaning", "mix", "0", "2"}
+    try:
+        return int(raw) in {0, 2}
+    except (TypeError, ValueError):
+        return False

@@ -87,7 +87,8 @@ class ConfigEditorPlanTests(unittest.TestCase):
         runtime_route = update["ProcessJobs"][0]["OriginRoute"]
         self.assertEqual("LP3", runtime_route["RouteSteps"][0]["Visits"][0]["StationName"])
         self.assertEqual("LP3", runtime_route["RouteSteps"][-1]["Visits"][0]["StationName"])
-        self.assertEqual("Route12__Incoming", update["ProcessJobs"][0]["OriginRoute"]["Name"])
+        # 企业协议：Material.Route 与 OriginRoute 保持 Route 配置名，不追加实例后缀。
+        self.assertEqual("Route12", update["ProcessJobs"][0]["OriginRoute"]["Name"])
 
     def test_round_supports_multiple_cjobs_and_pjobs(self) -> None:
         """同一轮多个 CJob 应使用唯一 TaskID、独立 LoadPort 和稳定枚举。"""
@@ -117,13 +118,16 @@ class ConfigEditorPlanTests(unittest.TestCase):
         self.assertEqual(2, len(update["ControlJobs"]))
         self.assertEqual(3, len(update["ProcessJobs"]))
         self.assertEqual(["2", "3"], [item["TaskID"] for item in update["ControlJobs"]])
-        self.assertEqual(["2.C1.P1", "2.C1.P2"], update["ControlJobs"][0]["PJobNameList"])
-        self.assertEqual(["3.C2.P1"], update["ControlJobs"][1]["PJobNameList"])
+        # 企业命名协议：CJob 全局序号 n 的第 k 个 PJob 为 {TaskID}.PJOB_n（k=1）
+        # 或 {TaskID}.PJOB_n_{k}（k≥2）。
+        self.assertEqual(["2.PJOB_1", "2.PJOB_1_2"], update["ControlJobs"][0]["PJobNameList"])
+        self.assertEqual(["3.PJOB_2"], update["ControlJobs"][1]["PJobNameList"])
         self.assertEqual(3, update["ControlJobs"][0]["Priority"])
         self.assertEqual(-1, update["ControlJobs"][1]["Priority"])
         self.assertEqual(2, update["ControlJobs"][1]["JobType"])
         self.assertEqual(3, update["ControlJobs"][1]["TaskMode"])
-        self.assertEqual([1, 2], update["ProcessJobs"][0]["MatList"])
+        # 企业协议：Material ID 从 0 起连续编号。
+        self.assertEqual([0, 1], update["ProcessJobs"][0]["MatList"])
         self.assertTrue(all("Weight" not in pjob for pjob in update["ProcessJobs"]))
 
     def test_same_cjob_pjobs_use_continuous_material_ids_and_load_port_slots(self) -> None:
@@ -138,8 +142,9 @@ class ConfigEditorPlanTests(unittest.TestCase):
             {"jobName": "P1", "routeRef": "Route12", "loadPort": "LP1", "waferCount": 5},
             {"jobName": "P2", "routeRef": "Route12", "loadPort": "LP1", "waferCount": 5},
         ]}]}, 0.0, BuildState())
-        self.assertEqual(list(range(1, 6)), update["ProcessJobs"][0]["MatList"])
-        self.assertEqual(list(range(6, 11)), update["ProcessJobs"][1]["MatList"])
+        # 企业协议：Material ID 从 0 起全局连续编号。
+        self.assertEqual(list(range(0, 5)), update["ProcessJobs"][0]["MatList"])
+        self.assertEqual(list(range(5, 10)), update["ProcessJobs"][1]["MatList"])
         self.assertEqual(list(range(1, 11)), [material["SlotID"] for material in update["Materials"]])
         # Material 内嵌 Route 是实例化 Route：首/末 LoadPort 步骤的 Visit 槽位
         # 必须等于该晶圆所在槽位，而不是 LP 展开的全部槽位。
@@ -211,8 +216,9 @@ class ConfigEditorPlanTests(unittest.TestCase):
         ))
         self.assertEqual(2, len(result["output"]["RecomputePoints"]))
         self.assertIn("CJobCycle 补片", result["output"]["RecomputePoints"][0]["Reason"])
+        # 企业协议：补片 TaskID 使用全局连续数字（首个补片 = 最大 TaskID + 1）。
         self.assertEqual(
-            {"1", "1-CYCLE-2", "1-CYCLE-3"},
+            {"1", "2", "3"},
             {
                 str(material["TaskID"])
                 for update in result["updates"]
@@ -398,7 +404,8 @@ class ConfigEditorPlanTests(unittest.TestCase):
         self.assertTrue(process_step["NeedProcess"])
         self.assertEqual("PM1", process_visit["StationName"])
         self.assertEqual([1, 2], process_visit["SlotID"])
-        self.assertEqual("R1", process_visit["ProcessRecipe"])
+        # 企业协议：加工 Visit 的 ProcessRecipe 按 /Process/{Route名}_{StepID} 派生。
+        self.assertEqual("/Process/ExplicitRoute_30", process_visit["ProcessRecipe"])
         self.assertEqual({"2": 1.5}, process_visit["MoveTimeOffset"])
         self.assertEqual(12, process_visit["QTimeLimit"])
         self.assertEqual(34, process_visit["ResidencyConstraint"])
@@ -485,7 +492,8 @@ class ConfigEditorPlanTests(unittest.TestCase):
         self.assertEqual(("PreDummyClean", 4), (dummy["taskName"], dummy["materialCount"]))
         self.assertEqual(("PreWacClean", 2), (dummy_wac["taskName"], dummy_wac["materialCount"]))
         self.assertEqual(8, dummy_wac["dummyWaferCount"])
-        self.assertEqual("DummyWac-Recipe-WAC", dummy_wac["emptyRecipeRef"])
+        # 企业协议：dummywac 空腔段 CleanRecipe 固定为 /Wacclean。
+        self.assertEqual("/Wacclean", dummy_wac["emptyRecipeRef"])
         self.assertEqual(6, dummy_wac["wacRecipeTime"])
         self.assertEqual(["PM1"], dummy_wac["modules"])
 
@@ -520,12 +528,19 @@ class ConfigEditorPlanTests(unittest.TestCase):
         product_recipe = next(
             recipe
             for recipe in update["ProcessRecipes"]
-            if recipe["Name"] == "ProductRecipe" and recipe["ModuleName"] == "PM1"
+            if recipe["Name"] == "/Process/WacRoute_4" and recipe["ModuleName"] == "PM1"
         )
-        self.assertEqual({"ProcessCount": 1}, product_recipe["Weight"])
+        self.assertEqual({"ProcessCount": 1.0}, product_recipe["Weight"])
 
     def test_dummy_clean_adds_standard_dummy_count_recipe_weight(self) -> None:
-        """Dummy 带片 Recipe 必须递增 CleanTask 声明的 DummyCount。"""
+        """Dummy 带片清洁声明的计数变量必须进入产品 Recipe 的 Weight。
+
+        企业协议：dummy 清洁固定更新 IdleTime/ProcessCount/DummyCount 三个
+        计数器（编辑器显式列表不覆盖协议值）；计数权重挂在产品 Recipe 行上
+        （Visit 完工时递增清洁计数器），清洁 Recipe 行自身 Weight 为空。
+        """
+        route = _route("DummyRoute", "PM1", "DummyRecipe")
+        route["prePJobCleanRefs"] = ["Dummy"]
         recipes = [{
             "name": "DummyRecipe",
             "time": 20,
@@ -541,9 +556,20 @@ class ConfigEditorPlanTests(unittest.TestCase):
             "updateStateVariables": ["IdleTime", "DummyCount"],
         }]
 
-        built = build_process_recipes(recipes, [], cleans)
+        built = build_process_recipes(recipes, [route], cleans)
 
-        self.assertEqual({"DummyCount": 1}, built[0]["Weight"])
+        product_recipe = next(
+            recipe
+            for recipe in built
+            if recipe["Name"] == "/Process/DummyRoute_4" and recipe["ModuleName"] == "PM1"
+        )
+        self.assertEqual({"DummyCount": 1.0, "ProcessCount": 1.0}, product_recipe["Weight"])
+        clean_recipe = next(
+            recipe
+            for recipe in built
+            if recipe["Name"] == "/PreJobDummy" and recipe["ModuleName"] == "PM1"
+        )
+        self.assertEqual({}, clean_recipe["Weight"])
 
     def test_standard_clean_weight_preserves_explicit_recipe_value(self) -> None:
         """自动补齐标准计数器时不得覆盖用户显式配置的 Recipe 权重。"""
@@ -569,10 +595,10 @@ class ConfigEditorPlanTests(unittest.TestCase):
 
         product_recipe = next(
             recipe for recipe in update["ProcessRecipes"]
-            if recipe["Name"] == "ProductRecipe" and recipe["ModuleName"] == "PM1"
+            if recipe["Name"] == "/Process/WacRoute_4" and recipe["ModuleName"] == "PM1"
         )
         self.assertEqual(
-            {"ProcessCount": 2, "CustomCount": 3},
+            {"ProcessCount": 2.0, "CustomCount": 3.0},
             product_recipe["Weight"],
         )
 
@@ -613,7 +639,7 @@ class ConfigEditorPlanTests(unittest.TestCase):
         self.assertNotIn("heater", built["PrePJob"])
         self.assertNotIn("heater", built["PostPJob"])
         self.assertEqual([], heater_visit["AfterOutPM"])
-        self.assertEqual((2, "DummyWac-Recipe-WAC"), (
+        self.assertEqual((2, "/Wacclean"), (
             dummy_task["MaterialCount"],
             dummy_task["EmptyCleanRecipeAfterMaterial"],
         ))
@@ -678,14 +704,15 @@ class ConfigEditorPlanTests(unittest.TestCase):
             "heuristic",
             {},
         )
+        # 企业协议：批处理 Recipe 派生按 cleanType 固定命名。
         clean_recipes = {
             recipe["name"]: recipe
             for recipe in plan["recipes"]
-            if recipe["name"].startswith("DummyWac")
+            if recipe["name"] in ("/PreJobDummy_wac", "/Wacclean")
         }
-        self.assertEqual({"DummyWac-Recipe", "DummyWac-Recipe-WAC"}, set(clean_recipes))
-        self.assertEqual(["PM1"], clean_recipes["DummyWac-Recipe"]["modules"])
-        self.assertEqual(8, clean_recipes["DummyWac-Recipe-WAC"]["time"])
+        self.assertEqual({"/PreJobDummy_wac", "/Wacclean"}, set(clean_recipes))
+        self.assertEqual(["PM1"], clean_recipes["/PreJobDummy_wac"]["modules"])
+        self.assertEqual(8, clean_recipes["/Wacclean"]["time"])
 
         update = build_round_update(
             plan,
@@ -700,18 +727,19 @@ class ConfigEditorPlanTests(unittest.TestCase):
         ]
         self.assertEqual(8, len(dummy_materials))
         self.assertEqual(list(range(1, 9)), [row["SlotID"] for row in dummy_materials])
+        # 企业协议：Dummy ID 从 1000000 起连续编号。
         self.assertEqual(
-            list(range(100000, 100008)),
+            list(range(1000000, 1000008)),
             [row["ID"] for row in dummy_materials],
         )
         expected_template = {
-            "Name": "1",
+            "Name": "dummy0",
             "AccessiblePM": ["PM1"],
             "TaskID": "",
             "FoupID": "",
-            "ID": 100000,
-            "LimitLevel1": 10000,
-            "LimitLevel2": 10000,
+            "ID": 1000000,
+            "LimitLevel1": 99999,
+            "LimitLevel2": 99999,
             "Priority": -1,
             "StepID": 0,
             "LotID": "",
@@ -782,10 +810,24 @@ class ConfigEditorPlanTests(unittest.TestCase):
         self.assertEqual(["PM1", "PM2"], list(origin_route["PrePJob"]))
         for module in ("PM1", "PM2"):
             condition = origin_route["PrePJob"][module][0]
+            # 企业协议：条件键为 {TaskID}_{PJobName}_{模块}_{TaskName}_CounterCondition。
+            self.assertEqual(
+                [f"J1_J1.PJOB_1_{module}_PreDummyClean_CounterCondition"],
+                list(condition["CheckConditions"]),
+            )
+            self.assertEqual(
+                "J1_J1.PJOB_1_" + module + "_PreDummyClean_CounterCondition",
+                condition["ExecuteOrder"][0]["Alias"],
+            )
+            # Dummy 未声明上下限时才采用企业缺省 [DBL_MIN, 9999]。
+            self.assertEqual(
+                [2.2250738585072014e-308, 9999.0],
+                condition["ExecuteOrder"][0]["ThresholdValueList"],
+            )
             task = next(iter(condition["CheckConditions"].values()))[0]
             self.assertEqual("PreDummyClean", task["TaskName"])
-            self.assertEqual("DummyClean-Recipe", task["CleanRecipe"])
-            self.assertEqual(["IdleTime", "DummyCount"], task["UpdateStateVariables"])
+            self.assertEqual("/PreJobDummy", task["CleanRecipe"])
+            self.assertEqual(["IdleTime", "ProcessCount", "DummyCount"], task["UpdateStateVariables"])
             self.assertEqual(2, task["MaterialCount"])
             self.assertEqual("", task["EmptyCleanRecipeAfterMaterial"])
 

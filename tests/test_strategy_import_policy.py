@@ -80,5 +80,48 @@ class StrategyImportPolicyTests(unittest.TestCase):
         self.assertNotIn("/api/algorithms/register", built_script)
 
 
+class AlgorithmRevisionFingerprintTests(unittest.TestCase):
+    """算法包内容指纹必须排除运行时自写目录，防止批量运行中误触发热重载。"""
+
+    def test_runtime_logs_do_not_flip_revision_but_code_changes_do(self) -> None:
+        """logs 运行产物变化不翻转指纹；真实代码改动仍要触发重载。"""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            package_root = Path(temporary_directory) / "algorithm-package"
+            entry_directory = package_root / "src" / "infer"
+            entry_directory.mkdir(parents=True)
+            (entry_directory / "scheduler.py").write_text(
+                "def init(data):\n    return None\n",
+                encoding="utf-8",
+            )
+            logs_directory = package_root / "logs" / "python"
+            logs_directory.mkdir(parents=True)
+            (logs_directory / "failure-snapshot-1.json").write_text(
+                "{}", encoding="utf-8",
+            )
+
+            before = algorithm_interface.algorithm_revision(package_root)
+            (logs_directory / "failure-snapshot-2-request-0-call-5.json").write_text(
+                '{"alg_output": "snapshot"}' * 100, encoding="utf-8",
+            )
+            (logs_directory / "python-runtime-123.jsonl").write_text(
+                "{}", encoding="utf-8",
+            )
+            after_logs_write = algorithm_interface.algorithm_revision(package_root)
+            self.assertEqual(
+                before, after_logs_write,
+                "logs 运行产物写入不得改变算法包指纹，否则批量运行中的测试会被热重载打断",
+            )
+
+            (entry_directory / "scheduler.py").write_text(
+                "def init(data):\n    return 1\n",
+                encoding="utf-8",
+            )
+            after_code_change = algorithm_interface.algorithm_revision(package_root)
+            self.assertNotEqual(
+                before, after_code_change,
+                "算法代码变化必须翻转指纹以保留热重载能力",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

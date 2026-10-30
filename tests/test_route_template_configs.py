@@ -3,11 +3,33 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from app.backend import application as batch_service
 from app.backend import application as server
+from app.backend.execution.plan_builder import build_process_recipes
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.parametrize('second_time,modules', [(5,['PM1']), (8,['PM2'])])
+def test_fixed_clean_recipe_name_merges_only_compatible_definitions(second_time, modules):
+    """同一配方可同义复用或在不同 PM 上独立定义，不能跨模块误去重。"""
+    cleans = [dict(name='A',cleanType='preclean',recipeTime=5,modules=['PM1']),
+              dict(name='B',cleanType='preclean',recipeTime=second_time,modules=modules)]
+    recipes = build_process_recipes([],[],cleans)
+    assert {(r['ModuleName'],r['Name'],r['Time']) for r in recipes} == {
+        ('PM1','/PreClean',5), (modules[0],'/PreClean',second_time),
+    }
+
+
+def test_fixed_clean_recipe_name_conflict_is_not_silently_truncated():
+    """固定企业名不能将同一 PM 的另一时长悄悄替换成首条定义。"""
+    cleans = [dict(name=name,cleanType='preclean',recipeTime=time,modules=['PM1'])
+              for name,time in [('A',5),('B',8)]]
+    with pytest.raises(ValueError,match='配方定义冲突.*PM1.*PreClean'):
+        build_process_recipes([],[],cleans)
 
 
 def _legacy_route() -> dict:
@@ -285,7 +307,9 @@ def test_directory_route_save_is_lazy_and_auto_migrates_old_store(tmp_path) -> N
     device = server.get_workspace_device("device-1", store_dir)
     plan = batch_service.build_workspace_batch_plan(device, persisted_test, "heuristic", {})
     runtime_route_ref = plan["rounds"][0]["cjobs"][0]["pjobs"][0]["routeRef"]
-    assert runtime_route_ref.startswith("R2__")
+    # 企业协议：PJob 覆盖参数与合并后模板一致时直接引用模板原名，不再生成
+    # 实例后缀；懒迁移的风险防护点是别名 R1→R2 仍解析到带测试参数的 Route。
+    assert runtime_route_ref == "R2"
     assert runtime_route_ref in {route["name"] for route in plan["routes"]}
     assert plan["routes"][0]["stages"][1]["visits"][0]["processTime"] == 37
 

@@ -477,17 +477,32 @@ def _batch_apply_route_configs(
     return merged_routes
 
 
+def _route_config_fingerprint(route: Mapping[str, Any]) -> str:
+    """计算 Route 覆盖后的规范指纹，用于识别内容相同的 Route 实例。"""
+    return json.dumps(route, ensure_ascii=False, sort_keys=True, default=str)
+
+
 def _batch_pjob_route_instances(
     routes: Sequence[Mapping[str, Any]],
     rounds: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """为带独立参数的 PJob 生成唯一 Route/Recipe 实例并同步运行时引用。"""
+    """为带独立参数的 PJob 生成 Route 实例并同步运行时引用。
+
+    企业协议：同一 Route 名的全部覆盖内容一致时共享原 Route 名，不追加
+    实例后缀；此时差异实例顶替模板，避免同名双份。仅当同一 Route 名下
+    存在多种互不相同的覆盖、或同时存在未覆盖的模板引用时，才为差异
+    覆盖生成 ``__r{轮}-t{任务}-c{CJob}-p{PJob}`` 唯一后缀消歧，模板保留。
+    """
     route_by_name = {
         str(route.get("name") or "").strip(): route
         for route in routes
         if str(route.get("name") or "").strip()
     }
-    instances: List[Dict[str, Any]] = []
+    # 第一遍扫描：记录每个 PJob 覆盖的实例数据与指纹，以及各 Route 名下
+    # 出现的全部内容指纹和是否存在未带覆盖的模板引用。
+    entries: List[Tuple[Dict[str, Any], str, str, Dict[str, Any], str]] = []
+    route_fingerprints: Dict[str, set[str]] = {}
+    route_has_plain_refs: Dict[str, bool] = {}
     for round_index, round_row in enumerate(rounds, start=1):
         raw_cjobs = round_row.get("cjobs")
         if isinstance(raw_cjobs, list):
@@ -505,23 +520,69 @@ def _batch_pjob_route_instances(
                 template = route_by_name.get(route_name)
                 config = pjob.get("routeConfig")
                 if template is None or not isinstance(config, Mapping):
+                    route_has_plain_refs[route_name] = True
                     continue
                 instance = _batch_apply_route_configs([template], {route_name: config})[0]
-                instance_suffix = f"r{round_index}-t{task_id}-c{cjob_index}-p{pjob_index}"
-                instance_name = f"{route_name}__{instance_suffix}"
-                instance["name"] = instance_name
-                for stage in instance.get("stages") or []:
-                    if not isinstance(stage, Mapping):
-                        continue
-                    for visit in stage.get("visits") or []:
-                        if not isinstance(visit, dict):
-                            continue
-                        recipe_name = str(visit.get("processRecipe") or "").strip()
-                        if recipe_name:
-                            visit["processRecipe"] = f"{recipe_name}__{instance_suffix}"
-                pjob["routeRef"] = instance_name
-                instances.append(instance)
-    return [*routes, *instances]
+                fingerprint = _route_config_fingerprint(instance)
+                suffix = f"r{round_index}-t{task_id}-c{cjob_index}-p{pjob_index}"
+                entries.append((pjob, route_name, fingerprint, instance, suffix))
+                route_fingerprints.setdefault(route_name, set()).add(fingerprint)
+
+    # 决策各 Route 名的承载方式：只有当内容指纹唯一（模板与全部覆盖一致，
+    # 或全部覆盖同为一种内容且没有未覆盖引用）时才允许差异实例占用原名。
+    name_by_fingerprint: Dict[str, str] = {}
+    replaced_templates: set[str] = set()
+    instances: List[Dict[str, Any]] = []
+    for route_name, fingerprints in route_fingerprints.items():
+        template = route_by_name[route_name]
+        template_fingerprint = _route_config_fingerprint(template)
+        fingerprints.add(template_fingerprint)
+        if len(fingerprints) == 1:
+            # 覆盖与模板一致：直接引用模板，不生成实例。
+            name_by_fingerprint[next(iter(fingerprints))] = route_name
+            continue
+        if len(fingerprints) == 2 and not route_has_plain_refs.get(route_name):
+            # 唯一差异覆盖：实例顶替模板并沿用原 Route 名。
+            diff_fingerprint = next(
+                fp for fp in fingerprints if fp != template_fingerprint
+            )
+            name_by_fingerprint[diff_fingerprint] = route_name
+            replaced_templates.add(route_name)
+            continue
+        # 多种覆盖或存在未覆盖引用：模板保留，全部差异覆盖唯一化。
+        route_has_plain_refs.setdefault(route_name, True)
+
+    # 第二遍：按决策生成实例并改写 PJob 引用。
+    seen_fingerprints: set[str] = set()
+    for pjob, route_name, fingerprint, instance, suffix in entries:
+        if fingerprint in name_by_fingerprint:
+            pjob["routeRef"] = name_by_fingerprint[fingerprint]
+            if fingerprint not in seen_fingerprints:
+                seen_fingerprints.add(fingerprint)
+                if fingerprint != _route_config_fingerprint(route_by_name[route_name]):
+                    instance["name"] = name_by_fingerprint[fingerprint]
+                    instances.append(instance)
+            continue
+        instance_name = f"{route_name}__{suffix}"
+        for stage in instance.get("stages") or []:
+            if not isinstance(stage, Mapping):
+                continue
+            for visit in stage.get("visits") or []:
+                if not isinstance(visit, dict):
+                    continue
+                recipe_name = str(visit.get("processRecipe") or "").strip()
+                if recipe_name:
+                    visit["processRecipe"] = f"{recipe_name}__{suffix}"
+        instance["name"] = instance_name
+        name_by_fingerprint[fingerprint] = instance_name
+        seen_fingerprints.add(fingerprint)
+        pjob["routeRef"] = instance_name
+        instances.append(instance)
+    return [
+        route
+        for route in routes
+        if str(route.get("name") or "").strip() not in replaced_templates
+    ] + instances
 
 
 def _batch_test_cleans(

@@ -65,7 +65,7 @@ class CJobCycleUnitTests(unittest.TestCase):
     """验证不依赖算法执行的 CJobCycle 展开与事件时刻计算。"""
 
     def test_cycle_clone_keeps_fixed_load_port_and_uses_unique_task_id(self) -> None:
-        """补片实例应固定使用模板 LP，同时获得独立 TaskID。"""
+        """补片实例应固定使用模板 LP，并使用企业格式的递增 TaskID 与基础名。"""
         template = {
             "taskId": "7",
             "loadPort": "LP2",
@@ -73,13 +73,15 @@ class CJobCycleUnitTests(unittest.TestCase):
             "pjobs": [{"jobName": "P1", "loadPort": "LP1", "waferCount": 2}],
         }
 
-        cloned = config_server._cycle_cjob(template, 2)
+        cloned = config_server._cycle_cjob(template, "9", ["7.PJOB_7"])
 
-        self.assertEqual("7-CYCLE-2", cloned["taskId"])
+        self.assertEqual("9", cloned["taskId"])
         self.assertEqual("LP2", cloned["loadPort"])
         self.assertEqual("LP2", cloned["pjobs"][0]["loadPort"])
+        self.assertEqual("7.PJOB_7", cloned["pjobs"][0]["_basePJobName"])
         self.assertEqual(1, cloned["cjobCycle"])
         self.assertEqual("LP1", template["pjobs"][0]["loadPort"])
+        self.assertNotIn("_basePJobName", template["pjobs"][0])
 
     def test_cycle_completion_uses_latest_move_of_every_material(self) -> None:
         """只有整盒所有物料的最后动作都完成后才允许补片。"""

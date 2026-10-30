@@ -14,7 +14,8 @@ from app.backend.payload_snapshot import copy_payload
 from typing import Any, Dict
 
 
-_BASE_ROBOT_FIELDS = ("Type", "State", "TimeToAvailable", "ArmInfo")
+# 企业 AlgSchedule 的 Robot 实时字段键序：Type → ArmInfo → State → TimeToAvailable。
+_BASE_ROBOT_FIELDS = ("Type", "ArmInfo", "State", "TimeToAvailable")
 _BASE_STATION_FIELDS = ("Type", "State", "TimeToAvailableOfSlot")
 _PROCESS_STATION_TYPES = frozenset({"process", "processchamber"})
 _MULTI_PROCESS_STATION_TYPES = frozenset({"multiprocesschamber"})
