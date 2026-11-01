@@ -6657,6 +6657,10 @@ function metricCell(text) {
   const empty = !text.trim() || /^(?:—|-)(?:\/.*)?$/.test(text.trim());
   return `<td class="result-table-number${empty ? " is-empty" : ""}">${empty ? "" : escapeResultText(text)}</td>`;
 }
+function renderRunningProgress(row) {
+  const percent = Math.max(0, Math.min(99, Math.floor(Number(row.progress) || 0)));
+  return `<span class="result-running-progress"><svg class="${percent === 0 ? "is-pending" : ""}" viewBox="0 0 24 24" role="progressbar" aria-label="\u8FD0\u884C\u8FDB\u5EA6" aria-valuemin="0" aria-valuemax="100"${percent > 0 ? ` aria-valuenow="${percent}"` : ""}><circle class="result-progress-track" cx="12" cy="12" r="9"/><circle class="result-progress-value" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="${percent || 24} 100"/></svg><span>\u8FD0\u884C\u4E2D</span></span>`;
+}
 function renderResultRow(row, expandedTestId) {
   const status = resultStatusKey(row.status);
   const badgeClass = { succeeded: "success", failed: "failed", queued: "pending", running: "running" }[status] || "neutral";
@@ -6669,7 +6673,7 @@ function renderResultRow(row, expandedTestId) {
   const menuId = `result-table-menu-${encodeURIComponent(row.testId)}`;
   return `<tr class="result-table-row ${status}${expanded ? " details-open" : ""}" data-batch-test-card="${testId}">
     <th scope="row"><span class="table-user-name result-table-name" title="${name}">${name}</span></th>
-    <td><span class="badge-table ${badgeClass}">${RESULT_STATUS_LABELS[status]}</span></td>
+    <td><span class="badge-table ${badgeClass}">${status === "running" ? renderRunningProgress(row) : RESULT_STATUS_LABELS[status]}</span></td>
     ${metricCell(row.productionText)}
     ${metricCell(row.recomputeText)}
     <td><div class="result-table-actions">
@@ -7874,6 +7878,7 @@ var navigationPending = false;
 var activeManagementSection = "cases";
 var batchCardAnalyses = /* @__PURE__ */ new Map();
 var batchCardAnalysisRequests = /* @__PURE__ */ new Map();
+var batchCardHydrationRunning = false;
 var activeGroupAnalysisJobId = "";
 var analysisWizardStep = 1;
 var analysisSettingsPreferencesDirty = false;
@@ -11967,6 +11972,9 @@ function exportResultMetricsCsv() {
 function batchItemsRenderSignature(items) {
   return JSON.stringify(items.map((item) => [
     item.status,
+    item.progress,
+    item.progressStage,
+    item.completedRecomputes,
     item.resultUrl,
     item.logUrl,
     item.error,
@@ -11996,9 +12004,7 @@ function showBatchProgress(result) {
     renderBatchItems(items);
     lastBatchItemsRenderSignature = renderSignature;
   }
-  if (["completed", "cancelled"].includes(String(result.status))) {
-    void hydrateBatchCardAnalyses(items);
-  }
+  void hydrateBatchCardAnalyses(items.filter(hasBatchResultMetrics));
   writeTerminal([
     "$ \u8FD0\u884C\u6240\u9009\u6D4B\u8BD5",
     `  \u7EC4\u522B: ${result.group || "\u672A\u5206\u7EC4"} \xB7 \u7B56\u7565: ${displayStrategyName(result.strategy)}`,
@@ -12056,10 +12062,13 @@ async function loadBatchCardAnalysis(item) {
   return request;
 }
 async function hydrateBatchCardAnalyses(items) {
+  if (batchCardHydrationRunning) return;
   const pending = orderedBatchItems(items).filter((item) => {
     const resultUrl = String(item?.resultUrl || "");
     return resultUrl && !batchCardAnalyses.has(resultUrl) && !batchCardAnalysisRequests.has(resultUrl);
   });
+  if (!pending.length) return;
+  batchCardHydrationRunning = true;
   let nextIndex = 0;
   const worker = async () => {
     while (nextIndex < pending.length) {
@@ -12068,7 +12077,14 @@ async function hydrateBatchCardAnalyses(items) {
       if (state.batchResult) renderBatchItems(state.batchResult.items || []);
     }
   };
-  await Promise.all(Array.from({ length: Math.min(2, pending.length) }, worker));
+  try {
+    await Promise.all(Array.from({ length: Math.min(2, pending.length) }, worker));
+  } finally {
+    batchCardHydrationRunning = false;
+    if (state.batchResult) void hydrateBatchCardAnalyses((state.batchResult.items || []).filter(
+      (item) => hasBatchResultMetrics(item) && !pending.some((previous) => previous.resultUrl === item.resultUrl)
+    ));
+  }
 }
 function renderBatchItems(items) {
   for (const item of orderedBatchItems(items)) {
@@ -12098,6 +12114,9 @@ function renderBatchItems(items) {
       testId: String(item.testId || ""),
       testName: String(item.testName || `\u6D4B\u8BD5 ${index + 1}`),
       status: String(item.status || "queued"),
+      progress: item.progress,
+      progressStage: item.progressStage,
+      completedRecomputes: item.completedRecomputes,
       productionText: companyBaseline === null ? hasThroughput ? throughput.toFixed(1) : "\u2014" : `${hasThroughput ? throughput.toFixed(1) : "-"}/${companyBaseline.toFixed(1)}`,
       recomputeText: hasMetrics && hasAverageRecomputeTime ? (averageRecomputeTime / MILLISECONDS_PER_SECOND).toFixed(2) : "\u2014",
       makespanText: hasMetrics && hasMakespan ? makespan.toFixed(2) : "\u2014",

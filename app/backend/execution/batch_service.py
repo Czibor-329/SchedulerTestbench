@@ -41,6 +41,7 @@ from app.backend.execution.validation_limiter import (
     MAXIMUM_VALIDATION_WORKERS,
 )
 from app.backend.observability import log_run_event
+from app.backend.execution.batch_progress import bind_batch_progress, reset_batch_progress
 
 @dataclass(frozen=True)
 class BatchServiceDependencies:
@@ -1022,6 +1023,8 @@ def _execute_workspace_test_in_process(
     hongye_check: bool,
     skip_baseline: bool,
     validation_limiter: Any = None,
+    progress_store: Any = None,
+    progress_index: int = 0,
 ) -> Dict[str, Any]:
     """在独立进程中执行一个批量测试并返回可序列化结果。
 
@@ -1033,16 +1036,20 @@ def _execute_workspace_test_in_process(
     from app.backend import wiring
 
     wiring.configure_batch_service()
-    result, baseline, error = _execute_workspace_test_with_baseline(
-        device,
-        test_case,
-        strategy,
-        options,
-        selected_plan=selected_plan,
-        hongye_check=hongye_check,
-        skip_baseline=skip_baseline,
-        validation_limiter=validation_limiter,
-    )
+    token = bind_batch_progress(progress_store, progress_index, strategy)
+    try:
+        result, baseline, error = _execute_workspace_test_with_baseline(
+            device,
+            test_case,
+            strategy,
+            options,
+            selected_plan=selected_plan,
+            hongye_check=hongye_check,
+            skip_baseline=skip_baseline,
+            validation_limiter=validation_limiter,
+        )
+    finally:
+        reset_batch_progress(token)
     if error is None:
         return {
             "result": result,
@@ -1196,6 +1203,10 @@ def _execute_workspace_test_batch(
         use_process_isolation=use_process_isolation,
     )
 
+    progress_manager = (multiprocessing.get_context("spawn").Manager()
+                        if process_isolation_enabled and progress_callback is not None else None)
+    progress_store = progress_manager.dict() if progress_manager is not None else {}
+    reported_progress = {}
     process_executor = (
         ProcessPoolExecutor(
             max_workers=worker_count,
@@ -1243,6 +1254,7 @@ def _execute_workspace_test_batch(
             })
         run_started = time.perf_counter()
         selected_plan = None
+        progress_token = bind_batch_progress(progress_store, index, strategy)
         try:
             selected_plan = build_workspace_batch_plan(
                 device, test_case, strategy, options,
@@ -1272,6 +1284,8 @@ def _execute_workspace_test_batch(
                     hongye_check,
                     skip_baseline,
                     validation_semaphore,
+                    progress_store if progress_callback is not None else None,
+                    index,
                 ).result()
                 result = process_result.get("result")
                 baseline = process_result.get("baseline") or {}
@@ -1293,6 +1307,8 @@ def _execute_workspace_test_batch(
             )
         except Exception as error:  # noqa: BLE001
             return result_assembler.plain_failure(index, test_case, error, selected_plan)
+        finally:
+            reset_batch_progress(progress_token)
 
     items: List[Dict[str, Any]] = []
     executor = ThreadPoolExecutor(max_workers=worker_count)
@@ -1320,6 +1336,11 @@ def _execute_workspace_test_batch(
                 cancelled = True
                 break
             done, pending = wait(pending, timeout=0.1, return_when=FIRST_COMPLETED)
+            if progress_callback is not None:
+                for index, progress in dict(progress_store).items():
+                    if reported_progress.get(index) != progress:
+                        progress_callback(index, {"status": "running", **progress})
+                        reported_progress[index] = progress
             for future in done:
                 item = future.result()
                 items.append(item)
@@ -1342,6 +1363,8 @@ def _execute_workspace_test_batch(
             )
         if validation_limiter is not None:
             validation_limiter.close()
+        if progress_manager is not None:
+            progress_manager.shutdown()
     cancelled = cancelled or bool(cancel_event is not None and cancel_event.is_set())
     items.sort(key=lambda item: int(item["index"]))
     succeeded = sum(bool(item["ok"]) for item in items)
@@ -1514,6 +1537,8 @@ def start_workspace_test_batch(
                 batch["items"][index].update({
                     key: value for key, value in values.items() if key in artifact_fields
                 })
+                return
+            if batch["items"][index].get("status") in {"succeeded", "failed", "cancelled"} and values.get("status") == "running":
                 return
             batch["status"] = "running"
             batch["items"][index].update(copy_payload(dict(values)))

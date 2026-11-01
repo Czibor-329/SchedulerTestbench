@@ -24,6 +24,9 @@ export interface ResultTableRow {
   testId: string;
   testName: string;
   status: string;
+  progress?: number;
+  progressStage?: string;
+  completedRecomputes?: number;
   productionText: string;
   recomputeText: string;
   makespanText: string;
@@ -179,6 +182,12 @@ function metricCell(text: string): string {
   return `<td class="result-table-number${empty ? " is-empty" : ""}">${empty ? "" : escapeResultText(text)}</td>`;
 }
 
+/** 将后端阶段进度呈现为状态圆环；状态文字固定为运行中，不展示内部重算计数。 */
+export function renderRunningProgress(row: ResultTableRow): string {
+  const percent = Math.max(0, Math.min(99, Math.floor(Number(row.progress) || 0)));
+  return `<span class="result-running-progress"><svg class="${percent === 0 ? "is-pending" : ""}" viewBox="0 0 24 24" role="progressbar" aria-label="运行进度" aria-valuemin="0" aria-valuemax="100"${percent > 0 ? ` aria-valuenow="${percent}"` : ""}><circle class="result-progress-track" cx="12" cy="12" r="9"/><circle class="result-progress-value" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="${percent || 24} 100"/></svg><span>运行中</span></span>`;
+}
+
 /** 生成独立可访问的行操作；按钮承担键盘入口，表格行保持原生语义。 */
 function renderResultRow(row: ResultTableRow, expandedTestId: string): string {
   const status = resultStatusKey(row.status);
@@ -192,7 +201,7 @@ function renderResultRow(row: ResultTableRow, expandedTestId: string): string {
   const menuId = `result-table-menu-${encodeURIComponent(row.testId)}`;
   return `<tr class="result-table-row ${status}${expanded ? " details-open" : ""}" data-batch-test-card="${testId}">
     <th scope="row"><span class="table-user-name result-table-name" title="${name}">${name}</span></th>
-    <td><span class="badge-table ${badgeClass}">${RESULT_STATUS_LABELS[status]}</span></td>
+    <td><span class="badge-table ${badgeClass}">${status === "running" ? renderRunningProgress(row) : RESULT_STATUS_LABELS[status]}</span></td>
     ${metricCell(row.productionText)}
     ${metricCell(row.recomputeText)}
     <td><div class="result-table-actions">

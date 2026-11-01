@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.backend.execution.batch_progress import report_batch_progress
 from app.backend.payload_snapshot import copy_payload
 
 from app.backend.bootstrap import *
@@ -42,6 +43,12 @@ def _execute_standard_algorithm(
         else []
     )
     round_count = len(rounds)
+    # 配置轮次加每个 CJob 的补片次数作为估算分母；同刻补片合并时以校验阶段收尾。
+    expected_recomputes = round_count + sum(
+        state.total_cycles - 1
+        for index, round_config in enumerate(rounds)
+        for state in _cycle_states_for_round(round_config, index + 1)
+    )
     if builtin_strategy is not None:
         if not BUILTIN_ALGORITHM_AVAILABLE:
             detail = (
@@ -172,6 +179,7 @@ def _execute_standard_algorithm(
             "succeeded",
         )
         reproduction.add("AlgOutput", output)
+        report_batch_progress("recomputing", 1, expected_recomputes, strategy=plan.get("strategy"))
         summaries.append({
             "index": 1,
             "kind": "initial",
@@ -419,6 +427,7 @@ def _execute_standard_algorithm(
                 "succeeded",
             )
             reproduction.add("AlgOutput", output, requested_time)
+            report_batch_progress("recomputing", recompute_index, expected_recomputes, strategy=plan.get("strategy"))
             summaries.append({
                 "index": recompute_index,
                 "kind": "recompute",
@@ -826,6 +835,7 @@ def execute_plan(
     hongye_validation: Optional[Dict[str, Any]] = None
     try:
         result = _execute_plan(raw_plan, reproduction)
+        report_batch_progress("validating", strategy=raw_plan.get("strategy"))
         if use_hongye_validation:
             if hongye_validation_limiter is None:
                 hongye_validation = validate_reproduction_log(
@@ -883,6 +893,7 @@ def execute_plan(
             reproduction.entries,
             failure_output=prior_plan_output,
         ) from error
+    report_batch_progress("saving", strategy=raw_plan.get("strategy"))
     cpu_finished = time.thread_time() if hasattr(time, "thread_time") else time.process_time()
     result["cpuTimeMs"] = max(0.0, (cpu_finished - cpu_started) * 1000.0)
     if hongye_validation is not None:

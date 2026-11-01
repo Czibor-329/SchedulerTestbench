@@ -72,6 +72,7 @@ let navigationPending = false;
 let activeManagementSection = "cases";
 const batchCardAnalyses = new Map();
 const batchCardAnalysisRequests = new Map();
+let batchCardHydrationRunning = false;
 let activeGroupAnalysisJobId = "";
 let analysisWizardStep = 1;
 let analysisSettingsPreferencesDirty = false;
@@ -4909,6 +4910,9 @@ function exportResultMetricsCsv() {
 function batchItemsRenderSignature(items) {
   return JSON.stringify(items.map(item => [
     item.status,
+    item.progress,
+    item.progressStage,
+    item.completedRecomputes,
     item.resultUrl,
     item.logUrl,
     item.error,
@@ -4942,9 +4946,7 @@ function showBatchProgress(result) {
     renderBatchItems(items);
     lastBatchItemsRenderSignature = renderSignature;
   }
-  if (["completed", "cancelled"].includes(String(result.status))) {
-    void hydrateBatchCardAnalyses(items);
-  }
+  void hydrateBatchCardAnalyses(items.filter(hasBatchResultMetrics));
   writeTerminal([
     "$ 运行所选测试",
     `  组别: ${result.group || "未分组"} · 策略: ${displayStrategyName(result.strategy)}`,
@@ -5006,10 +5008,13 @@ async function loadBatchCardAnalysis(item) {
 
 /** 以两路并发补齐已完成测试的小卡片指标，并在每项完成后更新显示。 */
 async function hydrateBatchCardAnalyses(items) {
+  if (batchCardHydrationRunning) return;
   const pending = orderedBatchItems(items).filter(item => {
     const resultUrl = String(item?.resultUrl || "");
     return resultUrl && !batchCardAnalyses.has(resultUrl) && !batchCardAnalysisRequests.has(resultUrl);
   });
+  if (!pending.length) return;
+  batchCardHydrationRunning = true;
   let nextIndex = 0;
   const worker = async () => {
     while (nextIndex < pending.length) {
@@ -5018,7 +5023,14 @@ async function hydrateBatchCardAnalyses(items) {
       if (state.batchResult) renderBatchItems(state.batchResult.items || []);
     }
   };
-  await Promise.all(Array.from({ length: Math.min(2, pending.length) }, worker));
+  try {
+    await Promise.all(Array.from({ length: Math.min(2, pending.length) }, worker));
+  } finally {
+    batchCardHydrationRunning = false;
+    if (state.batchResult) void hydrateBatchCardAnalyses((state.batchResult.items || []).filter(
+      item => hasBatchResultMetrics(item) && !pending.some(previous => previous.resultUrl === item.resultUrl),
+    ));
+  }
 }
 
 /** 合并结果历史并保留既有指标口径，将分页展示交给独立结果表格。 */
@@ -5052,6 +5064,9 @@ function renderBatchItems(items) {
       testId: String(item.testId || ""),
       testName: String(item.testName || `测试 ${index + 1}`),
       status: String(item.status || "queued"),
+      progress: item.progress,
+      progressStage: item.progressStage,
+      completedRecomputes: item.completedRecomputes,
       productionText: companyBaseline === null
         ? (hasThroughput ? throughput.toFixed(1) : "—")
         : `${hasThroughput ? throughput.toFixed(1) : "-"}/${companyBaseline.toFixed(1)}`,

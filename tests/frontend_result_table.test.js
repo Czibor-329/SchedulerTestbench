@@ -4,6 +4,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  renderRunningProgress,
   createResultTable,
   createResultTableState,
   projectResultTablePage,
@@ -314,4 +315,13 @@ test("模板分页提供五种条数、首末页箭头，修改条数保留首�
   controller.update(rows, context(selected));
   assert.match(container.innerHTML, /第 2 页，共 7 页/);
   controller.dispose();
+});
+
+test("运行状态只显示圆环和运行中，保留进度无障碍值", () => {
+  for (const stage of ["recomputing", "validating", "saving"]) {
+    const markup = renderRunningProgress({ ...results(1)[0], progress: 120, progressStage: stage, completedRecomputes: 3 });
+    assert.match(markup, /aria-valuenow="99"/);
+    assert.match(markup, /<span>运行中<\/span>/);
+    assert.doesNotMatch(markup, /重算|校验|保存|%|<small/);
+  }
 });
