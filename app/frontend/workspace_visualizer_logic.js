@@ -316,17 +316,23 @@ function updateReplayThroughput(root, time, redraw) {
 // src/analysis_workspace.ts
 var WINDOW_TITLES = { throughput: "\u4EA7\u80FD\u5206\u6790", bottleneck: "\u74F6\u9888\u5206\u6790", residence: "\u9A7B\u7559\u65F6\u95F4\u5206\u6790" };
 var controllers = /* @__PURE__ */ new WeakMap();
+function renderAnalysisPlaceholder(content) {
+  return Object.keys(WINDOW_TITLES).map(
+    (name) => `<section class="analysis-window" data-analysis-window="${name}">${content}</section>`
+  ).join("");
+}
 function isAnalysisViewVisible(name, selected) {
   return name === "throughput" || name === selected;
 }
-function mountAnalysisWorkspace(panel, redrawThroughput) {
+function mountAnalysisWorkspace(panel, redrawThroughput, options = {}) {
   if (!panel.querySelector("[data-analysis-window]")) return;
   let controller = controllers.get(panel);
   if (!controller) {
     controller = new AnalysisWorkspaceController(panel, redrawThroughput);
     controllers.set(panel, controller);
   }
-  controller.mount();
+  controller.onExpand = options.onExpand;
+  controller.mount(options.resetExpanded);
 }
 var AnalysisWorkspaceController = class {
   /** 委托标签点击和方向键导航；尺寸观察仅重绘现有曲线。 */
@@ -347,6 +353,7 @@ var AnalysisWorkspaceController = class {
         this.expanded = !this.expanded;
         this.select(this.selected, false);
         toggle.focus({ preventScroll: true });
+        if (this.expanded) this.onExpand?.();
         return;
       }
       const tab = event.target.closest("[data-analysis-tab]");
@@ -372,12 +379,14 @@ var AnalysisWorkspaceController = class {
     });
   }
   panel;
+  onExpand;
   selected = "bottleneck";
   expanded = false;
   topLayer = 1e3;
   resizeObserver;
   /** 创建紧凑标题栏，保留筛选控件节点及其事件，右侧标签与控件同栏。 */
-  mount() {
+  mount(resetExpanded = false) {
+    if (resetExpanded) this.expanded = false;
     this.resizeObserver.disconnect();
     this.panel.classList.add("analysis-fixed-workspace");
     this.panel.querySelectorAll("[data-analysis-window]").forEach((window2) => {
@@ -410,6 +419,7 @@ var AnalysisWorkspaceController = class {
     });
     this.select(this.selected, false);
     this.resizeObserver.observe(this.panel);
+    if (this.expanded) this.onExpand?.();
   }
   /** 切换右侧可见视图并同步可访问状态；可选将焦点移到新视图的当前标签。 */
   select(selected, focus) {
@@ -4889,6 +4899,8 @@ var VisualizationWorkspace = class {
   bottleneckSummary = null;
   /** 新结果或清空操作会让之前的文件读取和 HTTP 响应失效。 */
   analysisRequestVersion = 0;
+  /** 同一输入版本的展开操作共用一个分析请求。 */
+  pendingAnalysisVersion = null;
   time = 0;
   playing = false;
   liveSolving = false;
@@ -5260,7 +5272,7 @@ var VisualizationWorkspace = class {
       <strong>\u7B49\u5F85\u56DE\u653E\u6570\u636E</strong>
       <span>\u8FD0\u884C\u4E00\u6B21\u8BA1\u5212\uFF0C\u6216\u4F7F\u7528\u53F3\u4E0A\u89D2\u201C\u5BFC\u5165\u65E5\u5FD7\u201D\u8F7D\u5165\u5E73\u53F0\u590D\u73B0\u65E5\u5FD7\u540E\u5F00\u59CB\u56DE\u653E\u3002</span>`;
   }
-  /** 接收规范化后的 MoveList 并重置时间轴；拓扑就绪后返回，指标在后台更新。 */
+  /** 接收规范化后的 MoveList 并重置时间轴；分析保持折叠，首次展开后才请求指标。 */
   async loadMoves(moves, _decisionTrace, loadPortReplenishments, sourceName, resultUrl, analysisResultId, cpuTimeMs = null, recomputeCount = 0) {
     if (!moves.length) throw new Error("MoveList \u4E3A\u7A7A\uFF0C\u65E0\u6CD5\u5EFA\u7ACB\u53EF\u89C6\u5316\u56DE\u653E");
     this.pause();
@@ -5301,7 +5313,7 @@ var VisualizationWorkspace = class {
     this.showSingleResult();
     this.setTopologyVisible(true);
     this.render(snapshot);
-    void this.renderPerformance();
+    this.renderPerformance(true);
   }
   /** 冻结回放输入供离屏摄影；startTime 缺省时拍当前帧，指定时独立生成该时刻画面，不推进页面时间轴。 */
   createPhotographySession(startTime) {
@@ -5640,20 +5652,45 @@ var VisualizationWorkspace = class {
       }
     }
   }
-  /** 请求并绘制与播放时刻无关的服务端排程性能诊断。 */
-  async renderPerformance() {
-    if (!this.moves.length) return;
-    const requestVersion = ++this.analysisRequestVersion;
+  /** 使旧指标失效并挂载按需分析入口；新来源重置展开状态，不自动请求服务端。 */
+  renderPerformance(resetExpanded = false) {
+    this.analysisRequestVersion += 1;
     this.analysis = null;
+    this.bottleneckSummary = null;
+    const kpis = this.root.getElementById("visualReplayKpis");
+    if (kpis) kpis.textContent = "\u5C55\u5F00\u4E0B\u65B9\u5206\u6790\u9762\u677F\u67E5\u770B\u6307\u6807";
+    this.elements.performance.innerHTML = renderAnalysisPlaceholder(
+      '<div class="analysis-loading-state">\u5C55\u5F00\u540E\u8BA1\u7B97\u5F53\u524D\u7ED3\u679C\u7684\u5206\u6790\u6307\u6807\u3002</div>'
+    );
+    mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange, {
+      resetExpanded,
+      onExpand: () => {
+        void this.loadPerformance();
+      }
+    });
+  }
+  /** 首次展开或重试时请求指标；重复展开复用结果，过期响应不得覆盖新来源。 */
+  async loadPerformance() {
+    if (!this.moves.length) return;
+    const requestVersion = this.analysisRequestVersion;
+    if (this.analysis || this.pendingAnalysisVersion === requestVersion) return;
+    this.pendingAnalysisVersion = requestVersion;
     for (const id of ["visualReplayKpis"]) {
       const container = this.root.getElementById(id);
       if (container) container.textContent = "\u6B63\u5728\u8BA1\u7B97\u6307\u6807\u2026";
     }
-    this.elements.performance.innerHTML = `
-      <section class="result-card analysis-skeleton" aria-label="\u6B63\u5728\u52A0\u8F7D\u7ED3\u679C\u5206\u6790">
-        <div class="analysis-skeleton-head"><i></i><span></span></div>
-        <div class="analysis-skeleton-grid">${Array.from({ length: 6 }, () => "<span></span>").join("")}</div>
-      </section>`;
+    this.elements.performance.innerHTML = renderAnalysisPlaceholder(`
+      <div class="analysis-loading-state" role="status" aria-live="polite" aria-busy="true">
+        <span class="analysis-loading-spinner" aria-hidden="true"></span>
+        <strong>\u6B63\u5728\u8BA1\u7B97\u5206\u6790\u6307\u6807\u2026</strong>
+        <span>\u6B63\u5728\u5206\u6790\u4EA7\u80FD\u3001\u8D44\u6E90\u5229\u7528\u7387\u4E0E\u6676\u5706\u9A7B\u7559\uFF0C\u8BF7\u7A0D\u5019</span>
+        <div class="analysis-loading-progress" role="progressbar" aria-label="\u5206\u6790\u6307\u6807\u8BA1\u7B97\u4E2D"><i></i></div>
+      </div>`);
+    mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange, {
+      onExpand: () => {
+        void this.loadPerformance();
+      }
+    });
     try {
       const result = await requestScheduleAnalysis({
         ...this.analysisResultId ? { resultId: this.analysisResultId } : { moves: this.moves },
@@ -5687,7 +5724,11 @@ var VisualizationWorkspace = class {
         }
         overview.remove();
       }
-      mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange);
+      mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange, {
+        onExpand: () => {
+          void this.loadPerformance();
+        }
+      });
       updateReplayThroughput(this.root, this.time, updateThroughputChartRange);
       const windowSlot = this.elements.performance.querySelector(".bottleneck-window-slot");
       if (windowSlot) {
@@ -5705,15 +5746,20 @@ var VisualizationWorkspace = class {
         const container = this.root.getElementById(id);
         if (container) container.textContent = "\u6307\u6807\u8BA1\u7B97\u5931\u8D25\uFF0C\u8BF7\u5728\u4E0B\u65B9\u5206\u6790\u533A\u91CD\u65B0\u52A0\u8F7D";
       }
-      this.elements.performance.innerHTML = `
-        <div class="analysis-error-state">
+      this.elements.performance.innerHTML = renderAnalysisPlaceholder(`
+        <div class="analysis-error-state" role="alert">
           <strong>\u6570\u636E\u83B7\u53D6\u5931\u8D25</strong>
           <span>${escapeHtml(error instanceof Error ? error.message : String(error))}</span>
           <button class="analysis-secondary-button" type="button" data-performance-retry>\u91CD\u65B0\u52A0\u8F7D</button>
-        </div>`;
-      this.elements.performance.querySelector("[data-performance-retry]")?.addEventListener("click", () => {
-        void this.renderPerformance();
+        </div>`);
+      mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange);
+      this.elements.performance.querySelectorAll("[data-performance-retry]").forEach((button) => {
+        button.addEventListener("click", () => {
+          void this.loadPerformance();
+        });
       });
+    } finally {
+      if (this.pendingAnalysisVersion === requestVersion) this.pendingAnalysisVersion = null;
     }
   }
   /** 显示加载状态并保留明确的系统反馈。 */

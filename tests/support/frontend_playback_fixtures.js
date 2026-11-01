@@ -35,6 +35,31 @@ function playbackDocument() {
   return document;
 }
 
+/** 为加载边界测试安装已挂载的分析窗口，只模拟展开事件与正文可见性，不模拟 CSS 排版。 */
+function playbackAnalysisControls(root) {
+  const panel = root.getElementById("visualPerformance");
+  const events = new Map();
+  const toggle = { setAttribute() {}, focus() {} };
+  const windows = ["throughput", "bottleneck", "residence"].map(name => ({
+    dataset: { analysisWindow: name }, style: { setProperty() {} },
+    body: { hidden: true }, header: {},
+    querySelector(selector) { return selector === ".analysis-window-body" ? this.body : this.header; },
+    querySelectorAll() { return []; }, removeAttribute() {},
+  }));
+  const retry = { addEventListener(type, callback) { this[type] = callback; } };
+  panel.addEventListener = (type, callback) => events.set(type, callback);
+  panel.getClientRects = () => [];
+  panel.querySelector = selector => selector === "[data-analysis-window]" ? windows[0] : null;
+  panel.querySelectorAll = selector => selector === "[data-analysis-window]" ? windows
+    : selector === "[data-analysis-toggle]" ? [toggle]
+      : selector === "[data-performance-retry]" ? [retry] : [];
+  return {
+    windows,
+    toggle() { events.get("click")({ target: { closest: () => toggle } }); },
+    retry() { retry.click(); },
+  };
+}
+
 /** 构造只有一个加工动作的结果；endTime 明确表示时间轴终点。 */
 function processingResult(endTime) {
   return { MoveList: [{
@@ -59,4 +84,4 @@ function deferredResponse() {
   return { promise, resolve, reject };
 }
 
-module.exports = { playbackDocument, processingResult, jsonResponse, deferredResponse };
+module.exports = { playbackDocument, playbackAnalysisControls, processingResult, jsonResponse, deferredResponse };

@@ -14,7 +14,7 @@ import {
 } from "./api_client";
 import { renderWaferDispatchProgress, updateWaferProgressPanel } from "./wafer_dispatch_progress";
 import { updateReplayThroughput } from "./replay_throughput";
-import { mountAnalysisWorkspace } from "./analysis_workspace";
+import { mountAnalysisWorkspace, renderAnalysisPlaceholder } from "./analysis_workspace";
 import { mountReplayInspectorDock, setReplayInspectorExpanded } from "./replay_inspector_dock";
 import { configuredRobotArms, renderParallelRobotArms, robotSlotWafers, type RobotArmDefinition } from "./topology_robot_mechanism";
 import { projectTopologyTransfers } from "./topology_transfer_projection";
@@ -4060,6 +4060,8 @@ export class VisualizationWorkspace {
   private bottleneckSummary: BottleneckUtilizationSummary | null = null;
   /** 新结果或清空操作会让之前的文件读取和 HTTP 响应失效。 */
   private analysisRequestVersion = 0;
+  /** 同一输入版本的展开操作共用一个分析请求。 */
+  private pendingAnalysisVersion: number | null = null;
   private time = 0;
   private playing = false;
   private liveSolving = false;
@@ -4472,7 +4474,7 @@ export class VisualizationWorkspace {
       <span>运行一次计划，或使用右上角“导入日志”载入平台复现日志后开始回放。</span>`;
   }
 
-  /** 接收规范化后的 MoveList 并重置时间轴；拓扑就绪后返回，指标在后台更新。 */
+  /** 接收规范化后的 MoveList 并重置时间轴；分析保持折叠，首次展开后才请求指标。 */
   private async loadMoves(
     moves: MoveRecord[],
     _decisionTrace: DecisionTraceStep[],
@@ -4524,7 +4526,7 @@ export class VisualizationWorkspace {
     this.showSingleResult();
     this.setTopologyVisible(true);
     this.render(snapshot);
-    void this.renderPerformance();
+    this.renderPerformance(true);
   }
 
   /** 冻结回放输入供离屏摄影；startTime 缺省时拍当前帧，指定时独立生成该时刻画面，不推进页面时间轴。 */
@@ -4895,20 +4897,42 @@ export class VisualizationWorkspace {
     }
   }
 
-  /** 请求并绘制与播放时刻无关的服务端排程性能诊断。 */
-  private async renderPerformance(): Promise<void> {
-    if (!this.moves.length) return;
-    const requestVersion = ++this.analysisRequestVersion;
+  /** 使旧指标失效并挂载按需分析入口；新来源重置展开状态，不自动请求服务端。 */
+  private renderPerformance(resetExpanded = false): void {
+    this.analysisRequestVersion += 1;
     this.analysis = null;
+    this.bottleneckSummary = null;
+    const kpis = this.root.getElementById("visualReplayKpis");
+    if (kpis) kpis.textContent = "展开下方分析面板查看指标";
+    this.elements.performance.innerHTML = renderAnalysisPlaceholder(
+      '<div class="analysis-loading-state">展开后计算当前结果的分析指标。</div>',
+    );
+    mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange, {
+      resetExpanded,
+      onExpand: () => { void this.loadPerformance(); },
+    });
+  }
+
+  /** 首次展开或重试时请求指标；重复展开复用结果，过期响应不得覆盖新来源。 */
+  private async loadPerformance(): Promise<void> {
+    if (!this.moves.length) return;
+    const requestVersion = this.analysisRequestVersion;
+    if (this.analysis || this.pendingAnalysisVersion === requestVersion) return;
+    this.pendingAnalysisVersion = requestVersion;
     for (const id of ["visualReplayKpis"]) {
       const container = this.root.getElementById(id);
       if (container) container.textContent = "正在计算指标…";
     }
-    this.elements.performance.innerHTML = `
-      <section class="result-card analysis-skeleton" aria-label="正在加载结果分析">
-        <div class="analysis-skeleton-head"><i></i><span></span></div>
-        <div class="analysis-skeleton-grid">${Array.from({ length: 6 }, () => "<span></span>").join("")}</div>
-      </section>`;
+    this.elements.performance.innerHTML = renderAnalysisPlaceholder(`
+      <div class="analysis-loading-state" role="status" aria-live="polite" aria-busy="true">
+        <span class="analysis-loading-spinner" aria-hidden="true"></span>
+        <strong>正在计算分析指标…</strong>
+        <span>正在分析产能、资源利用率与晶圆驻留，请稍候</span>
+        <div class="analysis-loading-progress" role="progressbar" aria-label="分析指标计算中"><i></i></div>
+      </div>`);
+    mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange, {
+      onExpand: () => { void this.loadPerformance(); },
+    });
     try {
       const result = await requestScheduleAnalysis({
         ...(this.analysisResultId
@@ -4944,7 +4968,9 @@ export class VisualizationWorkspace {
         }
         overview.remove();
       }
-      mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange);
+      mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange, {
+        onExpand: () => { void this.loadPerformance(); },
+      });
       updateReplayThroughput(this.root, this.time, updateThroughputChartRange);
       const windowSlot = this.elements.performance.querySelector(".bottleneck-window-slot");
       if (windowSlot) {
@@ -4962,15 +4988,18 @@ export class VisualizationWorkspace {
         const container = this.root.getElementById(id);
         if (container) container.textContent = "指标计算失败，请在下方分析区重新加载";
       }
-      this.elements.performance.innerHTML = `
-        <div class="analysis-error-state">
+      this.elements.performance.innerHTML = renderAnalysisPlaceholder(`
+        <div class="analysis-error-state" role="alert">
           <strong>数据获取失败</strong>
           <span>${escapeHtml(error instanceof Error ? error.message : String(error))}</span>
           <button class="analysis-secondary-button" type="button" data-performance-retry>重新加载</button>
-        </div>`;
-      this.elements.performance.querySelector<HTMLButtonElement>("[data-performance-retry]")?.addEventListener("click", () => {
-        void this.renderPerformance();
+        </div>`);
+      mountAnalysisWorkspace(this.elements.performance, updateThroughputChartRange);
+      this.elements.performance.querySelectorAll<HTMLButtonElement>("[data-performance-retry]").forEach(button => {
+        button.addEventListener("click", () => { void this.loadPerformance(); });
       });
+    } finally {
+      if (this.pendingAnalysisVersion === requestVersion) this.pendingAnalysisVersion = null;
     }
   }
 

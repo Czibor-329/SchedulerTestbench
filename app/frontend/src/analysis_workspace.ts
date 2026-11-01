@@ -1,31 +1,47 @@
 /**
  * 回放分析固定双栏：左侧产能，右侧在瓶颈和驻留时间之间切换。
- * 仅管理现有 DOM 的可见性、标题栏和键盘导航，不持有指标数据或触发分析请求。
- * 右侧选择和全局展开状态在页面会话内保留；刷新默认瓶颈且全部最小化。
+ * 管理现有 DOM 的可见性、标题栏和键盘导航；展开时通知宿主按需加载，不持有指标数据。
+ * 右侧选择和全局展开状态在页面会话内保留；新来源由宿主重置为最小化，刷新默认瓶颈。
  */
 export type AnalysisWindowName = "throughput" | "bottleneck" | "residence";
 export type RightAnalysisView = Exclude<AnalysisWindowName, "throughput">;
 const WINDOW_TITLES = { throughput: "产能分析", bottleneck: "瓶颈分析", residence: "驻留时间分析" };
 const controllers = new WeakMap<HTMLElement, AnalysisWorkspaceController>();
 
+/** 将宿主提供的状态 HTML 放入三项分析窗口；返回完整标记，正文只在展开时占位。 */
+export function renderAnalysisPlaceholder(content: string): string {
+  return (Object.keys(WINDOW_TITLES) as AnalysisWindowName[]).map(name =>
+    `<section class="analysis-window" data-analysis-window="${name}">${content}</section>`,
+  ).join("");
+}
+
 /** 根据右侧选择判断分析视图是否可见；产能始终可见。 */
 export function isAnalysisViewVisible(name: AnalysisWindowName, selected: RightAnalysisView): boolean {
   return name === "throughput" || name === selected;
 }
 
-/** 初始化固定分析双栏；重新渲染时复用委托监听器及右侧选择，尺寸变化仅重绘产能 SVG。 */
-export function mountAnalysisWorkspace(panel: HTMLElement, redrawThroughput: (chart: HTMLElement, range: string) => void): void {
+/**
+ * 初始化固定分析双栏，复用监听器及右侧选择；redrawThroughput 在尺寸变化时重绘曲线。
+ * options.onExpand 通知宿主加载数据，已展开时重新挂载也会通知；resetExpanded 用于切换来源。
+ */
+export function mountAnalysisWorkspace(
+  panel: HTMLElement,
+  redrawThroughput: (chart: HTMLElement, range: string) => void,
+  options: { onExpand?: () => void; resetExpanded?: boolean } = {},
+): void {
   if (!panel.querySelector("[data-analysis-window]")) return;
   let controller = controllers.get(panel);
   if (!controller) {
     controller = new AnalysisWorkspaceController(panel, redrawThroughput);
     controllers.set(panel, controller);
   }
-  controller.mount();
+  controller.onExpand = options.onExpand;
+  controller.mount(options.resetExpanded);
 }
 
 /** 管理固定位置、全局展开状态和右侧选择，展开仅提升显示层级，不支持拖动或缩放。 */
 class AnalysisWorkspaceController {
+  onExpand?: () => void;
   private selected: RightAnalysisView = "bottleneck";
   private expanded = false;
   private topLayer = 1000;
@@ -48,6 +64,7 @@ class AnalysisWorkspaceController {
         this.expanded = !this.expanded;
         this.select(this.selected, false);
         toggle.focus({ preventScroll: true });
+        if (this.expanded) this.onExpand?.();
         return;
       }
       const tab = (event.target as Element).closest<HTMLElement>("[data-analysis-tab]");
@@ -74,7 +91,8 @@ class AnalysisWorkspaceController {
   }
 
   /** 创建紧凑标题栏，保留筛选控件节点及其事件，右侧标签与控件同栏。 */
-  mount(): void {
+  mount(resetExpanded = false): void {
+    if (resetExpanded) this.expanded = false;
     this.resizeObserver.disconnect();
     this.panel.classList.add("analysis-fixed-workspace");
     this.panel.querySelectorAll<HTMLElement>("[data-analysis-window]").forEach(window => {
@@ -108,6 +126,7 @@ class AnalysisWorkspaceController {
     this.select(this.selected, false);
     // 页面隐藏/重新显示也会改变工作区尺寸，不能只观察固定定位的子窗口。
     this.resizeObserver.observe(this.panel);
+    if (this.expanded) this.onExpand?.();
   }
 
   /** 切换右侧可见视图并同步可访问状态；可选将焦点移到新视图的当前标签。 */

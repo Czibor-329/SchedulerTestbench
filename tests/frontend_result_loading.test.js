@@ -1,4 +1,4 @@
-/** 运行结果读取边界：轻量甘特来源、指标后台加载及异步结果归属。 */
+/** 运行结果读取边界：轻量甘特来源、指标按需加载及异步结果归属。 */
 "use strict";
 
 const test = require("node:test");
@@ -7,7 +7,7 @@ const { createVisualizationWorkspace, movelistResultSourceUrl } = require(
   process.env.CT_WORKSPACE_VISUALIZER_TEST_BUILD,
 );
 const {
-  playbackDocument, processingResult, jsonResponse, deferredResponse,
+  playbackDocument, playbackAnalysisControls, processingResult, jsonResponse, deferredResponse,
 } = require("./support/frontend_playback_fixtures");
 
 const pageUrl = "http://127.0.0.1:8765/movelist_gantt_viewer.html";
@@ -28,15 +28,25 @@ test("日志、本地文件及其他服务地址保留来源语义", () => {
   ]) assert.equal(movelistResultSourceUrl(source, pageUrl), source);
 });
 
-test("指标仍在等待时回放结果已就绪，指标失败保留可用拓扑", async t => {
+test("展开前不计算指标，等待和失败均保留可用拓扑，重复展开不重复请求且可重试", async t => {
+  const originalObserver = global.ResizeObserver;
+  global.ResizeObserver = class { observe() {} disconnect() {} };
+  t.after(() => { global.ResizeObserver = originalObserver; });
   const root = playbackDocument();
+  const controls = playbackAnalysisControls(root);
   const workspace = createVisualizationWorkspace(root);
   const analysis = deferredResponse();
   let analysisInput;
+  let analysisRequests = 0;
   t.mock.method(global, "fetch", async (url, options) => {
     if (url === "/api/results/result-1") return jsonResponse(processingResult(20));
     assert.equal(url, "/api/analysis/schedule");
+    analysisRequests++;
     analysisInput = JSON.parse(options.body);
+    if (analysisRequests > 1) return jsonResponse({ analysis: {
+      window: { label: "稳态窗口", duration: 20 }, resources: [], bottleneckCandidates: [],
+      throughputPerHour: 0, throughputSampleCount: 0, waferSystemResidenceTimes: [],
+    } });
     return analysis.promise;
   });
 
@@ -47,13 +57,31 @@ test("指标仍在等待时回放结果已就绪，指标失败保留可用拓�
   assert.equal(root.getElementById("visualTopologyPlayback").hidden, false);
   assert.equal(root.getElementById("visualTimeline").max, "20");
   assert.equal(root.getElementById("visualSource").textContent, "第一项");
+  assert.equal(analysisRequests, 0, "加载结果不得触发分析");
+  assert.ok(controls.windows.every(window => window.body.hidden));
+  controls.toggle();
+  assert.ok(controls.windows.every(window => !window.body.hidden));
   assert.equal(analysisInput.resultId, "result-1");
+  assert.equal(analysisRequests, 1);
+  assert.match(root.getElementById("visualPerformance").innerHTML, /role="progressbar"/);
+  controls.toggle();
+  assert.ok(controls.windows.every(window => window.body.hidden));
+  controls.toggle();
+  assert.equal(analysisRequests, 1, "请求中收起并重新展开必须复用请求");
   assert.match(root.getElementById("visualReplayKpis").textContent, /正在计算指标/);
   analysis.resolve(jsonResponse({ ok: false, error: "分析暂不可用" }, 500));
   await loading;
   await new Promise(setImmediate);
   assert.match(root.getElementById("visualPerformance").innerHTML, /分析暂不可用/);
   assert.equal(root.getElementById("visualTopologyPlayback").hidden, false);
+  controls.retry();
+  assert.equal(analysisRequests, 2, "失败后允许显式重试");
+  await new Promise(setImmediate);
+  assert.match(root.getElementById("visualPerformance").innerHTML, /暂无生产数据/);
+  controls.toggle();
+  controls.toggle();
+  assert.equal(analysisRequests, 2, "成功后重新展开复用分析结果");
+  workspace.destroy();
 });
 
 test("快速切换结果时迟到的旧结果不会覆盖当前时间轴", async t => {
@@ -78,7 +106,11 @@ test("快速切换结果时迟到的旧结果不会覆盖当前时间轴", async
 });
 
 test("切换结果后旧分析失败不会污染新测试的指标", async t => {
+  const originalObserver = global.ResizeObserver;
+  global.ResizeObserver = class { observe() {} disconnect() {} };
+  t.after(() => { global.ResizeObserver = originalObserver; });
   const root = playbackDocument();
+  const controls = playbackAnalysisControls(root);
   const workspace = createVisualizationWorkspace(root);
   const analyses = [];
   t.mock.method(global, "fetch", async url => {
@@ -88,7 +120,11 @@ test("切换结果后旧分析失败不会污染新测试的指标", async t => 
     return analysis.promise;
   });
   await workspace.loadResult("first");
+  controls.toggle();
   await workspace.loadResult("second");
+  assert.equal(analyses.length, 1, "新结果默认折叠，不沿用旧结果的展开请求");
+  assert.ok(controls.windows.every(window => window.body.hidden));
+  controls.toggle();
   analyses[1].resolve(jsonResponse({ ok: false, error: "新分析失败" }, 500));
   await new Promise(setImmediate);
   analyses[0].resolve(jsonResponse({ ok: false, error: "旧分析失败" }, 500));
